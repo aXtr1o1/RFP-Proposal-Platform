@@ -1,0 +1,37 @@
+name: CD-ACA
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/frontend/**'
+      - '.github/workflows/**'
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ACR_NAME: ${{ secrets.ACR_NAME }}
+      AZURE_RG:  ${{ secrets.AZURE_RG }}
+      ACA_ENV:   ${{ secrets.ACA_ENV || 'axtr-rfp-acaenv' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_JSON }}
+      - name: ACR login
+        run: az acr login --name $ACR_NAME
+      - name: Build & push API
+        run: |
+          docker build -t $ACR_NAME.azurecr.io/rfp-api:${{ github.sha }} apps/api
+          docker push $ACR_NAME.azurecr.io/rfp-api:${{ github.sha }}
+      - name: Build & push Frontend
+        run: |
+          docker build -t $ACR_NAME.azurecr.io/rfp-frontend:${{ github.sha }} apps/frontend
+          docker push $ACR_NAME.azurecr.io/rfp-frontend:${{ github.sha }}
+      - name: Create/Update Container Apps
+        run: |
+          az containerapp show -n rfp-api -g $AZURE_RG >/dev/null 2>&1 ||           az containerapp create -g $AZURE_RG -n rfp-api             --environment $ACA_ENV             --image $ACR_NAME.azurecr.io/rfp-api:${{ github.sha }}             --ingress external --target-port 8000             --registry-server $ACR_NAME.azurecr.io
+          az containerapp update -g $AZURE_RG -n rfp-api             --image $ACR_NAME.azurecr.io/rfp-api:${{ github.sha }}
+          az containerapp show -n rfp-frontend -g $AZURE_RG >/dev/null 2>&1 ||           az containerapp create -g $AZURE_RG -n rfp-frontend             --environment $ACA_ENV             --image $ACR_NAME.azurecr.io/rfp-frontend:${{ github.sha }}             --ingress external --target-port 3000             --registry-server $ACR_NAME.azurecr.io
+          az containerapp update -g $AZURE_RG -n rfp-frontend             --image $ACR_NAME.azurecr.io/rfp-frontend:${{ github.sha }}
+
