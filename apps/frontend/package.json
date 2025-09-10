@@ -1,22 +1,35 @@
 {
-  "name": "rfp-frontend",
-  "private": true,
+  "name": "food-analytics-dashboard",
   "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start -p 3000"
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "next": "14.2.5",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "axios": "1.7.7"
+    "@azure/msal-browser": "^4.22.1",
+    "axios": "^1.11.0",
+    "gapi-script": "^1.2.0",
+    "lucide-react": "^0.539.0",
+    "next": "15.4.6",
+    "qc": "^0.0.1",
+    "qs": "^6.14.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "recharts": "^3.1.2"
   },
   "devDependencies": {
-    "typescript": "5.5.4",
-    "@types/node": "20.14.14",
-    "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0"
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/qs": "^6.14.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.4.6",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

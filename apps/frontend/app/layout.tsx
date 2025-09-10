@@ -1,13 +1,34 @@
-export default function RootLayout({ children }) {
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "RFP Proposal Generator",
+  description: "Generating RFP proposals",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="en">
-      <body style={{fontFamily:'ui-sans-serif, system-ui', margin:0, padding:20}}>
-        <h1>RFP Proposal Platform</h1>
-        <nav style={{marginBottom:20}}>
-          <a href="/">Home</a> | <a href="/upload">Upload</a>
-        </nav>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         {children}
       </body>
     </html>
-  )
+  );
 }
