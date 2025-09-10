@@ -1,40 +1,75 @@
-import time, os
 import requests
+import time
+from datetime import datetime
+import logging
+import os
+from dotenv import load_dotenv
 
-def poll_vision_result(operation_location: str, timeout=120):
-    vision_key = os.getenv("AZURE_VISION_KEY")
-    headers = {"Ocp-Apim-Subscription-Key": vision_key}
+load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+class OCRWorker:
+    def __init__(self):
+        self.ocr_key = os.getenv("OCR_KEY")
+        self.ocr_endpoint = os.getenv("OCR_ENDPOINT")
     
-    start = time.time()
-    while time.time() - start < timeout:
+    def process_file(self, file_content, file_name, file_type="document"):
+        """Process a single file with OCR"""
+        url = f"{self.ocr_endpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31"
+        
+        headers = {
+            'Ocp-Apim-Subscription-Key': self.ocr_key,
+            'Content-Type': 'application/octet-stream'
+        }
+        
         try:
-            response = requests.get(operation_location, headers=headers)
-            response.raise_for_status()
-            result = response.json()
+            response = requests.post(url, headers=headers, data=file_content)
             
-            status = result.get("status")
-            if status == "succeeded":
-                print(f"OCR completed successfully")
-                return result
-            elif status == "failed":
-                print(f"OCR failed: {result}")
-                return None
+            if response.status_code == 202:
+                operation_url = response.headers['Operation-Location']
+                poll_headers = {'Ocp-Apim-Subscription-Key': self.ocr_key}
+                
+                max_attempts = 30
+                attempt = 0
+                
+                while attempt < max_attempts:
+                    result = requests.get(operation_url, headers=poll_headers)
+                    data = result.json()
+                    
+                    if data['status'] == 'succeeded':
+                        pages_data = []
+                        if 'analyzeResult' in data and 'pages' in data['analyzeResult']:
+                            for page_idx, page in enumerate(data['analyzeResult']['pages']):
+                                if 'lines' in page:
+                                    content = ' '.join([line['content'] for line in page['lines']])
+                                    if content.strip():
+                                        pages_data.append({
+                                            "file_name": file_name,
+                                            "file_type": file_type,
+                                            "page": page_idx + 1,
+                                            "content": content,
+                                            "word_count": len(content.split()),
+                                            "timestamp": datetime.now().isoformat()
+                                        })
+                        
+                        return pages_data
+                        
+                    elif data['status'] == 'failed':
+                        logger.error(f"OCR failed for {file_name}: {data}")
+                        return []
+                    else:
+                        time.sleep(2)
+                        attempt += 1
+                
+                return []
             else:
-                print(f"OCR status: {status}, waiting...")
-                time.sleep(2)
+                return []
+                
         except Exception as e:
-            print(f"Error polling OCR result: {e}")
-            time.sleep(2)
-    
-    print("OCR polling timeout")
-    return None
-
-def run():
-    print("[worker] OCR worker started (stub).")
-    while True:
-        # TODO: poll API/queue for OCR tasks, call Azure Vision (primary) or pytesseract
-        # For now, just keep the worker alive
-        time.sleep(5)
+            logger.error(f"OCR Error for {file_name}: {e}")
+            return []
 
 if __name__ == "__main__":
-    run()
+    worker = OCRWorker()
+    print("OCR Worker initialized and ready")

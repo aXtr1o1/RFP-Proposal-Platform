@@ -1,0 +1,81 @@
+2025-09-09 18:12:26,753 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-09 18:12:30,234 - worker - INFO - Environment variables loaded
+2025-09-09 18:12:30,240 - main - INFO - Initializing DocumentProcessingWorker...
+2025-09-09 18:12:30,240 - worker - INFO - Initializing DocumentProcessingWorker...
+2025-09-09 18:12:30,240 - worker - INFO - Initializing job and RFP managers...
+2025-09-09 18:12:30,240 - jobs - INFO - JobManager initialized
+2025-09-09 18:12:30,240 - rfp - INFO - RFPManager initialized
+2025-09-09 18:12:30,240 - worker - INFO - Loading Azure configuration...
+2025-09-09 18:12:30,240 - worker - ERROR - Missing Azure configuration. Please check environment variables.
+2025-09-09 18:12:30,240 - main - ERROR - Failed to initialize DocumentProcessingWorker: Azure configuration is incomplete
+2025-09-09 18:25:09,475 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-09 18:25:11,060 - worker - INFO - Environment variables loaded
+2025-09-09 18:25:11,062 - main - INFO - Initializing DocumentProcessingWorker...
+2025-09-09 18:25:11,062 - worker - INFO - Initializing DocumentProcessingWorker...
+2025-09-09 18:25:11,062 - worker - INFO - Initializing job and RFP managers...
+2025-09-09 18:25:11,062 - jobs - INFO - JobManager initialized
+2025-09-09 18:25:11,062 - rfp - INFO - RFPManager initialized
+2025-09-09 18:25:11,062 - worker - INFO - Loading Azure configuration...
+2025-09-09 18:25:11,062 - worker - ERROR - Missing Azure configuration. Please check environment variables.
+2025-09-09 18:25:11,062 - main - ERROR - Failed to initialize DocumentProcessingWorker: Azure configuration is incomplete
+2025-09-09 18:34:37,617 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-09 18:34:39,192 - worker - INFO - Environment variables loaded from apps/.env
+2025-09-09 18:34:39,192 - main - INFO - Initializing DocumentProcessingWorker...
+2025-09-09 18:34:39,192 - worker - INFO - Initializing DocumentProcessingWorker...
+2025-09-09 18:34:39,192 - worker - INFO - Initializing job and RFP managers...
+2025-09-09 18:34:39,192 - jobs - INFO - JobManager initialized
+2025-09-09 18:34:39,192 - rfp - INFO - RFPManager initialized
+2025-09-09 18:34:39,192 - worker - INFO - Loading OneDrive configuration...
+2025-09-09 18:34:39,192 - worker - INFO - OneDrive configuration loaded - Client ID: 7318952c...
+2025-09-09 18:34:39,192 - worker - INFO - Loading Document Intelligence configuration...
+2025-09-09 18:34:39,192 - worker - INFO - Document Intelligence endpoint: https://efp-ocr.cognitiveservices.azure.com/
+2025-09-09 18:34:39,192 - worker - INFO - Loading Milvus configuration...
+2025-09-09 18:34:39,192 - worker - INFO - Milvus configuration - Host: localhost:19530, Collection: rfp_documents
+2025-09-09 18:34:39,201 - worker - INFO - Initializing Azure clients...
+2025-09-09 18:34:39,949 - worker - INFO - MSAL client initialized successfully
+2025-09-09 18:34:40,026 - worker - INFO - Document Intelligence client initialized successfully
+2025-09-09 18:34:40,026 - worker - INFO - Loading sentence transformer model...
+2025-09-09 18:34:40,032 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-09 18:34:40,032 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-09 18:34:53,663 - huggingface_hub.file_download - WARNING - Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet`
+2025-09-09 18:35:37,874 - worker - INFO - Sentence transformer model loaded successfully
+2025-09-09 18:35:37,874 - worker - INFO - Setting up Milvus connection...
+2025-09-09 18:35:37,874 - worker - INFO - Connecting to Milvus at localhost:19530
+2025-09-09 18:35:47,976 - worker - ERROR - Error setting up Milvus: <MilvusException: (code=2, message=Fail connecting to server on localhost:19530, illegal connection params or server unavailable)>
+2025-09-09 18:35:47,976 - worker - WARNING - Continuing without Milvus - some features will be limited
+2025-09-09 18:35:47,976 - worker - INFO - DocumentProcessingWorker initialization completed
+2025-09-09 18:35:47,976 - main - INFO - DocumentProcessingWorker initialized successfully
+2025-09-09 18:35:47,982 - main - INFO - FastAPI application starting up...
+2025-09-09 18:35:47,982 - main - INFO - Current working directory: Y:\RFT\RFP-Proposal-Platform\apps\api
+2025-09-09 18:35:47,985 - main - INFO - Application startup completed
+2025-09-09 18:35:47,986 - main - INFO - FastAPI application shutting down...
+2025-09-10 16:35:28,363 - routes.rfp - INFO - Fetching available folders from OneDrive
+2025-09-10 16:35:30,680 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-10 16:35:38,627 - routes.rfp - INFO - Found 3 folders
+2025-09-10 16:36:09,077 - routes.rfp - INFO - Found 2 files in folder '1234567890'
+2025-09-10 16:50:40,012 - routes.rfp - INFO - Fetching available folders from OneDrive
+2025-09-10 16:50:44,252 - routes.rfp - INFO - Found 4 folders
+2025-09-10 16:51:29,270 - routes.rfp - INFO - Found 2 files in folder '1234567890'
+2025-09-10 17:23:56,018 - routes.rfp - INFO - Fetching files from RFP-Uploads folder
+2025-09-10 17:23:56,019 - routes.rfp - WARNING - Using fallback OCR implementation
+2025-09-10 17:23:56,991 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-10 17:30:09,983 - routes.rfp - INFO - Fetching subfolders from RFP-Uploads folder
+2025-09-10 17:30:09,983 - routes.rfp - WARNING - Using fallback OCR implementation
+2025-09-10 17:30:10,590 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-10 17:30:50,162 - routes.rfp - INFO - Processing folder 'edbcf640-43ab-4d9f-a73e-c2be2f807ee3' with OCR
+2025-09-10 17:37:27,636 - routes.rfp - INFO - Fetching subfolders from RFP-Uploads folder
+2025-09-10 17:37:27,637 - routes.rfp - WARNING - Using fallback OCR implementation
+2025-09-10 17:37:28,618 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-10 17:38:02,002 - routes.rfp - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR
+2025-09-10 17:38:05,585 - routes.rfp - INFO - Processing specific subfolder: a4af8aa8-e825-44d8-a725-253c0da86f73
+2025-09-10 17:42:50,962 - routes.rfp - INFO - Fetching complete folder structure from RFP-Uploads
+2025-09-10 17:42:50,962 - routes.rfp - WARNING - Using fallback OCR implementation
+2025-09-10 17:42:51,459 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-10 17:43:22,923 - routes.rfp - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR (recursive search)
+2025-09-10 17:43:26,144 - routes.rfp - INFO - Searching recursively in path: RFP-Uploads/a4af8aa8-e825-44d8-a725-253c0da86f73
+2025-09-10 17:43:26,850 - routes.rfp - ERROR - Error processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR: name 'files' is not defined
+2025-09-10 17:45:56,669 - routes.rfp - INFO - Fetching complete folder structure from RFP-Uploads
+2025-09-10 17:45:56,669 - routes.rfp - WARNING - Using fallback OCR implementation
+2025-09-10 17:45:57,314 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-10 17:46:26,316 - routes.rfp - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR (recursive search)
+2025-09-10 17:46:29,781 - routes.rfp - INFO - Searching recursively in path: RFP-Uploads/a4af8aa8-e825-44d8-a725-253c0da86f73
