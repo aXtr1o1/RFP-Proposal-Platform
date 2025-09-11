@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# In-memory job storage (replace with Redis/database in production)
 jobs_storage = {}
 
 class JobStatus(BaseModel):
@@ -131,8 +130,7 @@ async def retry_job(job_id: str):
                 "job_id": job_id,
                 "message": f"Cannot retry job with status: {job_data.get('status')}"
             }
-        
-        # Create new job ID for retry
+   
         new_job_id = f"retry_{job_id}_{uuid.uuid4().hex[:8]}"
         
         jobs_storage[new_job_id] = {

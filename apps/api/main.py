@@ -1,42 +1,33 @@
-from fastapi import FastAPI, HTTPException, Request, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import List
 import logging
 import os
 from datetime import datetime
 from dotenv import load_dotenv
 import sys
 
-# Load environment variables FIRST before any other imports
 load_dotenv()
 
-# Now import routes after environment is loaded
-from routes import rfp, jobs
-
-# Configure logging
-log_level = os.getenv("LOG_LEVEL", "INFO")
 logging.basicConfig(
-    level=getattr(logging, log_level),
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('app.log'),
+        logging.FileHandler('app.log', encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
 
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
 app = FastAPI(
     title="RFP Proposal Platform API",
-    description="OneDrive integration with OCR processing for RFP documents and proposals",
+    description="OneDrive integration with OCR processing and Vector Database",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,7 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+from routes import rfp, jobs
 app.include_router(rfp.router, prefix="/api/v1/rfp")
 app.include_router(jobs.router, prefix="/api/v1/jobs")
 
@@ -54,51 +45,64 @@ async def root():
     return {
         "message": "RFP Proposal Platform API",
         "version": "1.0.0",
+        "endpoints": {
+            "/files": "GET - View available folders in RFP-Uploads",
+            "/ocr/{folder_name}": "POST - Process folder with OCR + Auto Vector Storage",
+            "/milvus-data": "GET - View stored vector documents",
+            "/search": "GET - Vector similarity search",
+            "/api/v1/jobs": "GET - List all jobs",
+            "/api/v1/jobs/{job_id}": "GET - Get job status"
+        },
         "timestamp": datetime.now().isoformat(),
         "environment": os.getenv("ENVIRONMENT", "development")
     }
 
-# === MERGED ENDPOINT 1: GET ALL SUBFOLDERS AND FILES FROM RFP-UPLOADS ===
-@app.get("/api/v1/rfp/rfp-uploads/files")
-async def get_rfp_uploads_files():
-    """
-    MERGED ENDPOINT 1: Fetch all subfolders and their files from RFP-Uploads
-    
-    This will show you the two subfolders you see in OneDrive:
-    - ^4af8aa8-e825-44d8-a725-253c0da86f73 (2 items)
-    - ^edbcf640-43ab-4d9f-a73e-c2be2f807ee3 (2 items)
-    """
-    return await rfp.get_rfp_uploads_files()
 
-# === MERGED ENDPOINT 2: PROCESS SPECIFIC SUBFOLDER WITH OCR ===
-@app.post("/api/v1/rfp/folders/{folder_name}/ocr")
-async def process_folder_with_ocr(
-    folder_name: str,
+@app.get("/files")
+async def get_available_folders():
+    """View available folders inside RFP-Uploads"""
+    return await rfp.get_available_folders()
+
+@app.post("/ocr/{folder_name}")
+async def process_folder_ocr(
+    folder_name: str = Path(..., description="Folder name to process"),
     background_tasks: BackgroundTasks = None
 ):
-    """
-    MERGED ENDPOINT 2: Process a specific subfolder with OCR
-    
-    Usage examples:
-    - Process specific subfolder: POST /folders/edbcf640-43ab-4d9f-a73e-c2be2f807ee3/ocr
-    - Process other subfolder: POST /folders/^4af8aa8-e825-44d8-a725-253c0da86f73/ocr
-    - Process all RFP-Uploads subfolders: POST /folders/RFP-Uploads/ocr
-    """
-    return await rfp.process_folder_with_ocr(folder_name, background_tasks)
+    """Process folder with OCR and automatically save to Milvus"""
+    return await rfp.process_folder_with_ocr_and_vectors(folder_name, background_tasks)
 
-# === BONUS ENDPOINT: GET FILES FROM SPECIFIC SUBFOLDER ===
-@app.get("/api/v1/rfp/rfp-uploads/subfolder/{subfolder_name}/files")
-async def get_subfolder_files(subfolder_name: str):
-    """
-    BONUS: Get files from a specific subfolder within RFP-Uploads
-    
-    Usage:
-    - GET /rfp-uploads/subfolder/^4af8aa8-e825-44d8-a725-253c0da86f73/files
-    - GET /rfp-uploads/subfolder/edbcf640-43ab-4d9f-a73e-c2be2f807ee3/files
-    
-    This lets you see what files are in each subfolder before processing
-    """
-    return await rfp.get_specific_subfolder_files(subfolder_name)
+@app.get("/milvus-data")
+async def view_milvus_data():
+    """View all stored vector documents"""
+    return await rfp.get_milvus_data()
+
+@app.get("/search")
+async def search_documents(
+    query: str = Query(..., description="Search query"),
+    limit: int = Query(10, description="Number of results")
+):
+    """Search documents using vector similarity"""
+    try:
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'vdb'))
+        from milvus_client import get_milvus_client
+        
+        milvus_client = get_milvus_client()
+        
+        if not milvus_client.is_available():
+            raise HTTPException(status_code=503, detail="Vector search not available")
+        
+        results = milvus_client.search_similar_documents(query, limit)
+        
+        return {
+            "query": query,
+            "results_count": len(results),
+            "results": results,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health_check():
@@ -108,7 +112,8 @@ async def health_check():
             "client_id": "configured" if os.getenv("CLIENT_ID") else "missing", 
             "client_secret": "configured" if os.getenv("CLIENT_SECRET") else "missing",
             "ocr_key": "configured" if os.getenv("OCR_KEY") else "missing",
-            "ocr_endpoint": "configured" if os.getenv("OCR_ENDPOINT") else "missing"
+            "ocr_endpoint": "configured" if os.getenv("OCR_ENDPOINT") else "missing",
+            "milvus_uri": "configured" if os.getenv("MILVUS_URI") else "missing"
         }
         
         overall_status = "healthy" if all(

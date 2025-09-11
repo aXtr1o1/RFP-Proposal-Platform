@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 import msal
 import requests
 import time
@@ -8,23 +7,20 @@ from datetime import datetime
 import os
 import logging
 from dotenv import load_dotenv
-import uuid
 import urllib.parse
+import sys
 
-# Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Configuration from environment
 TENANT_ID = os.getenv("TENANT_ID")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 OCR_KEY = os.getenv("OCR_KEY")
 OCR_ENDPOINT = os.getenv("OCR_ENDPOINT")
 
-# Validate required environment variables
 if not all([TENANT_ID, CLIENT_ID, CLIENT_SECRET, OCR_KEY, OCR_ENDPOINT]):
     missing_vars = []
     if not TENANT_ID: missing_vars.append("TENANT_ID")
@@ -36,16 +32,21 @@ if not all([TENANT_ID, CLIENT_ID, CLIENT_SECRET, OCR_KEY, OCR_ENDPOINT]):
     logger.error(f"Missing required environment variables: {missing_vars}")
     raise ValueError(f"Missing required environment variables: {missing_vars}")
 
-# Import OCR worker
 try:
-    import sys
-    import os
-    workers_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'workers', 'ocr')
+    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'vdb'))
+    from milvus_client import get_milvus_client
+    logger.info("Milvus client imported successfully")
+except ImportError as e:
+    logger.warning(f"Milvus client not found: {e}")
+    get_milvus_client = None
+
+try:
+    workers_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'workers', 'ocr')
     sys.path.append(workers_path)
     from worker import OCRWorker
     logger.info("OCR Worker imported successfully")
 except ImportError as e:
-    logger.warning(f"OCR Worker not found: {e}, using fallback implementation")
+    logger.warning(f"OCR Worker not found: {e}")
     OCRWorker = None
 
 class OneDriveService:
@@ -58,17 +59,14 @@ class OneDriveService:
         
         if OCRWorker:
             self.ocr_worker = OCRWorker()
-            logger.info("OCR Worker initialized successfully")
         else:
             self.ocr_worker = None
-            logger.warning("Using fallback OCR implementation")
             
         self._authenticate()
     
     def _authenticate(self):
         try:
             authority = f"https://login.microsoftonline.com/{self.tenant_id}"
-            
             app = msal.ConfidentialClientApplication(
                 client_id=self.client_id,
                 client_credential=self.client_secret,
@@ -101,24 +99,18 @@ class OneDriveService:
     
     def get_all_drives(self):
         drives = []
-        
-        # Get shared drives
         result = self._make_request("/drives")
         if result:
-            shared_drives = result.get("value", [])
-            for drive in shared_drives:
+            for drive in result.get("value", []):
                 drives.append({
                     'id': drive['id'],
                     'name': drive['name'],
-                    'type': drive.get('driveType', 'shared'),
-                    'url': drive.get('webUrl', 'No URL')
+                    'type': drive.get('driveType', 'shared')
                 })
-        
-        # Get user drives  
+
         users_result = self._make_request("/users")
         if users_result:
-            users = users_result.get("value", [])
-            for user in users[:5]:
+            for user in users_result.get("value", [])[:5]:
                 user_id = user.get("id")
                 display_name = user.get("displayName", "Unknown")
                 
@@ -127,8 +119,7 @@ class OneDriveService:
                     drives.append({
                         'id': drive_result['id'],
                         'name': f"{display_name}'s OneDrive",
-                        'type': 'personal',
-                        'url': drive_result.get('webUrl', 'No URL')
+                        'type': 'personal'
                     })
         
         return drives
@@ -142,16 +133,11 @@ class OneDriveService:
             items_result = self._make_request(f"/drives/{drive_id}/root/children")
             
             if items_result:
-                items = items_result.get("value", [])
-                for item in items:
+                for item in items_result.get("value", []):
                     if 'folder' in item:
                         all_folders.append({
                             'drive_id': drive_id,
-                            'drive_name': drive['name'],
-                            'folder_id': item['id'],
                             'folder_name': item['name'],
-                            'folder_path': item['name'],
-                            'web_url': item.get('webUrl', 'No URL'),
                             'created_datetime': item.get('createdDateTime'),
                             'modified_datetime': item.get('lastModifiedDateTime')
                         })
@@ -159,7 +145,6 @@ class OneDriveService:
         return all_folders
     
     def get_all_files_recursively(self, drive_id, base_path, max_depth=3, current_depth=0):
-        """FIXED: Recursively get all files from nested folder structure"""
         if current_depth >= max_depth:
             return []
         
@@ -171,11 +156,8 @@ class OneDriveService:
         if not result:
             return []
         
-        items = result.get("value", [])
-        
-        for item in items:
+        for item in result.get("value", []):
             if 'file' in item:
-                # It's a file - FIXED the variable name bug
                 file_info = {
                     'file_id': item['id'],
                     'file_name': item['name'],
@@ -183,14 +165,12 @@ class OneDriveService:
                     'folder_path': base_path,
                     'file_size': item.get('size', 0),
                     'mime_type': item.get('file', {}).get('mimeType', 'unknown'),
-                    'web_url': item.get('webUrl', 'No URL'),
                     'download_url': item.get('@microsoft.graph.downloadUrl'),
                     'created_datetime': item.get('createdDateTime'),
                     'modified_datetime': item.get('lastModifiedDateTime')
                 }
-                all_files.append(file_info)  # FIXED: append to all_files
+                all_files.append(file_info)
             elif 'folder' in item:
-                # It's a folder, recurse into it
                 subfolder_path = f"{base_path}/{item['name']}"
                 subfolder_files = self.get_all_files_recursively(
                     drive_id, 
@@ -202,8 +182,7 @@ class OneDriveService:
         
         return all_files
     
-    def get_folder_structure(self, drive_id, base_path, max_depth=3, current_depth=0):
-        """Get complete folder structure with files"""
+    def get_folder_structure(self, drive_id, base_path, max_depth=2, current_depth=0):
         if current_depth >= max_depth:
             return {"folders": [], "files": []}
         
@@ -216,22 +195,17 @@ class OneDriveService:
         
         folders = []
         files = []
-        items = result.get("value", [])
         
-        for item in items:
+        for item in result.get("value", []):
             if 'folder' in item:
                 folder_info = {
-                    'folder_id': item['id'],
                     'folder_name': item['name'],
                     'folder_path': f"{base_path}/{item['name']}",
-                    'parent_path': base_path,
                     'child_count': item.get('folder', {}).get('childCount', 0),
-                    'web_url': item.get('webUrl', 'No URL'),
                     'created_datetime': item.get('createdDateTime'),
                     'modified_datetime': item.get('lastModifiedDateTime')
                 }
                 
-                # Get nested structure
                 if current_depth < max_depth - 1:
                     nested_structure = self.get_folder_structure(
                         drive_id, 
@@ -246,13 +220,10 @@ class OneDriveService:
                 
             elif 'file' in item:
                 file_info = {
-                    'file_id': item['id'],
                     'file_name': item['name'],
                     'file_path': f"{base_path}/{item['name']}",
-                    'folder_path': base_path,
                     'file_size': item.get('size', 0),
                     'mime_type': item.get('file', {}).get('mimeType', 'unknown'),
-                    'web_url': item.get('webUrl', 'No URL'),
                     'download_url': item.get('@microsoft.graph.downloadUrl'),
                     'created_datetime': item.get('createdDateTime'),
                     'modified_datetime': item.get('lastModifiedDateTime')
@@ -354,48 +325,52 @@ def determine_file_type(file_info: Dict) -> str:
     else:
         return "document"
 
-def generate_files_summary(ocr_results: List[Dict]) -> Dict:
-    if not ocr_results:
-        return {
-            "files_processed": 0,
-            "total_pages": 0,
-            "total_words": 0,
-            "files_summary": []
-        }
-    
-    files_summary = {}
-    for result in ocr_results:
-        file_name = result['file_name']
-        if file_name not in files_summary:
-            files_summary[file_name] = {
-                'file_name': file_name,
-                'file_type': result['file_type'],
-                'pages': [],
-                'total_words': 0,
-                'page_count': 0
-            }
+async def get_available_folders():
+    """Get available folders inside RFP-Uploads (not RFP-Uploads itself)"""
+    try:
+        service = get_onedrive_service()
+        folders = service.get_folders_in_drives()
         
-        files_summary[file_name]['pages'].append({
-            'page': result['page'],
-            'content': result['content'],
-            'word_count': result['word_count']
-        })
-        files_summary[file_name]['total_words'] += result['word_count']
-        files_summary[file_name]['page_count'] += 1
-    
-    return {
-        "files_processed": len(files_summary),
-        "total_pages": len(ocr_results),
-        "total_words": sum([r['word_count'] for r in ocr_results]),
-        "files_summary": list(files_summary.values())
-    }
+        # Find RFP-Uploads folder
+        rfp_folder = None
+        for folder in folders:
+            if folder['folder_name'] == 'RFP-Uploads':
+                rfp_folder = folder
+                break
+        
+        if not rfp_folder:
+            raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
+        
+        # Get folders inside RFP-Uploads
+        structure = service.get_folder_structure(rfp_folder['drive_id'], 'RFP-Uploads', max_depth=2)
+        
+        available_folders = []
+        for folder in structure['folders']:
+            available_folders.append({
+                'folder_name': folder['folder_name'],
+                'file_count': len(folder.get('files', [])),
+                'subfolder_count': len(folder.get('subfolders', [])),
+                'created_datetime': folder.get('created_datetime'),
+                'modified_datetime': folder.get('modified_datetime')
+            })
+        
+        return {
+            "available_folders": available_folders,
+            "total_folders": len(available_folders),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching folders: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# === MERGED ENDPOINT 1 LOGIC ===
-async def get_rfp_uploads_files():
-    """Get complete nested folder structure from RFP-Uploads"""
+async def process_folder_with_ocr_and_vectors(folder_name: str, background_tasks=None):
+    """Process folder with OCR and automatically save to Milvus"""
     try:
         start_time = datetime.now()
-        logger.info("Fetching complete folder structure from RFP-Uploads")
+        logger.info(f"Processing folder '{folder_name}' with OCR and vector storage")
         
         service = get_onedrive_service()
         folders = service.get_folders_in_drives()
@@ -410,12 +385,184 @@ async def get_rfp_uploads_files():
         if not rfp_folder:
             raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
         
-        # Get complete folder structure with nested folders and files
+        # Get files from specified folder
+        search_path = f"RFP-Uploads/{folder_name}"
+        all_files = service.get_all_files_recursively(rfp_folder['drive_id'], search_path, max_depth=3)
+        
+        if not all_files:
+            raise HTTPException(status_code=404, detail=f"No files found in folder '{folder_name}'")
+        
+        # Filter PDF files
+        pdf_files = [f for f in all_files if f['mime_type'] == 'application/pdf' or f['file_name'].lower().endswith('.pdf')]
+        
+        if not pdf_files:
+            raise HTTPException(status_code=404, detail="No PDF files found for OCR processing")
+        
+        # Process PDFs with OCR
+        all_ocr_results = []
+        processed_files = []
+        failed_files = []
+        
+        for pdf_file in pdf_files:
+            try:
+                if not pdf_file.get('download_url'):
+                    failed_files.append({"file_name": pdf_file['file_name'], "reason": "No download URL"})
+                    continue
+                
+                logger.info(f"Processing file: {pdf_file['file_name']}")
+                file_content = service.download_file(pdf_file['download_url'])
+                
+                if not file_content:
+                    failed_files.append({"file_name": pdf_file['file_name'], "reason": "Download failed"})
+                    continue
+                
+                file_type = determine_file_type(pdf_file)
+                ocr_results = service.process_file_with_ocr(file_content, pdf_file['file_name'], file_type)
+                
+                if ocr_results:
+                    # Add path info to OCR results
+                    for result in ocr_results:
+                        result['file_path'] = pdf_file.get('file_path', pdf_file['file_name'])
+                        result['folder_path'] = pdf_file.get('folder_path', 'unknown')
+                    
+                    all_ocr_results.extend(ocr_results)
+                    processed_files.append({
+                        "file_name": pdf_file['file_name'],
+                        "pages_processed": len(ocr_results),
+                        "total_words": sum([r.get('word_count', 0) for r in ocr_results])
+                    })
+                else:
+                    failed_files.append({"file_name": pdf_file['file_name'], "reason": "OCR failed"})
+                    
+            except Exception as e:
+                logger.error(f"Error processing {pdf_file['file_name']}: {e}")
+                failed_files.append({"file_name": pdf_file['file_name'], "reason": str(e)})
+        
+        if not all_ocr_results:
+            raise HTTPException(status_code=400, detail="No documents processed successfully")
+        
+        # Group OCR results by document for response
+        documents = {}
+        for result in all_ocr_results:
+            file_name = result.get('file_name', 'unknown')
+            if file_name not in documents:
+                documents[file_name] = {
+                    'file_name': file_name,
+                    'file_type': result.get('file_type'),
+                    'file_path': result.get('file_path'),
+                    'pages': []
+                }
+            documents[file_name]['pages'].append({
+                'page_number': result.get('page', 1),
+                'content': result.get('content', ''),
+                'word_count': result.get('word_count', 0)
+            })
+        
+        # Calculate totals for each document
+        for doc in documents.values():
+            doc['total_pages'] = len(doc['pages'])
+            doc['total_words'] = sum([p['word_count'] for p in doc['pages']])
+            doc['combined_content'] = ' '.join([p['content'] for p in doc['pages']])
+        
+        # Auto save to Milvus
+        vector_result = {}
+        try:
+            if get_milvus_client:
+                milvus_client = get_milvus_client()
+                if milvus_client.is_available():
+                    vector_ids = milvus_client.save_documents(all_ocr_results, folder_name)
+                    vector_result = {
+                        "vector_stored": True,
+                        "documents_stored": len(vector_ids),
+                        "vector_ids": vector_ids,
+                        "embedding_model": "MiniLM-L6-v2"
+                    }
+                    logger.info(f"Saved {len(vector_ids)} documents to Milvus")
+                else:
+                    vector_result = {"vector_stored": False, "reason": "Milvus not available"}
+            else:
+                vector_result = {"vector_stored": False, "reason": "Milvus client not imported"}
+        except Exception as e:
+            logger.error(f"Vector storage error: {e}")
+            vector_result = {"vector_stored": False, "error": str(e)}
+        
+        processing_time = str(datetime.now() - start_time)
+        
+        return {
+            "folder_name": folder_name,
+            "total_files": len(all_files),
+            "pdf_files": len(pdf_files),
+            "processed_files": len(processed_files),
+            "failed_files": len(failed_files),
+            "ocr_results": {
+                "documents": list(documents.values()),
+                "total_documents": len(documents),
+                "total_pages": sum([doc['total_pages'] for doc in documents.values()]),
+                "total_words": sum([doc['total_words'] for doc in documents.values()])
+            },
+            "vector_storage": vector_result,
+            "processing_time": processing_time,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def get_milvus_data():
+    """View stored vector documents"""
+    try:
+        if not get_milvus_client:
+            raise HTTPException(status_code=503, detail="Milvus client not available")
+        
+        milvus_client = get_milvus_client()
+        
+        if not milvus_client.is_available():
+            raise HTTPException(status_code=503, detail="Milvus database not available")
+        
+        documents = milvus_client.get_all_documents(limit=100)
+        stats = milvus_client.get_stats()
+        
+        return {
+            "database_info": {
+                "total_documents": stats.get("total_documents", 0),
+                "embedding_model": stats.get("embedding_model", "unknown"),
+                "collection_name": stats.get("collection_name", "unknown"),
+                "file_types": stats.get("file_types", {}),
+                "folders": stats.get("folders", {})
+            },
+            "documents_returned": len(documents),
+            "documents": documents,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting Milvus data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def get_rfp_uploads_files():
+    """Legacy: Get complete folder structure from RFP-Uploads"""
+    try:
+        service = get_onedrive_service()
+        folders = service.get_folders_in_drives()
+        
+        rfp_folder = None
+        for folder in folders:
+            if folder['folder_name'] == 'RFP-Uploads':
+                rfp_folder = folder
+                break
+        
+        if not rfp_folder:
+            raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
+        
         structure = service.get_folder_structure(rfp_folder['drive_id'], 'RFP-Uploads', max_depth=3)
         
-        # Flatten all files for easy access
+        # Flatten all files
         all_files = []
-        
         def collect_files(folders_list, files_list):
             all_files.extend(files_list)
             for folder in folders_list:
@@ -426,8 +573,6 @@ async def get_rfp_uploads_files():
         
         collect_files(structure['folders'], structure['files'])
         
-        processing_time = str(datetime.now() - start_time)
-        
         return {
             "folder_name": "RFP-Uploads",
             "folder_info": rfp_folder,
@@ -435,211 +580,15 @@ async def get_rfp_uploads_files():
             "all_files_flattened": all_files,
             "total_nested_folders": len(structure['folders']),
             "total_files": len(all_files),
-            "processing_time": processing_time,
             "timestamp": datetime.now().isoformat()
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching RFP-Uploads structure: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error fetching structure: {str(e)}")
+        logger.error(f"Error fetching RFP-Uploads structure: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# === FIXED MERGED ENDPOINT 2 LOGIC ===
-async def process_folder_with_ocr(folder_name: str, background_tasks: BackgroundTasks = None):
-    """FIXED: Process folder with recursive file search for nested structure"""
-    try:
-        start_time = datetime.now()
-        logger.info(f"Processing folder '{folder_name}' with OCR (recursive search)")
-        
-        service = get_onedrive_service()
-        folders = service.get_folders_in_drives()
-        
-        # Find RFP-Uploads folder
-        rfp_folder = None
-        for folder in folders:
-            if folder['folder_name'] == 'RFP-Uploads':
-                rfp_folder = folder
-                break
-        
-        if not rfp_folder:
-            raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
-        
-        # Determine the search path
-        if folder_name == 'RFP-Uploads':
-            # Process all files in RFP-Uploads recursively
-            search_path = 'RFP-Uploads'
-            processing_path = "RFP-Uploads (All Files Recursively)"
-        else:
-            # Process specific subfolder recursively
-            subfolder_name = folder_name.replace('RFP-Uploads/', '').replace('RFP-Uploads%2F', '')
-            search_path = f"RFP-Uploads/{subfolder_name}"
-            processing_path = f"RFP-Uploads/{subfolder_name} (Recursive)"
-        
-        logger.info(f"Searching recursively in path: {search_path}")
-        
-        # Get all files recursively from the specified path
-        all_files = service.get_all_files_recursively(rfp_folder['drive_id'], search_path, max_depth=3)
-        
-        if not all_files:
-            return {
-                "folder_name": folder_name,
-                "processing_path": processing_path,
-                "search_path": search_path,
-                "folder_info": rfp_folder,
-                "message": "No files found in the specified path (searched recursively)",
-                "total_files": 0,
-                "ocr_results": None,
-                "timestamp": datetime.now().isoformat()
-            }
-        
-        # Filter PDF files for OCR processing
-        pdf_files = [
-            f for f in all_files 
-            if f['mime_type'] == 'application/pdf' or f['file_name'].lower().endswith('.pdf')
-        ]
-        
-        if not pdf_files:
-            return {
-                "folder_name": folder_name,
-                "processing_path": processing_path,
-                "search_path": search_path,
-                "folder_info": rfp_folder,
-                "message": "No PDF files found for OCR processing (searched recursively)",
-                "total_files": len(all_files),
-                "pdf_files": 0,
-                "all_files": all_files,
-                "timestamp": datetime.now().isoformat()
-            }
-        
-        # Process PDF files with OCR
-        all_ocr_results = []
-        processed_files = 0
-        failed_files = []
-        
-        for pdf_file in pdf_files:
-            try:
-                if not pdf_file.get('download_url'):
-                    failed_files.append({
-                        "file_name": pdf_file['file_name'], 
-                        "reason": "No download URL available",
-                        "file_path": pdf_file.get('file_path', 'unknown')
-                    })
-                    continue
-                
-                logger.info(f"Processing file: {pdf_file['file_name']} from path: {pdf_file.get('file_path', 'unknown')}")
-                file_content = service.download_file(pdf_file['download_url'])
-                
-                if not file_content:
-                    failed_files.append({
-                        "file_name": pdf_file['file_name'], 
-                        "reason": "Failed to download file",
-                        "file_path": pdf_file.get('file_path', 'unknown')
-                    })
-                    continue
-                
-                file_type = determine_file_type(pdf_file)
-                
-                ocr_results = service.process_file_with_ocr(
-                    file_content, 
-                    pdf_file['file_name'], 
-                    file_type
-                )
-                
-                if ocr_results:
-                    # Add path info to OCR results
-                    for result in ocr_results:
-                        result['file_path'] = pdf_file.get('file_path', pdf_file['file_name'])
-                        result['folder_path'] = pdf_file.get('folder_path', 'unknown')
-                    
-                    all_ocr_results.extend(ocr_results)
-                    processed_files += 1
-                    logger.info(f"Successfully processed {pdf_file['file_name']} - {len(ocr_results)} pages")
-                else:
-                    failed_files.append({
-                        "file_name": pdf_file['file_name'], 
-                        "reason": "OCR processing failed",
-                        "file_path": pdf_file.get('file_path', 'unknown')
-                    })
-                    
-            except Exception as e:
-                logger.error(f"Error processing file {pdf_file['file_name']}: {str(e)}")
-                failed_files.append({
-                    "file_name": pdf_file['file_name'], 
-                    "reason": str(e),
-                    "file_path": pdf_file.get('file_path', 'unknown')
-                })
-        
-        # Generate summary
-        summary = generate_files_summary(all_ocr_results)
-        processing_time = str(datetime.now() - start_time)
-        
-        return {
-            "folder_name": folder_name,
-            "processing_path": processing_path,
-            "search_path": search_path,
-            "folder_info": rfp_folder,
-            "total_files": len(all_files),
-            "pdf_files_found": len(pdf_files),
-            "processed_files": processed_files,
-            "failed_files": failed_files,
-            "ocr_results": {
-                "total_pages": summary["total_pages"],
-                "total_words": summary["total_words"],
-                "files_summary": summary["files_summary"]
-            },
-            "processing_time": processing_time,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error processing folder '{folder_name}' with OCR: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error processing folder: {str(e)}")
-
-# NEW: Get files from a specific nested path
-async def get_specific_subfolder_files(subfolder_name: str):
-    """Get files from a specific nested path within RFP-Uploads"""
-    try:
-        start_time = datetime.now()
-        logger.info(f"Fetching files from RFP-Uploads/{subfolder_name} (recursive)")
-        
-        service = get_onedrive_service()
-        folders = service.get_folders_in_drives()
-        
-        # Find RFP-Uploads folder
-        rfp_folder = None
-        for folder in folders:
-            if folder['folder_name'] == 'RFP-Uploads':
-                rfp_folder = folder
-                break
-        
-        if not rfp_folder:
-            raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
-        
-        # Get folder structure for the specific subfolder
-        search_path = f"RFP-Uploads/{subfolder_name}"
-        structure = service.get_folder_structure(rfp_folder['drive_id'], search_path, max_depth=2)
-        
-        # Get all files recursively
-        all_files = service.get_all_files_recursively(rfp_folder['drive_id'], search_path, max_depth=2)
-        
-        processing_time = str(datetime.now() - start_time)
-        
-        return {
-            "parent_folder": "RFP-Uploads",
-            "subfolder_name": subfolder_name,
-            "search_path": search_path,
-            "folder_structure": structure,
-            "all_files": all_files,
-            "total_files": len(all_files),
-            "processing_time": processing_time,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching files from nested path: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error fetching nested path: {str(e)}")
+async def process_folder_with_ocr(folder_name: str, background_tasks=None):
+    """Legacy: Process folder with OCR (without vector storage)"""
+    return await process_folder_with_ocr_and_vectors(folder_name, background_tasks)

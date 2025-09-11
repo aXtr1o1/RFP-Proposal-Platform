@@ -79,3 +79,184 @@
 2025-09-10 17:45:57,314 - routes.rfp - INFO - OneDrive authentication successful
 2025-09-10 17:46:26,316 - routes.rfp - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR (recursive search)
 2025-09-10 17:46:29,781 - routes.rfp - INFO - Searching recursively in path: RFP-Uploads/a4af8aa8-e825-44d8-a725-253c0da86f73
+2025-09-11 11:56:38,877 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 11:57:12,573 - routes.rfp - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR and vector storage
+2025-09-11 11:59:01,554 - milvus_client - ERROR - Milvus initialization failed: MilvusClient.create_index() missing 1 required positional argument: 'index_params'
+2025-09-11 12:11:12,020 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 12:11:41,636 - routes.rfp - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR and vector storage
+2025-09-11 12:11:48,390 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 12:12:09,096 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 12:13:04,845 - milvus_client - INFO - Milvus client initialized successfully
+2025-09-11 12:13:09,985 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 400 Bad Request"
+2025-09-11 12:13:09,995 - milvus_client - ERROR - Embedding generation failed: Error code: 400 - {'error': {'message': "This model's maximum context length is 8192 tokens, however you requested 39347 tokens (39347 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.", 'type': 'invalid_request_error', 'param': None, 'code': None}}
+2025-09-11 12:13:09,995 - milvus_client - ERROR - Error processing كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf: Error code: 400 - {'error': {'message': "This model's maximum context length is 8192 tokens, however you requested 39347 tokens (39347 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.", 'type': 'invalid_request_error', 'param': None, 'code': None}}
+2025-09-11 12:13:13,138 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 400 Bad Request"
+2025-09-11 12:13:13,143 - milvus_client - ERROR - Embedding generation failed: Error code: 400 - {'error': {'message': "This model's maximum context length is 8192 tokens, however you requested 27840 tokens (27840 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.", 'type': 'invalid_request_error', 'param': None, 'code': None}}
+2025-09-11 12:13:13,143 - milvus_client - ERROR - Error processing 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf: Error code: 400 - {'error': {'message': "This model's maximum context length is 8192 tokens, however you requested 27840 tokens (27840 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.", 'type': 'invalid_request_error', 'param': None, 'code': None}}
+2025-09-11 12:13:13,143 - routes.rfp - INFO - Saved 0 documents to Milvus
+2025-09-11 12:15:04,661 - milvus_client - ERROR - Query failed: <MilvusException: (code=101, message=failed to query: collection not loaded[collection=460735053922612004])>
+2025-09-11 12:15:04,671 - milvus_client - ERROR - Stats query failed: <MilvusException: (code=101, message=failed to query: collection not loaded[collection=460735053922612004])>
+2025-09-11 12:33:15,187 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 12:33:18,253 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 12:33:18,287 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 12:35:05,926 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 12:35:06,946 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 12:35:06,946 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 12:35:43,815 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 12:36:05,174 - routes.rfp - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR and vector storage
+2025-09-11 12:36:11,817 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 12:36:25,273 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 12:36:43,072 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-11 12:36:43,078 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-11 12:36:50,625 - milvus_client - INFO - Sentence Transformer model loaded successfully
+2025-09-11 12:36:53,166 - milvus_client - WARNING - Collection loading warning: <MilvusException: (code=700, message=index not found[collection=rfp_documents])>
+2025-09-11 12:36:53,166 - milvus_client - INFO - Milvus client initialized successfully
+2025-09-11 12:36:53,868 - milvus_client - INFO - Generated vector for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf: 32 pages, 9432 words
+2025-09-11 12:36:54,197 - milvus_client - INFO - Generated vector for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf: 58 pages, 6568 words
+2025-09-11 12:36:56,930 - milvus_client - ERROR - Insert failed: <MilvusException: (code=1100, message=length of varchar field content exceeds max length, row number: 0, length: 104996, max length: 65535: invalid parameter)>
+2025-09-11 12:36:56,930 - routes.rfp - INFO - Saved 0 documents to Milvus
+2025-09-11 12:39:35,446 - milvus_client - WARNING - Collection loading issue: <MilvusException: (code=700, message=index not found[collection=rfp_documents])>
+2025-09-11 12:39:35,556 - milvus_client - ERROR - Query failed: <MilvusException: (code=101, message=failed to query: collection not loaded[collection=460735053922612004])>
+2025-09-11 12:39:35,567 - milvus_client - WARNING - Collection loading issue: <MilvusException: (code=700, message=index not found[collection=rfp_documents])>
+2025-09-11 12:39:35,599 - milvus_client - ERROR - Stats query failed: <MilvusException: (code=101, message=failed to query: collection not loaded[collection=460735053922612004])>
+2025-09-11 12:39:55,099 - milvus_client - WARNING - Collection loading issue: <MilvusException: (code=700, message=index not found[collection=rfp_documents])>
+2025-09-11 12:39:56,181 - milvus_client - ERROR - Search failed: <MilvusException: (code=101, message=failed to search: collection not loaded[collection=460735053922612004])>
+2025-09-11 12:44:33,025 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 12:44:34,254 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 12:44:34,491 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 12:44:46,401 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 12:45:09,641 - routes.rfp - INFO - Processing folder 'edbcf640-43ab-4d9f-a73e-c2be2f807ee3' with OCR and vector storage
+2025-09-11 12:45:15,739 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 12:45:24,823 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 12:45:46,585 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-11 12:45:46,595 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-11 12:45:52,027 - milvus_client - INFO - Sentence Transformer model loaded successfully
+2025-09-11 12:45:53,253 - milvus_client - INFO - Dropped existing collection: rfp_documents
+2025-09-11 12:45:55,667 - milvus_client - ERROR - Milvus initialization failed: <ParamError: (code=1, message=wrong type of argument [index_params], expected type: [IndexParams], got type: [dict])>
+2025-09-11 12:56:49,473 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 12:56:50,658 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 12:56:50,898 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 12:57:33,706 - routes.rfp - INFO - Processing folder 'edbcf640-43ab-4d9f-a73e-c2be2f807ee3' with OCR and vector storage
+2025-09-11 12:57:34,421 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 12:57:42,533 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 12:57:55,210 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 12:58:22,527 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-11 12:58:22,527 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-11 12:58:27,935 - milvus_client - INFO - Sentence Transformer model loaded successfully
+2025-09-11 12:58:28,510 - milvus_client - INFO - Dropped existing collection: rfp_documents
+2025-09-11 12:58:31,976 - milvus_client - INFO - Vector index created successfully
+2025-09-11 12:58:35,210 - milvus_client - INFO - Collection loaded successfully
+2025-09-11 12:58:35,210 - milvus_client - INFO - Milvus client initialized successfully
+2025-09-11 12:58:36,192 - milvus_client - INFO - Prepared 3 chunks for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 12:58:36,830 - milvus_client - INFO - Prepared 3 chunks for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 12:58:37,391 - milvus_client - ERROR - Insert failed: <MilvusException: (code=1100, message=length of varchar field content exceeds max length, row number: 0, length: 35757, max length: 25000: invalid parameter)>
+2025-09-11 12:58:37,391 - routes.rfp - INFO - Saved 0 documents to Milvus
+2025-09-11 13:09:46,245 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 13:09:47,602 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 13:09:47,668 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 13:10:01,047 - routes.rfp - INFO - Processing folder 'edbcf640-43ab-4d9f-a73e-c2be2f807ee3' with OCR and vector storage
+2025-09-11 13:10:02,054 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 13:10:09,102 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 13:10:22,441 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 13:10:43,765 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-11 13:10:43,765 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-11 13:10:49,788 - milvus_client - INFO - Sentence Transformer model loaded successfully
+2025-09-11 13:10:50,431 - milvus_client - INFO - Dropped existing collection: rfp_documents
+2025-09-11 13:10:51,475 - milvus_client - INFO - Vector index created successfully
+2025-09-11 13:10:52,567 - milvus_client - INFO - Collection loaded successfully
+2025-09-11 13:10:52,567 - milvus_client - INFO - Milvus client initialized successfully
+2025-09-11 13:10:53,578 - milvus_client - INFO - Prepared 4 chunks for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 13:10:54,255 - milvus_client - INFO - Prepared 3 chunks for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 13:10:54,267 - milvus_client - INFO - Inserting 7 entities into Milvus...
+2025-09-11 13:10:54,584 - milvus_client - ERROR - Error inserting batch 1: <MilvusException: (code=1100, message=length of varchar field content exceeds max length, row number: 0, length: 32132, max length: 20000: invalid parameter)>
+2025-09-11 13:10:56,080 - milvus_client - INFO - Flushed data to disk. Total inserted: 0
+2025-09-11 13:10:56,213 - milvus_client - WARNING - Verification: No data found after insertion
+2025-09-11 13:10:56,224 - milvus_client - INFO - Successfully saved 2 documents (0 chunks) to Milvus
+2025-09-11 13:10:56,224 - routes.rfp - INFO - Saved 2 documents to Milvus
+2025-09-11 15:30:51,519 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 15:30:53,709 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 15:30:53,891 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 15:31:28,332 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 15:31:57,305 - routes.rfp - INFO - Processing folder 'edbcf640-43ab-4d9f-a73e-c2be2f807ee3' with OCR and vector storage
+2025-09-11 15:32:05,470 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 15:32:34,287 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 15:33:28,216 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-11 15:33:28,864 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-11 15:33:34,477 - milvus_client - INFO - Sentence Transformer model loaded successfully
+2025-09-11 15:33:41,963 - milvus_client - INFO - Dropped existing collection: rfp_documents
+2025-09-11 15:33:43,926 - milvus_client - INFO - Vector index created successfully
+2025-09-11 15:33:44,920 - milvus_client - INFO - Collection loaded successfully
+2025-09-11 15:33:44,921 - milvus_client - INFO - Milvus client initialized successfully
+2025-09-11 15:33:46,833 - milvus_client - INFO - Prepared 9 chunks for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf (total bytes: 104996)
+2025-09-11 15:33:48,062 - milvus_client - INFO - Prepared 7 chunks for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf (total bytes: 73806)
+2025-09-11 15:33:48,074 - milvus_client - INFO - Inserting 16 entities in batches of 25...
+2025-09-11 15:33:50,098 - milvus_client - INFO - Inserted batch 1: 16 entities
+2025-09-11 15:34:07,261 - milvus_client - INFO - Flushed data to disk. Total inserted: 16
+2025-09-11 15:34:14,526 - milvus_client - INFO - Verification: Data successfully stored in Milvus
+2025-09-11 15:34:14,526 - milvus_client - INFO - Successfully saved 2 documents (16 chunks) to Milvus
+2025-09-11 15:34:14,527 - routes.rfp - INFO - Saved 2 documents to Milvus
+2025-09-11 15:35:50,767 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 15:35:52,099 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 15:35:52,285 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 15:37:14,650 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 15:37:15,839 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 15:37:15,845 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 15:37:31,822 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 15:37:33,086 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 15:37:33,092 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 15:38:34,319 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 15:38:55,830 - routes.rfp - INFO - Processing folder 'edbcf640-43ab-4d9f-a73e-c2be2f807ee3' with OCR and vector storage
+2025-09-11 15:39:04,703 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 15:39:25,842 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 15:40:11,572 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-11 15:40:11,573 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-11 15:40:17,850 - milvus_client - INFO - Sentence Transformer model loaded successfully
+2025-09-11 15:40:20,155 - milvus_client - INFO - Dropped existing collection: rfp_documents
+2025-09-11 15:40:20,854 - milvus_client - INFO - Vector index created successfully
+2025-09-11 15:40:21,322 - milvus_client - INFO - Collection loaded successfully
+2025-09-11 15:40:21,322 - milvus_client - INFO - Milvus client initialized successfully
+2025-09-11 15:40:21,322 - milvus_client - INFO - Split text into 8 chunks (original length: 58487 chars)
+2025-09-11 15:40:23,029 - milvus_client - INFO - Prepared 8 chunks for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf (original: 58487 chars)
+2025-09-11 15:40:23,030 - milvus_client - INFO - Split text into 6 chunks (original length: 41252 chars)
+2025-09-11 15:40:24,141 - milvus_client - INFO - Prepared 6 chunks for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf (original: 41252 chars)
+2025-09-11 15:40:24,154 - milvus_client - INFO - Inserting 14 entities in batches of 20...
+2025-09-11 15:40:25,182 - milvus_client - ERROR - ✗ Batch 1 insertion failed: <MilvusException: (code=1100, message=length of varchar field content exceeds max length, row number: 0, length: 14105, max length: 10000: invalid parameter)>
+2025-09-11 15:40:25,707 - milvus_client - INFO - Flushed data to disk. Total inserted: 0
+2025-09-11 15:40:25,751 - milvus_client - WARNING - ✗ Verification: No data found after insertion
+2025-09-11 15:40:25,752 - milvus_client - INFO - Summary: 2 documents, 0 chunks inserted, 0/1 batches successful
+2025-09-11 15:40:25,752 - routes.rfp - INFO - Saved 2 documents to Milvus
+2025-09-11 15:40:45,485 - routes.rfp - INFO - Processing folder 'edbcf640-43ab-4d9f-a73e-c2be2f807ee3' with OCR and vector storage
+2025-09-11 15:40:52,944 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 15:41:23,920 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 15:42:23,436 - milvus_client - INFO - Split text into 8 chunks (original length: 58487 chars)
+2025-09-11 15:42:24,883 - milvus_client - INFO - Prepared 8 chunks for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf (original: 58487 chars)
+2025-09-11 15:42:24,884 - milvus_client - INFO - Split text into 6 chunks (original length: 41252 chars)
+2025-09-11 15:42:26,016 - milvus_client - INFO - Prepared 6 chunks for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf (original: 41252 chars)
+2025-09-11 15:42:26,031 - milvus_client - INFO - Inserting 14 entities in batches of 20...
+2025-09-11 15:42:26,285 - milvus_client - ERROR - ✗ Batch 1 insertion failed: <MilvusException: (code=1100, message=length of varchar field content exceeds max length, row number: 0, length: 14105, max length: 10000: invalid parameter)>
+2025-09-11 15:42:26,802 - milvus_client - INFO - Flushed data to disk. Total inserted: 0
+2025-09-11 15:42:26,837 - milvus_client - WARNING - ✗ Verification: No data found after insertion
+2025-09-11 15:42:26,837 - milvus_client - INFO - Summary: 2 documents, 0 chunks inserted, 0/1 batches successful
+2025-09-11 15:42:26,837 - routes.rfp - INFO - Saved 2 documents to Milvus
+2025-09-11 15:43:03,154 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-11 15:43:04,225 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-11 15:43:04,229 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-11 15:43:14,593 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-11 15:43:34,032 - routes.rfp - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with OCR and vector storage
+2025-09-11 15:43:41,703 - routes.rfp - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-11 15:44:06,109 - routes.rfp - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-11 15:45:14,785 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-11 15:45:14,785 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-11 15:45:20,243 - milvus_client - INFO - Sentence Transformer model loaded successfully
+2025-09-11 15:45:20,580 - milvus_client - INFO - Dropped existing collection: rfp_documents
+2025-09-11 15:45:21,180 - milvus_client - INFO - Vector index created successfully
+2025-09-11 15:45:22,027 - milvus_client - INFO - Collection loaded successfully
+2025-09-11 15:45:22,027 - milvus_client - INFO - Milvus client initialized successfully
+2025-09-11 15:45:23,689 - milvus_client - INFO - Prepared 9 chunks for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf (total bytes: 104996)
+2025-09-11 15:45:24,924 - milvus_client - INFO - Prepared 7 chunks for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf (total bytes: 73806)
+2025-09-11 15:45:24,934 - milvus_client - INFO - Inserting 16 entities in batches of 25...
+2025-09-11 15:45:25,037 - milvus_client - INFO - Inserted batch 1: 16 entities
+2025-09-11 15:45:26,060 - milvus_client - INFO - Flushed data to disk. Total inserted: 16
+2025-09-11 15:45:26,205 - milvus_client - INFO - Verification: Data successfully stored in Milvus
+2025-09-11 15:45:26,205 - milvus_client - INFO - Successfully saved 2 documents (16 chunks) to Milvus
+2025-09-11 15:45:26,205 - routes.rfp - INFO - Saved 2 documents to Milvus
