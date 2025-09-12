@@ -98,13 +98,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return false;
     }
   };
-
   const postUuidConfig = async (uuid: string, config: string) => {
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    const res = await fetch("http://localhost:8000/upload", {   
+    const res = await fetch(`http://localhost:8000/ocr/${uuid}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uuid, config }),
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
