@@ -21,6 +21,7 @@ class JobStatus(BaseModel):
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
+@router.get("/")
 async def get_all_jobs():
     try:
         jobs_list = []
@@ -42,6 +43,7 @@ async def get_all_jobs():
         logger.error(f"Error getting jobs: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving jobs: {str(e)}")
 
+@router.get("/{job_id}")
 async def get_job_status(job_id: str):
     try:
         if job_id not in jobs_storage:
@@ -63,6 +65,7 @@ async def get_job_status(job_id: str):
         logger.error(f"Error getting job status for {job_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting job status: {str(e)}")
 
+@router.get("/{job_id}/result")
 async def get_job_result(job_id: str):
     try:
         if job_id not in jobs_storage:
@@ -89,6 +92,7 @@ async def get_job_result(job_id: str):
         logger.error(f"Error getting job result for {job_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting job result: {str(e)}")
 
+@router.delete("/{job_id}")
 async def cancel_job(job_id: str):
     try:
         if job_id not in jobs_storage:
@@ -118,6 +122,7 @@ async def cancel_job(job_id: str):
         logger.error(f"Error cancelling job {job_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error cancelling job: {str(e)}")
 
+@router.post("/{job_id}/retry")
 async def retry_job(job_id: str):
     try:
         if job_id not in jobs_storage:

@@ -15,7 +15,7 @@ class OCRWorker:
         self.ocr_endpoint = os.getenv("OCR_ENDPOINT")
     
     def process_file(self, file_content, file_name, file_type="document"):
-        """Process a single file with OCR"""
+        """Process a single file with OCR using Azure Document Intelligence"""
         url = f"{self.ocr_endpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31"
         
         headers = {
@@ -24,6 +24,7 @@ class OCRWorker:
         }
         
         try:
+            logger.info(f"Starting OCR processing for {file_name}")
             response = requests.post(url, headers=headers, data=file_content)
             
             if response.status_code == 202:
@@ -33,11 +34,14 @@ class OCRWorker:
                 max_attempts = 30
                 attempt = 0
                 
+                logger.info(f"OCR job submitted for {file_name}, polling for results...")
+                
                 while attempt < max_attempts:
                     result = requests.get(operation_url, headers=poll_headers)
                     data = result.json()
                     
                     if data['status'] == 'succeeded':
+                        logger.info(f"OCR processing completed successfully for {file_name}")
                         pages_data = []
                         if 'analyzeResult' in data and 'pages' in data['analyzeResult']:
                             for page_idx, page in enumerate(data['analyzeResult']['pages']):
@@ -53,6 +57,7 @@ class OCRWorker:
                                             "timestamp": datetime.now().isoformat()
                                         })
                         
+                        logger.info(f"Extracted text from {len(pages_data)} pages for {file_name}")
                         return pages_data
                         
                     elif data['status'] == 'failed':
@@ -62,8 +67,10 @@ class OCRWorker:
                         time.sleep(2)
                         attempt += 1
                 
+                logger.error(f"OCR polling timeout for {file_name}")
                 return []
             else:
+                logger.error(f"OCR request failed for {file_name}: HTTP {response.status_code}")
                 return []
                 
         except Exception as e:

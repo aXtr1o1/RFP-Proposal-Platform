@@ -1,5 +1,4 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import msal
 import requests
 import time
@@ -13,8 +12,8 @@ import sys
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
+# Environment variables validation
 TENANT_ID = os.getenv("TENANT_ID")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
@@ -32,16 +31,18 @@ if not all([TENANT_ID, CLIENT_ID, CLIENT_SECRET, OCR_KEY, OCR_ENDPOINT]):
     logger.error(f"Missing required environment variables: {missing_vars}")
     raise ValueError(f"Missing required environment variables: {missing_vars}")
 
+# Import Milvus client
 try:
-    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'vdb'))
+    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'vdb'))
     from milvus_client import get_milvus_client
     logger.info("Milvus client imported successfully")
 except ImportError as e:
     logger.warning(f"Milvus client not found: {e}")
     get_milvus_client = None
 
+# Import OCR Worker
 try:
-    workers_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'workers', 'ocr')
+    workers_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'workers', 'ocr')
     sys.path.append(workers_path)
     from worker import OCRWorker
     logger.info("OCR Worker imported successfully")
@@ -65,6 +66,7 @@ class OneDriveService:
         self._authenticate()
     
     def _authenticate(self):
+        """Authenticate with Microsoft Graph API"""
         try:
             authority = f"https://login.microsoftonline.com/{self.tenant_id}"
             app = msal.ConfidentialClientApplication(
@@ -86,6 +88,7 @@ class OneDriveService:
             raise
     
     def _make_request(self, endpoint):
+        """Make authenticated request to Microsoft Graph API"""
         headers = {"Authorization": f"Bearer {self.access_token}"}
         url = f"{self.base_url}{endpoint}"
         
@@ -98,7 +101,10 @@ class OneDriveService:
             return None
     
     def get_all_drives(self):
+        """Get all available drives"""
         drives = []
+        
+        # Get shared drives
         result = self._make_request("/drives")
         if result:
             for drive in result.get("value", []):
@@ -108,6 +114,7 @@ class OneDriveService:
                     'type': drive.get('driveType', 'shared')
                 })
 
+        # Get user drives (limited to first 5)
         users_result = self._make_request("/users")
         if users_result:
             for user in users_result.get("value", [])[:5]:
@@ -125,6 +132,7 @@ class OneDriveService:
         return drives
     
     def get_folders_in_drives(self):
+        """Get folders in all drives"""
         drives = self.get_all_drives()
         all_folders = []
         
@@ -145,6 +153,7 @@ class OneDriveService:
         return all_folders
     
     def get_all_files_recursively(self, drive_id, base_path, max_depth=3, current_depth=0):
+        """Recursively get all files in a folder"""
         if current_depth >= max_depth:
             return []
         
@@ -183,6 +192,7 @@ class OneDriveService:
         return all_files
     
     def get_folder_structure(self, drive_id, base_path, max_depth=2, current_depth=0):
+        """Get folder structure with nested folders and files"""
         if current_depth >= max_depth:
             return {"folders": [], "files": []}
         
@@ -233,6 +243,7 @@ class OneDriveService:
         return {"folders": folders, "files": files}
     
     def download_file(self, download_url):
+        """Download file from OneDrive"""
         try:
             response = requests.get(download_url)
             response.raise_for_status()
@@ -241,13 +252,52 @@ class OneDriveService:
             logger.error(f"Error downloading file: {e}")
             return None
     
+    def determine_folder_type(self, file_info: Dict) -> str:
+        """Determine collection name based on folder type"""
+        folder_path = file_info.get('folder_path', '').lower()
+        file_name = file_info.get('file_name', '').lower()
+        
+        # Check for supportive files indicators
+        if ('supportive' in folder_path or 'support' in folder_path or 
+            'supportive' in file_name or 'support' in file_name):
+            return 'supportive_files'
+        # Check for RFP files indicators
+        elif ('rfp' in folder_path or 'rfp' in file_name):
+            return 'rfp_files'
+        else:
+            # Default to RFP files
+            return 'rfp_files'
+
+    def process_file_with_enhanced_ocr(self, file_content: bytes, file_info: Dict) -> Tuple[List[Dict], List[Dict]]:
+        """Process file with appropriate OCR based on folder type"""
+        folder_type = self.determine_folder_type(file_info)
+        file_name = file_info['file_name']
+        
+        if folder_type == 'supportive_files':
+            # Use enhanced OCR for supportive files (text + images)
+            try:
+                sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'workers', 'ocr'))
+                from image_ocr_service import get_image_ocr_service
+                image_ocr_service = get_image_ocr_service()
+                return image_ocr_service.extract_text_and_images_from_pdf(file_content, file_name)
+            except ImportError:
+                logger.warning("Image OCR service not available, using fallback OCR")
+                text_results = self._process_with_fallback_ocr(file_content, file_name, "supportive")
+                return text_results, []
+        else:
+            # Use text-only OCR for RFP files
+            text_results = self._process_with_fallback_ocr(file_content, file_name, "RFP")
+            return text_results, []
+    
     def process_file_with_ocr(self, file_content, file_name, file_type="document"):
+        """Process file with OCR using available worker"""
         if self.ocr_worker:
             return self.ocr_worker.process_file(file_content, file_name, file_type)
         else:
-            return self._fallback_ocr_processing(file_content, file_name, file_type)
+            return self._process_with_fallback_ocr(file_content, file_name, file_type)
     
-    def _fallback_ocr_processing(self, file_content, file_name, file_type="document"):
+    def _process_with_fallback_ocr(self, file_content, file_name, file_type="document"):
+        """Fallback OCR processing using Azure Document Intelligence"""
         url = f"{OCR_ENDPOINT}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31"
         
         headers = {
@@ -307,12 +357,14 @@ class OneDriveService:
 onedrive_service = None
 
 def get_onedrive_service():
+    """Get or create OneDrive service instance"""
     global onedrive_service
     if onedrive_service is None:
         onedrive_service = OneDriveService()
     return onedrive_service
 
 def determine_file_type(file_info: Dict) -> str:
+    """Legacy function for backward compatibility"""
     file_name = file_info['file_name'].lower()
     folder_path = file_info.get('folder_path', '').lower()
     
@@ -325,270 +377,137 @@ def determine_file_type(file_info: Dict) -> str:
     else:
         return "document"
 
-async def get_available_folders():
-    """Get available folders inside RFP-Uploads (not RFP-Uploads itself)"""
-    try:
-        service = get_onedrive_service()
-        folders = service.get_folders_in_drives()
-        
-        # Find RFP-Uploads folder
-        rfp_folder = None
-        for folder in folders:
-            if folder['folder_name'] == 'RFP-Uploads':
-                rfp_folder = folder
-                break
-        
-        if not rfp_folder:
-            raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
-        
-        # Get folders inside RFP-Uploads
-        structure = service.get_folder_structure(rfp_folder['drive_id'], 'RFP-Uploads', max_depth=2)
-        
-        available_folders = []
-        for folder in structure['folders']:
-            available_folders.append({
-                'folder_name': folder['folder_name'],
-                'file_count': len(folder.get('files', [])),
-                'subfolder_count': len(folder.get('subfolders', [])),
-                'created_datetime': folder.get('created_datetime'),
-                'modified_datetime': folder.get('modified_datetime')
-            })
-        
-        return {
-            "available_folders": available_folders,
-            "total_folders": len(available_folders),
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching folders: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-async def process_folder_with_ocr_and_vectors(folder_name: str, background_tasks=None):
-    """Process folder with OCR and automatically save to Milvus"""
-    try:
-        start_time = datetime.now()
-        logger.info(f"Processing folder '{folder_name}' with OCR and vector storage")
-        
-        service = get_onedrive_service()
-        folders = service.get_folders_in_drives()
-        
-        # Find RFP-Uploads folder
-        rfp_folder = None
-        for folder in folders:
-            if folder['folder_name'] == 'RFP-Uploads':
-                rfp_folder = folder
-                break
-        
-        if not rfp_folder:
-            raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
-        
-        # Get files from specified folder
-        search_path = f"RFP-Uploads/{folder_name}"
-        all_files = service.get_all_files_recursively(rfp_folder['drive_id'], search_path, max_depth=3)
-        
-        if not all_files:
-            raise HTTPException(status_code=404, detail=f"No files found in folder '{folder_name}'")
-        
-        # Filter PDF files
-        pdf_files = [f for f in all_files if f['mime_type'] == 'application/pdf' or f['file_name'].lower().endswith('.pdf')]
-        
-        if not pdf_files:
-            raise HTTPException(status_code=404, detail="No PDF files found for OCR processing")
-        
-        # Process PDFs with OCR
-        all_ocr_results = []
-        processed_files = []
-        failed_files = []
-        
-        for pdf_file in pdf_files:
-            try:
-                if not pdf_file.get('download_url'):
-                    failed_files.append({"file_name": pdf_file['file_name'], "reason": "No download URL"})
-                    continue
-                
-                logger.info(f"Processing file: {pdf_file['file_name']}")
-                file_content = service.download_file(pdf_file['download_url'])
-                
-                if not file_content:
-                    failed_files.append({"file_name": pdf_file['file_name'], "reason": "Download failed"})
-                    continue
-                
-                file_type = determine_file_type(pdf_file)
-                ocr_results = service.process_file_with_ocr(file_content, pdf_file['file_name'], file_type)
-                
-                if ocr_results:
-                    # Add path info to OCR results
-                    for result in ocr_results:
-                        result['file_path'] = pdf_file.get('file_path', pdf_file['file_name'])
-                        result['folder_path'] = pdf_file.get('folder_path', 'unknown')
-                    
-                    all_ocr_results.extend(ocr_results)
-                    processed_files.append({
-                        "file_name": pdf_file['file_name'],
-                        "pages_processed": len(ocr_results),
-                        "total_words": sum([r.get('word_count', 0) for r in ocr_results])
-                    })
-                else:
-                    failed_files.append({"file_name": pdf_file['file_name'], "reason": "OCR failed"})
-                    
-            except Exception as e:
-                logger.error(f"Error processing {pdf_file['file_name']}: {e}")
-                failed_files.append({"file_name": pdf_file['file_name'], "reason": str(e)})
-        
-        if not all_ocr_results:
-            raise HTTPException(status_code=400, detail="No documents processed successfully")
-        
-        # Group OCR results by document for response
-        documents = {}
-        for result in all_ocr_results:
-            file_name = result.get('file_name', 'unknown')
-            if file_name not in documents:
-                documents[file_name] = {
-                    'file_name': file_name,
-                    'file_type': result.get('file_type'),
-                    'file_path': result.get('file_path'),
-                    'pages': []
-                }
-            documents[file_name]['pages'].append({
-                'page_number': result.get('page', 1),
-                'content': result.get('content', ''),
-                'word_count': result.get('word_count', 0)
-            })
-        
-        # Calculate totals for each document
-        for doc in documents.values():
-            doc['total_pages'] = len(doc['pages'])
-            doc['total_words'] = sum([p['word_count'] for p in doc['pages']])
-            doc['combined_content'] = ' '.join([p['content'] for p in doc['pages']])
-        
-        # Auto save to Milvus
-        vector_result = {}
-        try:
-            if get_milvus_client:
-                milvus_client = get_milvus_client()
-                if milvus_client.is_available():
-                    vector_ids = milvus_client.save_documents(all_ocr_results, folder_name)
-                    vector_result = {
-                        "vector_stored": True,
-                        "documents_stored": len(vector_ids),
-                        "vector_ids": vector_ids,
-                        "embedding_model": "MiniLM-L6-v2"
-                    }
-                    logger.info(f"Saved {len(vector_ids)} documents to Milvus")
-                else:
-                    vector_result = {"vector_stored": False, "reason": "Milvus not available"}
-            else:
-                vector_result = {"vector_stored": False, "reason": "Milvus client not imported"}
-        except Exception as e:
-            logger.error(f"Vector storage error: {e}")
-            vector_result = {"vector_stored": False, "error": str(e)}
-        
-        processing_time = str(datetime.now() - start_time)
-        
-        return {
-            "folder_name": folder_name,
-            "total_files": len(all_files),
-            "pdf_files": len(pdf_files),
-            "processed_files": len(processed_files),
-            "failed_files": len(failed_files),
-            "ocr_results": {
-                "documents": list(documents.values()),
-                "total_documents": len(documents),
-                "total_pages": sum([doc['total_pages'] for doc in documents.values()]),
-                "total_words": sum([doc['total_words'] for doc in documents.values()])
-            },
-            "vector_storage": vector_result,
-            "processing_time": processing_time,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error processing folder: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-async def get_milvus_data():
-    """View stored vector documents"""
+def save_to_milvus_by_collection(ocr_results: List[Dict], image_metadata: List[Dict], collection_name: str, folder_name: str) -> Dict:
+    """Save data to specific Milvus collection"""
     try:
         if not get_milvus_client:
-            raise HTTPException(status_code=503, detail="Milvus client not available")
+            return {"vector_stored": False, "reason": "Milvus client not available"}
         
-        milvus_client = get_milvus_client()
+        # Get collection-specific client
+        milvus_client = get_milvus_client(collection_name)
         
-        if not milvus_client.is_available():
-            raise HTTPException(status_code=503, detail="Milvus database not available")
-        
-        documents = milvus_client.get_all_documents(limit=100)
-        stats = milvus_client.get_stats()
-        
-        return {
-            "database_info": {
-                "total_documents": stats.get("total_documents", 0),
-                "embedding_model": stats.get("embedding_model", "unknown"),
-                "collection_name": stats.get("collection_name", "unknown"),
-                "file_types": stats.get("file_types", {}),
-                "folders": stats.get("folders", {})
-            },
-            "documents_returned": len(documents),
-            "documents": documents,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except HTTPException:
-        raise
+        if milvus_client.is_available():
+            # Save documents with images if available and supported
+            if hasattr(milvus_client, 'save_documents_with_images') and image_metadata:
+                vector_ids = milvus_client.save_documents_with_images(ocr_results, folder_name, image_metadata)
+            else:
+                vector_ids = milvus_client.save_documents(ocr_results, folder_name)
+            
+            return {
+                "vector_stored": True,
+                "collection_name": collection_name,
+                "documents_stored": len(vector_ids),
+                "images_metadata_stored": len(image_metadata),
+                "vector_ids_sample": vector_ids[:3],  # Show first 3 IDs
+                "embedding_model": "MiniLM-L6-v2"
+            }
+        else:
+            return {"vector_stored": False, "reason": "Milvus client not available"}
+            
     except Exception as e:
-        logger.error(f"Error getting Milvus data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Vector storage error for collection {collection_name}: {e}")
+        return {"vector_stored": False, "collection_name": collection_name, "error": str(e)}
 
-async def get_rfp_uploads_files():
-    """Legacy: Get complete folder structure from RFP-Uploads"""
+def get_milvus_data_by_collections() -> Dict:
+    """Get data from both RFP and supportive collections"""
     try:
-        service = get_onedrive_service()
-        folders = service.get_folders_in_drives()
+        if not get_milvus_client:
+            return {"error": "Milvus client not available"}
         
-        rfp_folder = None
-        for folder in folders:
-            if folder['folder_name'] == 'RFP-Uploads':
-                rfp_folder = folder
-                break
+        collections_data = {}
         
-        if not rfp_folder:
-            raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
+        # Get data from RFP files collection
+        try:
+            rfp_client = get_milvus_client("rfp_files")
+            rfp_documents = rfp_client.get_all_documents(limit=50)
+            rfp_stats = rfp_client.get_stats()
+            
+            collections_data['rfp_files'] = {
+                "documents": rfp_documents,
+                "stats": rfp_stats,
+                "document_count": len(rfp_documents)
+            }
+        except Exception as e:
+            logger.warning(f"Error getting RFP files data: {e}")
+            collections_data['rfp_files'] = {"error": str(e), "document_count": 0}
         
-        structure = service.get_folder_structure(rfp_folder['drive_id'], 'RFP-Uploads', max_depth=3)
-        
-        # Flatten all files
-        all_files = []
-        def collect_files(folders_list, files_list):
-            all_files.extend(files_list)
-            for folder in folders_list:
-                if 'files' in folder:
-                    all_files.extend(folder['files'])
-                if 'subfolders' in folder:
-                    collect_files(folder['subfolders'], folder.get('files', []))
-        
-        collect_files(structure['folders'], structure['files'])
+        # Get data from supportive files collection
+        try:
+            supportive_client = get_milvus_client("supportive_files")
+            supportive_documents = supportive_client.get_all_documents(limit=50)
+            
+            # Get image metadata if method exists
+            images = []
+            if hasattr(supportive_client, 'get_images_metadata'):
+                images = supportive_client.get_images_metadata(limit=50)
+            
+            supportive_stats = supportive_client.get_stats()
+            
+            collections_data['supportive_files'] = {
+                "documents": supportive_documents,
+                "images": images,
+                "stats": supportive_stats,
+                "document_count": len(supportive_documents),
+                "image_count": len(images)
+            }
+        except Exception as e:
+            logger.warning(f"Error getting supportive files data: {e}")
+            collections_data['supportive_files'] = {"error": str(e), "document_count": 0, "image_count": 0}
         
         return {
-            "folder_name": "RFP-Uploads",
-            "folder_info": rfp_folder,
-            "folder_structure": structure,
-            "all_files_flattened": all_files,
-            "total_nested_folders": len(structure['folders']),
-            "total_files": len(all_files),
+            "collections": collections_data,
+            "total_rfp_documents": collections_data.get('rfp_files', {}).get('document_count', 0),
+            "total_supportive_documents": collections_data.get('supportive_files', {}).get('document_count', 0),
+            "total_images": collections_data.get('supportive_files', {}).get('image_count', 0),
             "timestamp": datetime.now().isoformat()
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error fetching RFP-Uploads structure: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting collections data: {e}")
+        return {"error": str(e)}
 
-async def process_folder_with_ocr(folder_name: str, background_tasks=None):
-    """Legacy: Process folder with OCR (without vector storage)"""
-    return await process_folder_with_ocr_and_vectors(folder_name, background_tasks)
+def search_across_collections(query: str, limit: int = 10) -> Dict:
+    """Search across both RFP and supportive collections"""
+    try:
+        if not get_milvus_client:
+            return {"error": "Milvus client not available"}
+        
+        search_results = {}
+        
+        # Search RFP files collection
+        try:
+            rfp_client = get_milvus_client("rfp_files")
+            rfp_results = rfp_client.search_similar_documents(query, limit)
+            search_results['rfp_files'] = {
+                "results": rfp_results,
+                "count": len(rfp_results),
+                "collection_type": "RFP Files (Text Only)"
+            }
+        except Exception as e:
+            logger.warning(f"Error searching RFP files: {e}")
+            search_results['rfp_files'] = {"error": str(e), "count": 0}
+        
+        # Search supportive files collection
+        try:
+            supportive_client = get_milvus_client("supportive_files")
+            supportive_results = supportive_client.search_similar_documents(query, limit)
+            search_results['supportive_files'] = {
+                "results": supportive_results,
+                "count": len(supportive_results),
+                "collection_type": "Supportive Files (Text + Images)"
+            }
+        except Exception as e:
+            logger.warning(f"Error searching supportive files: {e}")
+            search_results['supportive_files'] = {"error": str(e), "count": 0}
+        
+        return {
+            "search_query": query,
+            "collections": search_results,
+            "total_rfp_results": search_results.get('rfp_files', {}).get('count', 0),
+            "total_supportive_results": search_results.get('supportive_files', {}).get('count', 0),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error searching collections: {e}")
+        return {"error": str(e)}

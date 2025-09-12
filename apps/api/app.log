@@ -260,3 +260,46 @@
 2025-09-11 15:45:26,205 - milvus_client - INFO - Verification: Data successfully stored in Milvus
 2025-09-11 15:45:26,205 - milvus_client - INFO - Successfully saved 2 documents (16 chunks) to Milvus
 2025-09-11 15:45:26,205 - routes.rfp - INFO - Saved 2 documents to Milvus
+2025-09-12 11:11:30,242 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-12 11:11:34,945 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-12 11:11:35,034 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-12 11:16:31,656 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-12 11:16:34,141 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-12 11:16:34,169 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-12 11:16:47,429 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-12 11:20:19,608 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-12 11:20:21,786 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-12 11:20:21,795 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-12 11:21:01,356 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-12 11:21:03,320 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-12 11:21:03,331 - routes.rfp - INFO - OCR Worker imported successfully
+2025-09-12 11:21:24,290 - routes.rfp - INFO - OneDrive authentication successful
+2025-09-12 11:21:47,759 - main - INFO - Processing folder 'a4af8aa8-e825-44d8-a725-253c0da86f73' with enhanced OCR and Azure Blob Storage
+2025-09-12 11:21:53,823 - main - WARNING - Azure Blob service not available
+2025-09-12 11:21:53,823 - main - INFO - Processing file: كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-12 11:21:55,206 - worker - INFO - Starting OCR processing for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-12 11:21:55,732 - worker - INFO - OCR job submitted for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf, polling for results...
+2025-09-12 11:22:04,368 - worker - INFO - OCR processing completed successfully for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-12 11:22:04,368 - worker - INFO - Extracted text from 32 pages for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf
+2025-09-12 11:22:04,387 - main - INFO - Processing file: 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-12 11:22:06,679 - worker - INFO - Starting OCR processing for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-12 11:22:08,152 - worker - INFO - OCR job submitted for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf, polling for results...
+2025-09-12 11:22:15,705 - worker - INFO - OCR processing completed successfully for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-12 11:22:15,707 - worker - INFO - Extracted text from 58 pages for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf
+2025-09-12 11:22:15,747 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: cpu
+2025-09-12 11:22:15,747 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-09-12 11:22:31,908 - milvus_client - INFO - Sentence Transformer model loaded successfully
+2025-09-12 11:22:46,696 - milvus_client - INFO - Dropped existing collection: rfp_documents
+2025-09-12 11:23:03,609 - milvus_client - INFO - Vector index created successfully
+2025-09-12 11:23:08,132 - milvus_client - INFO - Collection loaded successfully
+2025-09-12 11:23:08,132 - milvus_client - INFO - Milvus client initialized successfully
+2025-09-12 11:23:10,955 - milvus_client - INFO - Prepared 9 chunks for كراسة_بناء_معايير_وظيفية_للعاملين_QIYAM_RFP.pdf (total bytes: 104996)
+2025-09-12 11:23:12,854 - milvus_client - INFO - Prepared 7 chunks for 20240725-V13-بروفايل_شركة_قيام QIYAM PROFILE.pdf (total bytes: 73806)
+2025-09-12 11:23:12,895 - milvus_client - INFO - Inserting 16 entities in batches of 25...
+2025-09-12 11:23:25,324 - milvus_client - INFO - Inserted batch 1: 16 entities
+2025-09-12 11:23:49,555 - milvus_client - INFO - Flushed data to disk. Total inserted: 16
+2025-09-12 11:24:00,674 - milvus_client - INFO - Verification: Data successfully stored in Milvus
+2025-09-12 11:24:00,675 - milvus_client - INFO - Successfully saved 2 documents (16 chunks) to Milvus
+2025-09-12 12:20:04,262 - datasets - INFO - PyTorch version 2.3.1 available.
+2025-09-12 12:20:05,828 - routes.rfp - INFO - Milvus client imported successfully
+2025-09-12 12:20:05,900 - routes.rfp - INFO - OCR Worker imported successfully
