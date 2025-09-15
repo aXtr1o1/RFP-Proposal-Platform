@@ -1,19 +1,23 @@
-from pymilvus import connections, Collection
+from pymilvus import connections, Collection, list_collections
 
-# Connect to Milvus
+# Connect
 connections.connect("default", host="localhost", port="19530")
 
-# Load collection
-collection = Collection("rfp_documents")
+collection_names = ["supportive_files", "rfp_files"]
 
-# Query where folder_name matches the given UUID
-folder_uuid = "235e02c8-a413-4a87-9eb4-6f1b020e4284"
-results = collection.query(
-    expr=f'folder_name == "{folder_uuid}"',  # Filter by specific folder_uuid
-    output_fields=["folder_name", "file_name", "file_type", "content", "document_id", "timestamp"],  # Add other fields as needed
-    limit=10000
-)
+for name in collection_names:
+    coll = Collection(name)
+    coll.load()  # must load before query
 
+    print(f"\n📂 Data from collection: {name}")
+    print(f"Schema: {[field.name for field in coll.schema.fields]}")
+    print(f"Total entities: {coll.num_entities}")
 
-for row in results:
-    print(row)
+    results = coll.query(
+        expr="",  # empty expr = all entities
+        output_fields=[field.name for field in coll.schema.fields],
+        limit=100  # print first 100 rows only
+    )
+
+    for row in results:
+        print(row)
