@@ -1,7 +1,6 @@
 from typing import List, Dict, Any, Tuple
 import msal
 import requests
-import time
 from datetime import datetime
 import os
 import logging
@@ -13,7 +12,6 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Environment variables validation
 TENANT_ID = os.getenv("TENANT_ID")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
@@ -40,15 +38,22 @@ except ImportError as e:
     logger.warning(f"Milvus client not found: {e}")
     get_milvus_client = None
 
-# Import OCR Worker
+# Import OCR Worker 
 try:
     workers_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'workers', 'ocr')
     sys.path.append(workers_path)
-    from worker import OCRWorker
+    from worker import get_ocr_worker
     logger.info("OCR Worker imported successfully")
 except ImportError as e:
     logger.warning(f"OCR Worker not found: {e}")
-    OCRWorker = None
+    get_ocr_worker = None
+
+try:
+    from text_ocr_service import get_text_ocr_service
+    logger.info("Text OCR Service imported successfully")
+except ImportError as e:
+    logger.warning(f"Text OCR Service not found: {e}")
+    get_text_ocr_service = None
 
 class OneDriveService:
     def __init__(self):
@@ -57,9 +62,12 @@ class OneDriveService:
         self.client_secret = CLIENT_SECRET
         self.access_token = None
         self.base_url = "https://graph.microsoft.com/v1.0"
-        
-        if OCRWorker:
-            self.ocr_worker = OCRWorker()
+        if get_ocr_worker:
+            try:
+                self.ocr_worker = get_ocr_worker()
+            except Exception as e:
+                logger.warning(f"OCR Worker initialization failed: {e}")
+                self.ocr_worker = None
         else:
             self.ocr_worker = None
             
@@ -103,8 +111,6 @@ class OneDriveService:
     def get_all_drives(self):
         """Get all available drives"""
         drives = []
-        
-        # Get shared drives
         result = self._make_request("/drives")
         if result:
             for drive in result.get("value", []):
@@ -113,8 +119,6 @@ class OneDriveService:
                     'name': drive['name'],
                     'type': drive.get('driveType', 'shared')
                 })
-
-        # Get user drives (limited to first 5)
         users_result = self._make_request("/users")
         if users_result:
             for user in users_result.get("value", [])[:5]:
@@ -256,101 +260,78 @@ class OneDriveService:
         """Determine collection name based on folder type"""
         folder_path = file_info.get('folder_path', '').lower()
         file_name = file_info.get('file_name', '').lower()
-        
-        # Check for supportive files indicators
         if ('supportive' in folder_path or 'support' in folder_path or 
             'supportive' in file_name or 'support' in file_name):
             return 'supportive_files'
-        # Check for RFP files indicators
         elif ('rfp' in folder_path or 'rfp' in file_name):
             return 'rfp_files'
         else:
-            # Default to RFP files
             return 'rfp_files'
 
-    def process_file_with_enhanced_ocr(self, file_content: bytes, file_info: Dict) -> Tuple[List[Dict], List[Dict]]:
-        """Process file with appropriate OCR based on folder type"""
+    def process_file_with_text_ocr(self, file_content: bytes, file_info: Dict) -> List[Dict]:
+        """Process file with text-only OCR based on folder type"""
         folder_type = self.determine_folder_type(file_info)
         file_name = file_info['file_name']
         
-        if folder_type == 'supportive_files':
-            # Use enhanced OCR for supportive files (text + images)
+        if get_text_ocr_service:
             try:
-                sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'workers', 'ocr'))
-                from image_ocr_service import get_image_ocr_service
-                image_ocr_service = get_image_ocr_service()
-                return image_ocr_service.extract_text_and_images_from_pdf(file_content, file_name)
-            except ImportError:
-                logger.warning("Image OCR service not available, using fallback OCR")
-                text_results = self._process_with_fallback_ocr(file_content, file_name, "supportive")
-                return text_results, []
-        else:
-            # Use text-only OCR for RFP files
-            text_results = self._process_with_fallback_ocr(file_content, file_name, "RFP")
-            return text_results, []
-    
-    def process_file_with_ocr(self, file_content, file_name, file_type="document"):
-        """Process file with OCR using available worker"""
+                text_ocr_service = get_text_ocr_service()
+                return text_ocr_service.extract_text_from_pdf(file_content, file_name, folder_type)
+            except Exception as e:
+                logger.warning(f"Text OCR service failed, using basic OCR: {e}")
+        
         if self.ocr_worker:
-            return self.ocr_worker.process_file(file_content, file_name, file_type)
+            return self.ocr_worker.process_file(file_content, file_name, folder_type)
         else:
-            return self._process_with_fallback_ocr(file_content, file_name, file_type)
+            logger.error("No OCR service available")
+            return []
     
-    def _process_with_fallback_ocr(self, file_content, file_name, file_type="document"):
-        """Fallback OCR processing using Azure Document Intelligence"""
-        url = f"{OCR_ENDPOINT}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31"
-        
-        headers = {
-            'Ocp-Apim-Subscription-Key': OCR_KEY,
-            'Content-Type': 'application/octet-stream'
-        }
-        
+    def process_text_file(self, file_content: bytes, file_info: Dict) -> List[Dict]:
+        """Process text files without OCR - extract text content directly"""
         try:
-            response = requests.post(url, headers=headers, data=file_content)
+            text_content = file_content.decode('utf-8')
+            file_name = file_info['file_name']
+            file_type = self.determine_folder_type(file_info)
+            max_chunk_size = 2000  # characters
+            chunks = []
             
-            if response.status_code == 202:
-                operation_url = response.headers['Operation-Location']
-                poll_headers = {'Ocp-Apim-Subscription-Key': OCR_KEY}
-                
-                max_attempts = 30
-                attempt = 0
-                
-                while attempt < max_attempts:
-                    result = requests.get(operation_url, headers=poll_headers)
-                    data = result.json()
-                    
-                    if data['status'] == 'succeeded':
-                        pages_data = []
-                        if 'analyzeResult' in data and 'pages' in data['analyzeResult']:
-                            for page_idx, page in enumerate(data['analyzeResult']['pages']):
-                                if 'lines' in page:
-                                    content = ' '.join([line['content'] for line in page['lines']])
-                                    if content.strip():
-                                        pages_data.append({
-                                            "file_name": file_name,
-                                            "file_type": file_type,
-                                            "page": page_idx + 1,
-                                            "content": content,
-                                            "word_count": len(content.split()),
-                                            "timestamp": datetime.now().isoformat()
-                                        })
-                        
-                        return pages_data
-                        
-                    elif data['status'] == 'failed':
-                        logger.error(f"OCR failed for {file_name}: {data}")
-                        return []
-                    else:
-                        time.sleep(2)
-                        attempt += 1
-                
-                return []
+            if len(text_content) <= max_chunk_size:
+                chunks = [text_content]
             else:
-                logger.error(f"OCR request failed for {file_name}: {response.status_code}")
-                return []
+                words = text_content.split()
+                current_chunk = []
+                current_length = 0
                 
+                for word in words:
+                    if current_length + len(word) > max_chunk_size and current_chunk:
+                        chunks.append(' '.join(current_chunk))
+                        current_chunk = [word]
+                        current_length = len(word)
+                    else:
+                        current_chunk.append(word)
+                        current_length += len(word) + 1
+                
+                if current_chunk:
+                    chunks.append(' '.join(current_chunk))
+            processed_data = []
+            for i, chunk in enumerate(chunks):
+                if chunk.strip():
+                    processed_data.append({
+                        "file_name": file_name,
+                        "file_type": file_type,
+                        "chunk": i + 1,
+                        "content": chunk.strip(),
+                        "word_count": len(chunk.split()),
+                        "timestamp": datetime.now().isoformat()
+                    })
+            
+            return processed_data
+            
+        except UnicodeDecodeError:
+            logger.warning(f"Cannot process {file_info['file_name']} as text file - binary format")
+            return []
         except Exception as e:
-            logger.error(f"OCR Error for {file_name}: {e}")
+            logger.error(f"Error processing text file {file_info['file_name']}: {e}")
             return []
 
 # Global service instance
@@ -377,29 +358,24 @@ def determine_file_type(file_info: Dict) -> str:
     else:
         return "document"
 
-def save_to_milvus_by_collection(ocr_results: List[Dict], image_metadata: List[Dict], collection_name: str, folder_name: str) -> Dict:
-    """Save data to specific Milvus collection"""
+def save_to_milvus_by_collection(processed_data: List[Dict], collection_name: str, folder_name: str) -> Dict:
+    """Save data to specific Milvus collection - text processing only"""
     try:
         if not get_milvus_client:
             return {"vector_stored": False, "reason": "Milvus client not available"}
         
-        # Get collection-specific client
         milvus_client = get_milvus_client(collection_name)
         
         if milvus_client.is_available():
-            # Save documents with images if available and supported
-            if hasattr(milvus_client, 'save_documents_with_images') and image_metadata:
-                vector_ids = milvus_client.save_documents_with_images(ocr_results, folder_name, image_metadata)
-            else:
-                vector_ids = milvus_client.save_documents(ocr_results, folder_name)
+            vector_ids = milvus_client.save_documents(processed_data, folder_name)
             
             return {
                 "vector_stored": True,
                 "collection_name": collection_name,
                 "documents_stored": len(vector_ids),
-                "images_metadata_stored": len(image_metadata),
-                "vector_ids_sample": vector_ids[:3],  # Show first 3 IDs
-                "embedding_model": "MiniLM-L6-v2"
+                "vector_ids_sample": vector_ids[:3],  
+                "embedding_model": "MiniLM-L6-v2",
+                "processing_mode": "text_only"
             }
         else:
             return {"vector_stored": False, "reason": "Milvus client not available"}
@@ -409,14 +385,12 @@ def save_to_milvus_by_collection(ocr_results: List[Dict], image_metadata: List[D
         return {"vector_stored": False, "collection_name": collection_name, "error": str(e)}
 
 def get_milvus_data_by_collections() -> Dict:
-    """Get data from both RFP and supportive collections"""
+    """Get data from both RFP and supportive collections - text processing only"""
     try:
         if not get_milvus_client:
             return {"error": "Milvus client not available"}
         
         collections_data = {}
-        
-        # Get data from RFP files collection
         try:
             rfp_client = get_milvus_client("rfp_files")
             rfp_documents = rfp_client.get_all_documents(limit=50)
@@ -430,35 +404,25 @@ def get_milvus_data_by_collections() -> Dict:
         except Exception as e:
             logger.warning(f"Error getting RFP files data: {e}")
             collections_data['rfp_files'] = {"error": str(e), "document_count": 0}
-        
-        # Get data from supportive files collection
         try:
             supportive_client = get_milvus_client("supportive_files")
             supportive_documents = supportive_client.get_all_documents(limit=50)
-            
-            # Get image metadata if method exists
-            images = []
-            if hasattr(supportive_client, 'get_images_metadata'):
-                images = supportive_client.get_images_metadata(limit=50)
-            
             supportive_stats = supportive_client.get_stats()
             
             collections_data['supportive_files'] = {
                 "documents": supportive_documents,
-                "images": images,
                 "stats": supportive_stats,
-                "document_count": len(supportive_documents),
-                "image_count": len(images)
+                "document_count": len(supportive_documents)
             }
         except Exception as e:
             logger.warning(f"Error getting supportive files data: {e}")
-            collections_data['supportive_files'] = {"error": str(e), "document_count": 0, "image_count": 0}
+            collections_data['supportive_files'] = {"error": str(e), "document_count": 0}
         
         return {
             "collections": collections_data,
             "total_rfp_documents": collections_data.get('rfp_files', {}).get('document_count', 0),
             "total_supportive_documents": collections_data.get('supportive_files', {}).get('document_count', 0),
-            "total_images": collections_data.get('supportive_files', {}).get('image_count', 0),
+            "processing_mode": "text_only",
             "timestamp": datetime.now().isoformat()
         }
         
@@ -467,34 +431,30 @@ def get_milvus_data_by_collections() -> Dict:
         return {"error": str(e)}
 
 def search_across_collections(query: str, limit: int = 10) -> Dict:
-    """Search across both RFP and supportive collections"""
+    """Search across both RFP and supportive collections - text processing only"""
     try:
         if not get_milvus_client:
             return {"error": "Milvus client not available"}
         
         search_results = {}
-        
-        # Search RFP files collection
         try:
             rfp_client = get_milvus_client("rfp_files")
             rfp_results = rfp_client.search_similar_documents(query, limit)
             search_results['rfp_files'] = {
                 "results": rfp_results,
                 "count": len(rfp_results),
-                "collection_type": "RFP Files (Text Only)"
+                "collection_type": "RFP Files (Text Processing)"
             }
         except Exception as e:
             logger.warning(f"Error searching RFP files: {e}")
             search_results['rfp_files'] = {"error": str(e), "count": 0}
-        
-        # Search supportive files collection
         try:
             supportive_client = get_milvus_client("supportive_files")
             supportive_results = supportive_client.search_similar_documents(query, limit)
             search_results['supportive_files'] = {
                 "results": supportive_results,
                 "count": len(supportive_results),
-                "collection_type": "Supportive Files (Text + Images)"
+                "collection_type": "Supportive Files (Text Processing)"
             }
         except Exception as e:
             logger.warning(f"Error searching supportive files: {e}")
@@ -505,6 +465,7 @@ def search_across_collections(query: str, limit: int = 10) -> Dict:
             "collections": search_results,
             "total_rfp_results": search_results.get('rfp_files', {}).get('count', 0),
             "total_supportive_results": search_results.get('supportive_files', {}).get('count', 0),
+            "processing_mode": "text_only",
             "timestamp": datetime.now().isoformat()
         }
         

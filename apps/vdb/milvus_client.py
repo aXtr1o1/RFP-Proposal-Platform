@@ -6,7 +6,6 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
-import json
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -55,7 +54,7 @@ class MilvusVectorClient:
         current_bytes = 0
         
         for word in words:
-            word_bytes = len(word.encode('utf-8')) + 1  # +1 for space
+            word_bytes = len(word.encode('utf-8')) + 1  
             
             if current_bytes + word_bytes > max_bytes and current_chunk:
                 chunk_text = ' '.join(current_chunk)
@@ -69,7 +68,6 @@ class MilvusVectorClient:
         if current_chunk:
             chunks.append(' '.join(current_chunk))
         
-        # Final validation and truncation if needed
         for i, chunk in enumerate(chunks):
             chunk_bytes = len(chunk.encode('utf-8'))
             if chunk_bytes > max_bytes:
@@ -81,9 +79,7 @@ class MilvusVectorClient:
     def _ensure_collection(self):
         """Create collection if it doesn't exist or recreate if needed"""
         try:
-            # Create only if missing; avoid dropping existing collections to prevent long reloads
             if not self.client.has_collection(self.collection_name):
-                # Create schema
                 schema = self.client.create_schema(auto_id=False, enable_dynamic_field=True)
                 schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=100)
                 schema.add_field("content", DataType.VARCHAR, max_length=16000)
@@ -98,16 +94,13 @@ class MilvusVectorClient:
                 schema.add_field("document_id", DataType.VARCHAR, max_length=100)
                 schema.add_field("timestamp", DataType.VARCHAR, max_length=50)
 
-                # Create collection
                 self.client.create_collection(collection_name=self.collection_name, schema=schema)
                 logger.info(f"Created collection: {self.collection_name}")
 
-                # Create vector index
                 self._create_vector_index()
             else:
                 logger.info(f"Using existing collection: {self.collection_name}")
 
-            # Skip eager loading here to avoid potential hangs; collections will be loaded lazily when needed
             logger.info("Skipping collection load at init; will load lazily when required")
                 
         except Exception as e:
@@ -134,7 +127,6 @@ class MilvusVectorClient:
         except Exception as e:
             logger.error(f"Index creation failed: {e}")
             try:
-                # Fallback to AUTOINDEX
                 index_params = self.client.prepare_index_params()
                 index_params.add_index(
                     field_name="vector",
@@ -167,143 +159,15 @@ class MilvusVectorClient:
         except Exception as e:
             logger.error(f"Embedding generation failed: {e}")
             raise
-
-    def save_documents_with_images(self, ocr_results: List[Dict], folder_name: str, image_metadata: List[Dict] = None) -> List[str]:
-        """Enhanced save method that handles image metadata alongside text"""
-        # Ensure collection exists
-        self._ensure_collection()
-        
-        # First, save documents using existing method
-        doc_ids = self.save_documents(ocr_results, folder_name)
-        
-        # Then, save image metadata if provided
-        if image_metadata and doc_ids:
-            try:
-                self._save_image_metadata(image_metadata, folder_name)
-                logger.info(f"Saved {len(image_metadata)} image metadata entries to {self.collection_name}")
-            except Exception as e:
-                logger.error(f"Error saving image metadata: {e}")
-        
-        return doc_ids
-
-    def _save_image_metadata(self, image_metadata: List[Dict], folder_name: str):
-        """Save image metadata as separate entries in Milvus"""
-        if not self.is_available() or not image_metadata:
-            return
-        
-        entities = []
-        
-        for img_data in image_metadata:
-            try:
-                # Generate embedding for image description/text
-                img_text = img_data.get('extracted_text', img_data.get('type', 'image'))
-                if not img_text.strip():
-                    img_text = f"{img_data.get('type', 'image')} from page {img_data.get('page', 1)}"
-                
-                vector = self._generate_embedding(img_text)
-                
-                # Create metadata content for storage
-                metadata_content = json.dumps({
-                    'image_id': img_data['id'],
-                    'image_type': img_data['type'],
-                    'page': img_data['page'],
-                    'blob_url': img_data['blob_url'],
-                    'extracted_text': img_data.get('extracted_text', ''),
-                    'dimensions': img_data.get('dimensions', {}),
-                    'file_name': img_data.get('file_name', ''),
-                    'confidence': img_data.get('confidence', 0.0)
-                })
-                
-                entity = {
-                    "id": f"img_{img_data['id']}_{uuid.uuid4().hex[:8]}",
-                    "content": metadata_content,
-                    "vector": vector,
-                    "file_name": img_data.get('file_name', 'image_metadata'),
-                    "file_path": img_data.get('file_path', 'images'),
-                    "file_type": "image_metadata",
-                    "total_pages": 1,
-                    "total_words": len(img_data.get('extracted_text', '').split()),
-                    "folder_name": folder_name,
-                    "chunk_index": 0,
-                    "document_id": img_data['id'],
-                    "timestamp": datetime.now().isoformat()
-                }
-                entities.append(entity)
-                
-            except Exception as e:
-                logger.error(f"Error processing image metadata {img_data.get('id', 'unknown')}: {e}")
-                continue
-        
-        if entities:
-            try:
-                insert_result = self.client.insert(
-                    collection_name=self.collection_name,
-                    data=entities
-                )
-                # Skipping flush to avoid blocking; eventual consistency is acceptable here
-                logger.info(f"Successfully inserted {len(entities)} image metadata entries to {self.collection_name}")
-            except Exception as e:
-                logger.error(f"Failed to insert image metadata: {e}")
-
-    def get_images_metadata(self, limit: int = 50) -> List[Dict]:
-        """Get all image metadata from Milvus with proper format"""
-        if not self.is_available():
-            return []
-        
-        try:
-            # Check if collection exists
-            if not self.client.has_collection(self.collection_name):
-                return []
-            
-            self.client.load_collection(self.collection_name)
-            
-            result = self.client.query(
-                collection_name=self.collection_name,
-                filter='file_type == "image_metadata"',
-                output_fields=["*"],
-                limit=limit
-            )
-            
-            images_data = []
-            for item in result:
-                try:
-                    metadata = json.loads(item["content"])
-                    
-                    # Format according to specified structure
-                    formatted_image = {
-                        "id": metadata['image_id'],
-                        "type": metadata['image_type'],
-                        "page": metadata['page'],
-                        "embedding": item["vector"][:10] if item.get("vector") else [],
-                        "blob_url": metadata['blob_url'],
-                        "extracted_text": metadata.get('extracted_text', ''),
-                        "file_name": metadata.get('file_name', ''),
-                        "dimensions": metadata.get('dimensions', {}),
-                        "confidence": metadata.get('confidence', 0.0),
-                        "timestamp": item["timestamp"]
-                    }
-                    images_data.append(formatted_image)
-                    
-                except json.JSONDecodeError as e:
-                    logger.error(f"Error parsing image metadata: {e}")
-                    continue
-            
-            return images_data
-            
-        except Exception as e:
-            logger.error(f"Error retrieving image metadata from {self.collection_name}: {e}")
-            return []
     
     def save_documents(self, ocr_results: List[Dict], folder_name: str) -> List[str]:
-        """Save documents with byte-based chunking to handle Arabic text"""
+        """Save documents with byte-based chunking to handle Arabic text - text processing only"""
         if not self.is_available() or not ocr_results:
             logger.warning("Milvus or embedding model not available")
             return []
         
-        # Ensure collection exists
         self._ensure_collection()
         
-        # Group results by document
         documents = self._group_results_by_document(ocr_results)
         
         entities = []
@@ -324,7 +188,6 @@ class MilvusVectorClient:
                 
                 for chunk_index, chunk_content in enumerate(content_chunks):
                     try:
-                        # Validate chunk size
                         chunk_bytes = len(chunk_content.encode('utf-8'))
                         if chunk_bytes > 15000:
                             logger.error(f"Chunk {chunk_index} too large: {chunk_bytes} bytes, skipping")
@@ -358,7 +221,6 @@ class MilvusVectorClient:
                 logger.error(f"Error processing {file_name}: {e}")
                 continue
         
-        # Insert entities in batches
         if entities:
             inserted_count = self._insert_entities_in_batches(entities)
             logger.info(f"Successfully saved {len(documents)} documents ({inserted_count} chunks) to {self.collection_name}")
@@ -403,8 +265,6 @@ class MilvusVectorClient:
                 except Exception as e:
                     logger.error(f"Error inserting batch {i//batch_size + 1}: {e}")
                     continue
-            
-            # Skipping flush and verification to prevent blocking on some Milvus deployments
             logger.info(f"Completed inserts without flush. Total inserted (batches): {inserted_count}")
             
             return inserted_count
@@ -413,32 +273,12 @@ class MilvusVectorClient:
             logger.error(f"Insert operation failed: {e}")
             return 0
     
-    def _verify_insertion(self):
-        """Verify that data was successfully inserted"""
-        try:
-            self.client.load_collection(self.collection_name)
-            stats = self.client.query(
-                collection_name=self.collection_name,
-                filter="",
-                output_fields=["id"],
-                limit=1
-            )
-            
-            if stats:
-                logger.info(f"Verification: Data successfully stored in {self.collection_name}")
-            else:
-                logger.warning("Verification: No data found after insertion")
-                
-        except Exception as e:
-            logger.error(f"Verification failed: {e}")
-    
     def get_all_documents(self, limit: int = 100) -> List[Dict]:
         """Get all stored documents, grouping chunks by document_id"""
         if not self.is_available():
             return []
         
         try:
-            # Check if collection exists
             if not self.client.has_collection(self.collection_name):
                 logger.warning(f"Collection {self.collection_name} does not exist")
                 return []
@@ -447,15 +287,13 @@ class MilvusVectorClient:
             
             result = self.client.query(
                 collection_name=self.collection_name,
-                filter='file_type != "image_metadata"',
+                filter="",
                 output_fields=["*"],
                 limit=limit * 3
             )
             
-            # Group chunks by document
             grouped_docs = self._group_chunks_by_document(result)
             
-            # Format documents
             formatted_docs = []
             for doc_data in list(grouped_docs.values())[:limit]:
                 doc_data["chunks"].sort(key=lambda x: x["chunk_index"])
@@ -513,7 +351,6 @@ class MilvusVectorClient:
             return []
         
         try:
-            # Check if collection exists
             if not self.client.has_collection(self.collection_name):
                 logger.warning(f"Collection {self.collection_name} does not exist")
                 return []
@@ -531,7 +368,6 @@ class MilvusVectorClient:
                 ]
             )
             
-            # Process search results
             doc_results = {}
             for hit in results[0]:
                 entity = hit["entity"]
@@ -563,18 +399,16 @@ class MilvusVectorClient:
             return []
     
     def get_stats(self) -> Dict:
-        """Get collection statistics"""
+        """Get collection statistics - text documents only"""
         if not self.is_available():
             return {"error": "Milvus not available"}
         
         try:
-            # Check if collection exists
             if not self.client.has_collection(self.collection_name):
                 return {
                     "collection_name": self.collection_name,
                     "error": "Collection does not exist",
                     "total_documents": 0,
-                    "total_images": 0,
                     "total_chunks": 0
                 }
             
@@ -587,17 +421,12 @@ class MilvusVectorClient:
                 limit=10000
             )
             
-            # Calculate statistics
             unique_docs = set()
-            image_count = 0
             file_types = {}
             folders = {}
             
             for doc in result:
-                if doc.get("file_type") == "image_metadata":
-                    image_count += 1
-                else:
-                    unique_docs.add(doc.get("document_id", doc.get("id", "")))
+                unique_docs.add(doc.get("document_id", doc.get("id", "")))
                 
                 ft = doc.get("file_type", "unknown")
                 file_types[ft] = file_types.get(ft, 0) + 1
@@ -606,19 +435,19 @@ class MilvusVectorClient:
             
             return {
                 "total_documents": len(unique_docs),
-                "total_images": image_count,
-                "total_chunks": len(result) - image_count,
+                "total_chunks": len(result),
                 "file_types": file_types,
                 "folders": folders,
                 "embedding_model": "all-MiniLM-L6-v2 (Sentence Transformers)",
                 "embedding_dimension": self.embedding_dim,
-                "collection_name": self.collection_name
+                "collection_name": self.collection_name,
+                "processing_mode": "text_only"
             }
         except Exception as e:
             logger.error(f"Stats query failed for collection {self.collection_name}: {e}")
             return {"error": str(e)}
 
-# Global instances for different collections
+# Global instances
 _milvus_clients = {}
 
 def get_milvus_client(collection_name: str = "rfp_documents"):
