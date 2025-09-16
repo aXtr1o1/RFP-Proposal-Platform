@@ -77,14 +77,14 @@ def dedupe_sections_by_heading(obj: Dict[str, Any]) -> Dict[str, Any]:
     obj["sections"] = deduped
     return obj
 
+def proposal_cleaner(input_text: str) -> str:
+    normalized = normalize_quotes(input_text)
+    block = first_balanced_brace_block(normalized)
+    parsed = safe_literal_eval(block)
+    if isinstance(parsed, dict):
+        parsed = dedupe_sections_by_heading(parsed)
+    cleaned_text = json.dumps(parsed, ensure_ascii=False, indent=2)
+    print(cleaned_text)
 
-normalized = normalize_quotes(input_text)
-block = first_balanced_brace_block(normalized)
-parsed = safe_literal_eval(block)
-if isinstance(parsed, dict):
-    parsed = dedupe_sections_by_heading(parsed)
-cleaned_text = json.dumps(parsed, ensure_ascii=False, indent=2)
-print(cleaned_text)
-
-
+    return cleaned_text
 

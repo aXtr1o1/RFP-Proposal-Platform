@@ -9,6 +9,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 from dotenv import load_dotenv
 from pymilvus import connections, Collection, MilvusException
 
+from apps.wordgenAgent.app.proposal_clean import proposal_cleaner
+from apps.wordgenAgent.app.wordcom import build_word_from_proposal
+
 try:
     from openai import OpenAI
 except Exception:
@@ -23,7 +26,7 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env", override=F
 load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env", override=False)
 
 
-app = FastAPI(title="WordGen Agent API")
+# app = FastAPI(title="WordGen Agent API")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wordgen-agent")
@@ -41,7 +44,7 @@ class GenerateProposalResponse(BaseModel):
 
 # ---------- Milvus utilities ----------
 
-DEFAULT_CONSISTENCY = os.getenv("MILVUS_CONSISTENCY_LEVEL", "Bounded")  # Strong|Session|Bounded|Eventually
+DEFAULT_CONSISTENCY = os.getenv("MILVUS_CONSISTENCY_LEVEL", "Bounded")
 
 def _milvus_query_with_fallback(col: Collection, expr: str, output_fields: list, limit: int = 16384,
                                 primary_consistency: str = DEFAULT_CONSISTENCY):
@@ -148,12 +151,7 @@ def fetch_supportive_files_text_by_uuid(uuid: str) -> str:
             output_fields=["content", "chunk_index", "file_name"],
             limit=16384,
         )
-        # results = col.query(
-        #     expr=expr, 
-        #     output_fields=["content", "chunk_index", "file_name"], 
-        #     consistency_level="Strong", 
-        #     limit=16384
-        # )
+
         
         logger.info(f"Milvus query returned {len(results)} rows for uuid={uuid}")
         
@@ -394,45 +392,56 @@ Now generate the final proposal in the requested JSON format.
     except Exception as exc:
         logger.exception("Error generating customized proposal via 4OMini")
         
-
-
 # ---------- Text processing ----------
 
 
 
 # ---------- API Endpoints ----------
 
-@app.post("/generate-proposal", response_model=GenerateProposalResponse)
-def generate_proposal(request: GenerateProposalRequest) -> GenerateProposalResponse:
+# @app.post("/generate-proposal", response_model=GenerateProposalResponse)
+# def generate_proposal(request: GenerateProposalRequest) -> GenerateProposalResponse:
+def generate_proposal(uuid):
+
     """Generate a detailed proposal text from RFP files in Milvus collection in the native language."""
     try:
-        rfp_text = fetch_rfp_text_by_uuid(request.uuid)
+
+        rfp_text = fetch_rfp_text_by_uuid(str(uuid))
         if not rfp_text:
             raise HTTPException(status_code=404, detail="No RFP knowledge found for provided uuid")
         
-        logger.info(f"Retrieved {len(rfp_text)} characters of RFP text for uuid {request.uuid}")
-
-        # 2) Retrieve supportive files text from Milvus supportive_files collection
-        supportive_text = fetch_supportive_files_text_by_uuid(request.uuid)
+        logger.info(f"Retrieved {len(rfp_text)} characters of RFP text for uuid {uuid}")
+        supportive_text = fetch_supportive_files_text_by_uuid(uuid)
         if not supportive_text:
             logger.warning("No supportive files found for the provided uuid. Proceeding without it.")
         
-        logger.info(f"Retrieved {len(supportive_text)} characters of supportive files text for uuid {request.uuid}")
+        logger.info(f"Retrieved {len(supportive_text)} characters of supportive files text for uuid {uuid}")
         
         native_language = detect_language(rfp_text)
         logger.info(f"Detected native language: {native_language}")
         proposal_text = generate_proposal_with_openai(rfp_text, native_language)
         final_proposal = customize_proposal_with_supportive_content_json(proposal_text, supportive_text, native_language)
-        print("this is the final proposal", final_proposal)
+        final_proposal_str = json.dumps(final_proposal, ensure_ascii=False, indent=2)
+        cleaned_proposal = proposal_cleaner(input_text=final_proposal_str)
+        if isinstance(cleaned_proposal, str):
+            try:
+                proposal_dict = json.loads(cleaned_proposal)
+            except json.JSONDecodeError:
+                raise ValueError("cleaned_proposal is a string but not valid JSON")
+        else:
+            proposal_dict = cleaned_proposal
 
-        print("this is the proposal text", proposal_text + "\n...")
+        build_word_from_proposal(proposal_dict, output_path="output/proposal69.docx", visible=False)
+        print("this is the final proposal", cleaned_proposal)
+
 
         
-        return GenerateProposalResponse(
-            status="ok",
-            proposal_text=proposal_text,
-            detected_language=native_language
-        )
+
+        
+        # return GenerateProposalResponse(
+        #     status="ok",
+        #     proposal_text=proposal_text,
+        #     detected_language=native_language
+        # )
         
     except RetryError as rex:
         cause = getattr(rex, "last_attempt", None)
@@ -455,54 +464,12 @@ def generate_proposal(request: GenerateProposalRequest) -> GenerateProposalRespo
         logger.exception("Unhandled error in generate_proposal")
         raise HTTPException(status_code=500, detail=str(exc))
 
-
-@app.get("/debug/rfp-data/{uuid}")
-def debug_rfp_data(uuid: str):
-    """Debug endpoint to see what RFP data will be used for proposal generation."""
-    try:
-        rfp_text = fetch_rfp_text_by_uuid(uuid)
-        
-        debug_info = {
-            "uuid": uuid,
-            "rfp_data": {
-                "length": len(rfp_text),
-                "preview": rfp_text[:1000] + "..." if len(rfp_text) > 1000 else rfp_text,
-                "available": bool(rfp_text)
-            },
-            "recommendations": []
-        }
-        
-        # Detect language if RFP text is available
-        if rfp_text:
-            try:
-                detected_language = detect_language(rfp_text)
-                debug_info["detected_language"] = detected_language
-                debug_info["recommendations"].append(f"Proposal will be generated in {detected_language}")
-            except Exception as lang_exc:
-                debug_info["language_detection_error"] = str(lang_exc)
-                debug_info["recommendations"].append("Language detection failed - proposal will use default language")
-        
-        # Add recommendations
-        if not rfp_text:
-            debug_info["recommendations"].append("No RFP data found - check if documents are uploaded correctly to rfp_files collection")
-        if len(rfp_text) < 1000:
-            debug_info["recommendations"].append("RFP data is very short - check if RFP document is complete")
-            
-        return debug_info
-    except Exception as exc:
-        logger.exception("Error in debug_rfp_data")
-        raise HTTPException(status_code=500, detail=str(exc))
+# generate_proposal("b75276a7-ac04-4ec9-912b-7b8b937c08a4")
 
 
-@app.get("/health")
-def health_check():
-    """Health check endpoint."""
-    return {"status": "ok", "message": "WordGen Agent API is running"}
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 

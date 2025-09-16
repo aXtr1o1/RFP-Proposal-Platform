@@ -81,42 +81,34 @@ class MilvusVectorClient:
     def _ensure_collection(self):
         """Create collection if it doesn't exist or recreate if needed"""
         try:
-            # Drop existing collection for fresh start
-            if self.client.has_collection(self.collection_name):
-                try:
-                    self.client.drop_collection(self.collection_name)
-                    logger.info(f"Dropped existing collection: {self.collection_name}")
-                except Exception as e:
-                    logger.warning(f"Error dropping collection: {e}")
+            # Create only if missing; avoid dropping existing collections to prevent long reloads
+            if not self.client.has_collection(self.collection_name):
+                # Create schema
+                schema = self.client.create_schema(auto_id=False, enable_dynamic_field=True)
+                schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=100)
+                schema.add_field("content", DataType.VARCHAR, max_length=16000)
+                schema.add_field("vector", DataType.FLOAT_VECTOR, dim=self.embedding_dim)
+                schema.add_field("file_name", DataType.VARCHAR, max_length=500)
+                schema.add_field("file_path", DataType.VARCHAR, max_length=1000)
+                schema.add_field("file_type", DataType.VARCHAR, max_length=50)
+                schema.add_field("total_pages", DataType.INT64)
+                schema.add_field("total_words", DataType.INT64)
+                schema.add_field("folder_name", DataType.VARCHAR, max_length=500)
+                schema.add_field("chunk_index", DataType.INT64)
+                schema.add_field("document_id", DataType.VARCHAR, max_length=100)
+                schema.add_field("timestamp", DataType.VARCHAR, max_length=50)
 
-            # Create schema
-            schema = self.client.create_schema(auto_id=False, enable_dynamic_field=True)
-            schema.add_field("id", DataType.VARCHAR, is_primary=True, max_length=100)
-            schema.add_field("content", DataType.VARCHAR, max_length=16000)
-            schema.add_field("vector", DataType.FLOAT_VECTOR, dim=self.embedding_dim)
-            schema.add_field("file_name", DataType.VARCHAR, max_length=500)
-            schema.add_field("file_path", DataType.VARCHAR, max_length=1000)
-            schema.add_field("file_type", DataType.VARCHAR, max_length=50)
-            schema.add_field("total_pages", DataType.INT64)
-            schema.add_field("total_words", DataType.INT64)
-            schema.add_field("folder_name", DataType.VARCHAR, max_length=500)
-            schema.add_field("chunk_index", DataType.INT64)
-            schema.add_field("document_id", DataType.VARCHAR, max_length=100)
-            schema.add_field("timestamp", DataType.VARCHAR, max_length=50)
-            
-            # Create collection
-            self.client.create_collection(collection_name=self.collection_name, schema=schema)
-            logger.info(f"Created collection: {self.collection_name}")
-            
-            # Create vector index
-            self._create_vector_index()
-            
-            # Load collection
-            try:
-                self.client.load_collection(self.collection_name)
-                logger.info("Collection loaded successfully")
-            except Exception as e:
-                logger.warning(f"Collection loading warning: {e}")
+                # Create collection
+                self.client.create_collection(collection_name=self.collection_name, schema=schema)
+                logger.info(f"Created collection: {self.collection_name}")
+
+                # Create vector index
+                self._create_vector_index()
+            else:
+                logger.info(f"Using existing collection: {self.collection_name}")
+
+            # Skip eager loading here to avoid potential hangs; collections will be loaded lazily when needed
+            logger.info("Skipping collection load at init; will load lazily when required")
                 
         except Exception as e:
             logger.error(f"Collection creation failed: {e}")
@@ -244,12 +236,11 @@ class MilvusVectorClient:
         
         if entities:
             try:
-                self.client.load_collection(self.collection_name)
                 insert_result = self.client.insert(
                     collection_name=self.collection_name,
                     data=entities
                 )
-                self.client.flush(collection_name=self.collection_name)
+                # Skipping flush to avoid blocking; eventual consistency is acceptable here
                 logger.info(f"Successfully inserted {len(entities)} image metadata entries to {self.collection_name}")
             except Exception as e:
                 logger.error(f"Failed to insert image metadata: {e}")
@@ -389,7 +380,6 @@ class MilvusVectorClient:
     def _insert_entities_in_batches(self, entities: List[Dict], batch_size: int = 25) -> int:
         """Insert entities in batches to avoid memory issues"""
         try:
-            self.client.load_collection(self.collection_name)
             inserted_count = 0
             
             logger.info(f"Inserting {len(entities)} entities in batches of {batch_size} to {self.collection_name}")
@@ -414,13 +404,8 @@ class MilvusVectorClient:
                     logger.error(f"Error inserting batch {i//batch_size + 1}: {e}")
                     continue
             
-            # Flush and verify
-            try:
-                self.client.flush(collection_name=self.collection_name)
-                logger.info(f"Flushed data to disk. Total inserted: {inserted_count}")
-                self._verify_insertion()
-            except Exception as e:
-                logger.error(f"Flush failed: {e}")
+            # Skipping flush and verification to prevent blocking on some Milvus deployments
+            logger.info(f"Completed inserts without flush. Total inserted (batches): {inserted_count}")
             
             return inserted_count
             
