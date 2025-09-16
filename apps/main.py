@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 from dotenv import load_dotenv
 import sys
 import uuid
-
+from apps.wordgenAgent.app.api import generate_proposal
 load_dotenv()
 
 # Configure logging
@@ -39,12 +39,12 @@ app.add_middleware(
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'vdb'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'workers', 'ocr'))
 
-from routes.rfp import get_onedrive_service
-from milvus_client import get_milvus_client
+from apps.api.routes.rfp import get_onedrive_service
+from apps.vdb.milvus_client import get_milvus_client
 
 # Try to import Azure Blob Storage 
 try:
-    from blob_storage import get_blob_service
+    from apps.vdb.blob_storage import get_blob_service
     BLOB_STORAGE_AVAILABLE = True
     logger.info("Azure Blob Storage service available")
 except ImportError as e:
@@ -52,11 +52,11 @@ except ImportError as e:
     BLOB_STORAGE_AVAILABLE = False
     get_blob_service = None
 
-from worker import OCRWorker
+from apps.workers.ocr.worker import OCRWorker
 
 # Try to import image OCR service (optional)
 try:
-    from image_ocr_service import get_image_ocr_service
+    from apps.workers.ocr.image_ocr_service import get_image_ocr_service
     IMAGE_OCR_AVAILABLE = True
     logger.info("Image OCR service available")
 except ImportError as e:
@@ -304,6 +304,8 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
                         })
                     
                     all_ocr_results.extend(text_results)
+
+
                     
                     processed_files.append({
                         "file_name": pdf_file['file_name'],
@@ -336,7 +338,6 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
                 "total_documents_saved": 0
             }
             
-            # Save RFP files to rfp_files collection
             if rfp_results:
                 logger.info(f"💾 Saving {len(rfp_results)} RFP results to rfp_files collection")
                 rfp_client = get_milvus_client("rfp_files")
@@ -353,7 +354,6 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
                 else:
                     vector_result["collections"]["rfp_files"] = {"status": "failed", "reason": "Milvus client not available"}
             
-            # Save supportive files to supportive_files collection
             if supportive_results:
                 logger.info(f"💾 Saving {len(supportive_results)} supportive results to supportive_files collection")
                 supportive_client = get_milvus_client("supportive_files")
@@ -381,6 +381,15 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         
         processing_time = str(datetime.now() - start_time)
         logger.info(f"Processing completed in {processing_time}")
+        
+        # Generate proposal
+        try:
+            logger.info(f"🚀 Starting proposal generation for folder: {folder_name}")
+            generate_proposal(uuid=folder_name)
+            logger.info(f"✅ Proposal generation completed for folder: {folder_name}")
+        except Exception as e:
+            logger.error(f"❌ Proposal generation failed for folder {folder_name}: {e}")
+            # Don't fail the entire request if proposal generation fails
         
         return {
             "folder_name": folder_name,
@@ -415,6 +424,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
             "processing_time": processing_time,
             "timestamp": datetime.now().isoformat()
         }
+    
         
     except HTTPException:
         raise
