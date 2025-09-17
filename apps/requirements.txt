@@ -17,3 +17,4 @@ pytesseract==0.3.13
 openai==1.44.1
 tenacity==8.4.2
 pywin32==306
+docx2pdf

@@ -561,7 +561,7 @@ def _create_fallback_proposal(proposal_text: str, supportive_text: str, native_l
 
 # ---------- API Endpoints ----------
 
-def generate_proposal(uuid , user_config):
+def generate_proposal(uuid , user_config, language) :
     """Generate a detailed proposal text from RFP files in Milvus collection in the native language."""
     try:
         rfp_text = fetch_rfp_text_by_uuid(str(uuid))
@@ -577,6 +577,7 @@ def generate_proposal(uuid , user_config):
         logger.info(f"Retrieved {len(supportive_text)} characters of supportive files text for uuid {uuid}")
         
         native_language = detect_language(rfp_text)
+        native_language = language
         logger.info(f"Detected native language: {native_language}")
         
         proposal_text = generate_proposal_with_openai(rfp_text, native_language)

@@ -42,6 +42,7 @@ class OCRRequest(BaseModel):
     config: Optional[str] = None
     docConfig: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
+    language: Optional[str] = "arabic"
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'vdb'))
@@ -141,12 +142,12 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         user_config = request.config
         doc_config = request.docConfig
         timestamp = request.timestamp
+        language = request.language
 
         logger.info(f"Received config: {user_config}")
         logger.info(f"Received docConfig: {doc_config}")
         logger.info(f"Timestamp: {timestamp}")
         print(doc_config)
-        
         onedrive_service = get_onedrive_service()
         
         folders = onedrive_service.get_folders_in_drives()
@@ -155,18 +156,14 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
             if folder['folder_name'] == 'RFP-Uploads':
                 rfp_folder = folder
                 break
-        
+
         if not rfp_folder:
             raise HTTPException(status_code=404, detail="RFP-Uploads folder not found")
-        
         search_path = f"RFP-Uploads/{folder_name}"
         all_files = onedrive_service.get_all_files_recursively(rfp_folder['drive_id'], search_path, max_depth=3)
-        
         if not all_files:
             raise HTTPException(status_code=404, detail=f"No files found in folder '{folder_name}'")
-        
         pdf_files = [f for f in all_files if f['mime_type'] == 'application/pdf' or f['file_name'].lower().endswith('.pdf')]
-        
         if not pdf_files:
             raise HTTPException(status_code=404, detail="No PDF files found for processing")
         
@@ -281,7 +278,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         try:
             
             logger.info(f"🚀 Starting comprehensive proposal generation for folder: {folder_name}")
-            output_path = generate_proposal(uuid=folder_name, user_config=doc_config)  
+            output_path = generate_proposal(uuid=folder_name, user_config=doc_config, language=language)
             logger.info(f"✅ Comprehensive proposal PATH is here............: {output_path}")
             
         except Exception as e:
@@ -309,6 +306,34 @@ def download_file(filename: str):
         path=file_path,
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+import pythoncom
+from docx2pdf import convert
+@app.get("/download-pdf/{filename}")
+def download_pdf(filename: str):
+    if not filename.endswith(".docx"):
+        filename += ".docx"
+
+    docx_path = os.path.join("output", filename)
+    if not os.path.exists(docx_path):
+        return {"error": "File not found"}
+
+    pdf_filename = filename.replace(".docx", ".pdf")
+    pdf_path = os.path.join("output", pdf_filename)
+
+    if not os.path.exists(pdf_path):
+        # Manually init COM
+        pythoncom.CoInitialize()
+        try:
+            convert(docx_path, pdf_path)
+        finally:
+            pythoncom.CoUninitialize()
+
+    return FileResponse(
+        path=pdf_path,
+        filename=pdf_filename,
+        media_type="application/pdf"
     )
 
 @app.get("/milvus")

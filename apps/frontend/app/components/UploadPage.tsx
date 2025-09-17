@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, Palette, AlignLeft, Table, Layout, Type, Eye, Download, Maximize2, Clock, CheckCircle2, AlertCircle, Loader } from 'lucide-react';
+import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, Palette, AlignLeft, Table, Layout, Type, Eye, Download, Maximize2, Clock, CheckCircle2, AlertCircle, Loader, Globe } from 'lucide-react';
 
 interface UploadPageProps {}
 
@@ -9,6 +9,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [rfpFiles, setRfpFiles] = useState<File[]>([]);
   const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
   const [config, setConfig] = useState<string>('');
+  const [language, setLanguage] = useState<string>('english'); // New language state
   const [dragActiveRfp, setDragActiveRfp] = useState(false);
   const [dragActiveSupporting, setDragActiveSupporting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -172,7 +173,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       body: JSON.stringify({
         config: config,
         docConfig: docConfig, // Send all document formatting settings
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        language: language // Include selected language
       }),
     });
     if (!res.ok) {
@@ -191,6 +193,35 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     return result;
   };
 
+  // Fixed download functions
+
+  const handlePdfDownload = async () => {
+    if (!generatedDocument) return;
+
+    try {
+      const filename = generatedDocument.replace('.docx', '');
+      const pdfUrl = `http://localhost:8000/download-pdf/${filename}`;
+      
+      const response = await fetch(pdfUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('PDF download failed:', error);
+      alert('PDF download failed. Please try again.');
+    }
+  };
+  // Simulate progress updates
   const simulateProgress = () => {
     const stages = [
       { stage: 'Uploading files...', progress: 20 },
@@ -271,6 +302,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       form.append("uuid", uuid);
       form.append("config", config);
       form.append("docConfig", JSON.stringify(docConfig));
+      form.append("language", language); // Add language to form data
 
       rfpFiles.forEach((f) => form.append("rfpFiles", f, f.name));
       supportingFiles.forEach((f) => form.append("supportingFiles", f, f.name));
@@ -303,6 +335,50 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       }, 2000);
     }
   };
+
+  // Language switcher component
+  const LanguageSelector = () => (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+      <div className="border-b border-gray-100 p-4">
+        <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
+          <Globe className="text-gray-500" size={16} />
+          Output Language
+        </h3>
+      </div>
+      
+      <div className="p-4">
+        <div className="flex bg-gray-100 rounded-lg p-1 space-x-1">
+          <button
+            onClick={() => setLanguage('english')}
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
+              language === 'english'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            English
+          </button>
+          <button
+            onClick={() => setLanguage('arabic')}
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all duration-200 ${
+              language === 'arabic'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            العربية
+          </button>
+        </div>
+        
+        <p className="text-xs text-gray-500 mt-2">
+          {language === 'arabic' 
+            ? 'سيتم إنشاء المقترح باللغة العربية مع التنسيق المناسب من اليمين إلى اليسار'
+            : 'The proposal will be generated in English with left-to-right formatting'
+          }
+        </p>
+      </div>
+    </div>
+  );
 
   const FileUploadZone = ({ 
     title, 
@@ -484,18 +560,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           <Loader className="animate-spin mx-auto text-gray-600" size={48} />
         </div>
         <h3 className="text-xl font-medium text-gray-900 mb-2">Processing Your Documents</h3>
-        {/* <p className="text-sm text-gray-600 mb-6">{processingStage}</p>
-         */}
         <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
           <div 
             className="bg-gray-600 h-3 rounded-full transition-all duration-500 ease-out" 
             style={{ width: `${uploadProgress}%` }}
           ></div>
         </div>
-        
-        {/* <div className="text-sm text-gray-500 font-medium">
-          {uploadProgress}% Complete
-        </div> */}
       </div>
     </div>
   );
@@ -520,41 +590,40 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         const mammoth = await import('mammoth');
         const result = await mammoth.convertToHtml({ arrayBuffer });
         
-        // Create a styled HTML document with proper RTL support
+        // Create a styled HTML document with proper RTL support based on selected language
+        const isRtl = language === 'arabic';
         const styledHtml = `
           <!DOCTYPE html>
-          <html dir="rtl">
+          <html dir="${isRtl ? 'rtl' : 'ltr'}">
             <head>
               <meta charset="utf-8">
               <style>
                 body {
-                  font-family: 'Arabic Typesetting', 'Traditional Arabic', 'Times New Roman', serif;
+                  font-family: ${isRtl ? "'Arabic Typesetting', 'Traditional Arabic', 'Times New Roman', serif" : "'Times New Roman', serif"};
                   line-height: 1.8;
                   max-width: 8.5in;
                   margin: 0 auto;
                   padding: 1in;
                   background: white;
                   color: #333;
-                  direction: rtl;
-                  text-align: right;
+                  direction: ${isRtl ? 'rtl' : 'ltr'};
+                  text-align: ${isRtl ? 'right' : 'left'};
                 }
                 
-                /* Arabic text styling */
                 p, div, span {
-                  direction: rtl;
-                  text-align: right;
+                  direction: ${isRtl ? 'rtl' : 'ltr'};
+                  text-align: ${isRtl ? 'right' : 'left'};
                   unicode-bidi: embed;
                   font-size: 14px;
                   line-height: 1.8;
                   margin-bottom: 12px;
                 }
                 
-                /* Headers with RTL support */
                 h1, h2, h3, h4, h5, h6 {
                   color: #2d2d2d;
                   margin-top: 24px;
                   margin-bottom: 16px;
-                  direction: rtl;
+                  direction: ${isRtl ? 'rtl' : 'ltr'};
                   text-align: center;
                   font-weight: bold;
                 }
@@ -563,20 +632,19 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 h2 { font-size: 16px; }
                 h3 { font-size: 14px; }
                 
-                /* Table styling for RTL */
                 table {
                   width: 100%;
                   border-collapse: collapse;
                   margin: 16px 0;
-                  direction: rtl;
-                  text-align: right;
+                  direction: ${isRtl ? 'rtl' : 'ltr'};
+                  text-align: ${isRtl ? 'right' : 'left'};
                 }
                 
                 th, td {
                   border: 1px solid #ddd;
                   padding: 8px 12px;
-                  text-align: right;
-                  direction: rtl;
+                  text-align: ${isRtl ? 'right' : 'left'};
+                  direction: ${isRtl ? 'rtl' : 'ltr'};
                   vertical-align: top;
                 }
                 
@@ -586,31 +654,27 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   text-align: center;
                 }
                 
-                /* Lists with RTL support */
                 ul, ol {
-                  direction: rtl;
-                  text-align: right;
-                  padding-right: 20px;
-                  margin-right: 0;
+                  direction: ${isRtl ? 'rtl' : 'ltr'};
+                  text-align: ${isRtl ? 'right' : 'left'};
+                  padding-${isRtl ? 'right' : 'left'}: 20px;
+                  margin-${isRtl ? 'right' : 'left'}: 0;
                 }
                 
                 li {
-                  direction: rtl;
-                  text-align: right;
+                  direction: ${isRtl ? 'rtl' : 'ltr'};
+                  text-align: ${isRtl ? 'right' : 'left'};
                   margin-bottom: 8px;
                 }
                 
-                /* Strong/bold text */
                 strong, b {
                   font-weight: bold;
                 }
                 
-                /* Preserve spacing and formatting */
                 .page-break {
                   page-break-before: always;
                 }
                 
-                /* Print styles */
                 @media print {
                   body { 
                     margin: 0; 
@@ -620,13 +684,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   table { font-size: 11px; }
                 }
                 
-                /* Handle mixed content */
                 .ltr-content {
                   direction: ltr;
                   text-align: left;
                 }
                 
-                /* Ensure proper word wrapping for Arabic */
                 * {
                   word-wrap: break-word;
                   overflow-wrap: break-word;
@@ -681,25 +743,26 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 {generatedDocument}
               </span>
             )}
+            <span className="text-xs text-gray-500 bg-blue-100 px-2 py-1 rounded">
+              {language === 'arabic' ? 'العربية' : 'English'}
+            </span>
           </div>
           <div className="flex items-center gap-2">
-            {pdfUrl && (
-              <button 
-                className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-1"
-                onClick={() => window.print()}
-                title="Print document"
-              >
-                <FileText size={12} />
-                Print
-              </button>
-            )}
             <button 
-              className="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors duration-200 flex items-center gap-2"
+              className="bg-blue-500 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-600 transition-colors duration-200 flex items-center gap-2"
+              onClick={handlePdfDownload}
+              title="Download as PDF"
+            >
+              <Download size={16} />
+              PDF
+            </button>
+            <button 
+              className="bg-teal-500 text-white px-4 py-2 rounded text-sm font-medium hover:bg-teal-600 transition-colors duration-200 flex items-center gap-2"
               onClick={handleDownload}
               title="Download original document"
             >
               <Download size={16} />
-              Download
+              Docx
             </button>
           </div>
         </div>
@@ -806,6 +869,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             </div>
 
             <div className="space-y-1">
+              <LanguageSelector />
+
               <FileUploadZone
                 title="RFP Documents"
                 files={rfpFiles}

@@ -66,6 +66,163 @@ default_CONFIG = {
 }
 
 
+import pythoncom
+from win32com.client import gencache
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("wordcom")
+
+def build_word_from_proposal(proposal_dict, user_config, output_path="proposal69.docx", visible=False ):
+    """Create a Word docx from the labeled Arabic proposal JSON via Word COM with VERTICAL architecture diagram support."""
+    import json
+    if isinstance(proposal_dict, str):
+        try:
+            proposal_dict = json.loads(proposal_dict)
+            logger.log(logging.WARNING, "⚠️ proposal_dict was str, parsed as JSON")
+        except Exception as e:
+            logger.error(f"❌ proposal_dict is str and not valid JSON: {e}")
+            raise
+    global CONFIG
+    CONFIG = build_updated_config(default_CONFIG,user_config)
+    print(CONFIG)
+
+    title = proposal_dict.get("title", "").strip()
+    sections = proposal_dict.get("sections", [])
+    logger.info(f"Generating Word doc with title: {title} and {len(sections)} sections")
+    
+    pythoncom.CoInitialize() 
+    word = gencache.EnsureDispatch("Word.Application")  
+    word.Visible = bool(visible)
+    word.DisplayAlerts = 0  
+    doc = None
+
+    try:
+        doc = word.Documents.Add()
+        logger.debug("📄 New Word document created")
+
+        # Page setup
+        ps = doc.PageSetup
+        ps.Orientation = CONFIG["orientation"]
+        ps.TopMargin = CONFIG["margin_top"]
+        ps.BottomMargin = CONFIG["margin_bottom"]
+        ps.LeftMargin = CONFIG["margin_left"]
+        ps.RightMargin = CONFIG["margin_right"]
+
+        # Set language
+        try:
+            doc.Content.LanguageID = CONFIG["language_lcid"]
+            logger.debug("🌐 Language applied")
+        except Exception:
+            logger.warning("⚠️ Failed to apply language")
+            pass
+        setup_header_footer(doc)
+        logger.debug("🔖 Header and footer applied")
+
+        # Title
+        if title:
+            add_rtl_paragraph(
+                doc,
+                title,
+                style_name="Title",
+                align=CONFIG["default_alignment"],
+                font_size=CONFIG["title_font_size"],
+                font_color=CONFIG.get("title_font_color", 0),
+                bold=True,
+            )
+            logger.debug("🏷️ Title added")
+
+        # Separator after title
+        sep = doc.Paragraphs.Add()
+        rtl_paragraph(sep, align=CONFIG["default_alignment"])
+
+        # Process sections
+        for i, sec in enumerate(sections):
+            heading = (sec.get("heading") or "").strip()
+            content = (sec.get("content") or "").strip()
+            points = sec.get("points") or []
+            table = sec.get("table") or {}
+            headers = table.get("headers") or []
+            rows = table.get("rows") or []
+
+            logger.debug(f"Processing section {i+1}: {heading}")
+
+            # Heading
+            if heading:
+                add_rtl_paragraph(
+                    doc,
+                    heading,
+                    style_name="Heading 1",
+                    align=CONFIG["default_alignment"],
+                    font_size=CONFIG["heading_font_size"],
+                    font_color=CONFIG.get("heading_font_color", 0),
+                    bold=True,
+                )
+
+            # *** HANDLE ARCHITECTURE DIAGRAM FIRST ***
+            if _handle_architecture_diagram_section(doc, sec):
+                logger.info(f"✅ VERTICAL architecture diagram processed in section {i+1}")
+
+            # Content
+            if content:
+                for para_text in content.split("\n"):
+                    if para_text.strip():
+                        add_rtl_paragraph(
+                            doc,
+                            para_text.strip(),
+                            style_name="Normal",
+                            align=CONFIG["default_alignment"],
+                            font_size=CONFIG["font_size"],
+                            font_color=CONFIG.get("content_font_color", 0),
+                            bold=False,
+                        )
+
+            # Bullet points
+            if points:
+                add_bullet_list(doc, points)
+
+            # Table
+            if headers or rows:
+                add_table_rtl(doc, headers, rows)
+
+        # Save document
+        output_path = str(Path(output_path).resolve())
+        logger.info(f"💾 Attempting to save document: {output_path}")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        try:
+            doc.SaveAs(output_path, FileFormat=WD_FORMAT_DOCX)
+            logger.info(f"✅ Document saved successfully at {output_path}")
+        except Exception as save_error:
+            print(f"Save error: {save_error}")
+            base, ext = os.path.splitext(output_path)
+            counter = 1
+            while counter <= 10:
+                try:
+                    new_path = f"{base}_{counter}{ext}"
+                    doc.SaveAs(new_path, FileFormat=WD_FORMAT_DOCX)
+                    output_path = new_path
+                    print(f"Saved as: {output_path}")
+                    logger.info(f"✅ Document saved with fallback name: {output_path}")
+                    break
+                except Exception:
+                    counter += 1
+            else:
+                raise save_error
+        
+        return output_path
+        
+    finally:
+        if doc:
+            try:
+                doc.Close(SaveChanges=False)
+            except:
+                pass
+        try:
+            word.Quit()
+        except:
+            pass
+
+
 WD_ALIGN_LEFT = 0
 WD_ALIGN_CENTER = 1
 WD_ALIGN_RIGHT = 2
@@ -502,158 +659,3 @@ def setup_header_footer(doc):
     except Exception as e:
         print(f"Header/Footer setup error: {e}")
 
-import pythoncom
-from win32com.client import gencache
-import logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("wordcom")
-
-def build_word_from_proposal(proposal_dict,user_config, output_path="proposal69.docx", visible=False ):
-    """Create a Word docx from the labeled Arabic proposal JSON via Word COM with VERTICAL architecture diagram support."""
-    import json
-    if isinstance(proposal_dict, str):
-        try:
-            proposal_dict = json.loads(proposal_dict)
-            logger.log(logging.WARNING, "⚠️ proposal_dict was str, parsed as JSON")
-        except Exception as e:
-            logger.error(f"❌ proposal_dict is str and not valid JSON: {e}")
-            raise
-    global CONFIG
-    CONFIG = build_updated_config(default_CONFIG,user_config)
-    print(CONFIG)
-
-    title = proposal_dict.get("title", "").strip()
-    sections = proposal_dict.get("sections", [])
-    logger.info(f"Generating Word doc with title: {title} and {len(sections)} sections")
-    
-    pythoncom.CoInitialize() 
-    word = gencache.EnsureDispatch("Word.Application")  
-    word.Visible = bool(visible)
-    word.DisplayAlerts = 0  
-    doc = None
-
-    try:
-        doc = word.Documents.Add()
-        logger.debug("📄 New Word document created")
-
-        # Page setup
-        ps = doc.PageSetup
-        ps.Orientation = CONFIG["orientation"]
-        ps.TopMargin = CONFIG["margin_top"]
-        ps.BottomMargin = CONFIG["margin_bottom"]
-        ps.LeftMargin = CONFIG["margin_left"]
-        ps.RightMargin = CONFIG["margin_right"]
-
-        # Set language
-        try:
-            doc.Content.LanguageID = CONFIG["language_lcid"]
-            logger.debug("🌐 Language applied")
-        except Exception:
-            logger.warning("⚠️ Failed to apply language")
-            pass
-        setup_header_footer(doc)
-        logger.debug("🔖 Header and footer applied")
-
-        # Title
-        if title:
-            add_rtl_paragraph(
-                doc,
-                title,
-                style_name="Title",
-                align=WD_ALIGN_RIGHT,
-                font_size=CONFIG["title_font_size"],
-                font_color=CONFIG.get("title_font_color", 0),
-                bold=True,
-            )
-            logger.debug("🏷️ Title added")
-
-        # Separator after title
-        sep = doc.Paragraphs.Add()
-        rtl_paragraph(sep, align=WD_ALIGN_RIGHT)
-
-        # Process sections
-        for i, sec in enumerate(sections):
-            heading = (sec.get("heading") or "").strip()
-            content = (sec.get("content") or "").strip()
-            points = sec.get("points") or []
-            table = sec.get("table") or {}
-            headers = table.get("headers") or []
-            rows = table.get("rows") or []
-
-            logger.debug(f"Processing section {i+1}: {heading}")
-
-            # Heading
-            if heading:
-                add_rtl_paragraph(
-                    doc,
-                    heading,
-                    style_name="Heading 1",
-                    align=WD_ALIGN_RIGHT,
-                    font_size=CONFIG["heading_font_size"],
-                    font_color=CONFIG.get("heading_font_color", 0),
-                    bold=True,
-                )
-
-            # *** HANDLE ARCHITECTURE DIAGRAM FIRST ***
-            if _handle_architecture_diagram_section(doc, sec):
-                logger.info(f"✅ VERTICAL architecture diagram processed in section {i+1}")
-
-            # Content
-            if content:
-                for para_text in content.split("\n"):
-                    if para_text.strip():
-                        add_rtl_paragraph(
-                            doc,
-                            para_text.strip(),
-                            style_name="Normal",
-                            align=WD_ALIGN_RIGHT,
-                            font_size=CONFIG["font_size"],
-                            font_color=CONFIG.get("content_font_color", 0),
-                            bold=False,
-                        )
-
-            # Bullet points
-            if points:
-                add_bullet_list(doc, points)
-
-            # Table
-            if headers or rows:
-                add_table_rtl(doc, headers, rows)
-
-        # Save document
-        output_path = str(Path(output_path).resolve())
-        logger.info(f"💾 Attempting to save document: {output_path}")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        try:
-            doc.SaveAs(output_path, FileFormat=WD_FORMAT_DOCX)
-            logger.info(f"✅ Document saved successfully at {output_path}")
-        except Exception as save_error:
-            print(f"Save error: {save_error}")
-            base, ext = os.path.splitext(output_path)
-            counter = 1
-            while counter <= 10:
-                try:
-                    new_path = f"{base}_{counter}{ext}"
-                    doc.SaveAs(new_path, FileFormat=WD_FORMAT_DOCX)
-                    output_path = new_path
-                    print(f"Saved as: {output_path}")
-                    logger.info(f"✅ Document saved with fallback name: {output_path}")
-                    break
-                except Exception:
-                    counter += 1
-            else:
-                raise save_error
-        
-        return output_path
-        
-    finally:
-        if doc:
-            try:
-                doc.Close(SaveChanges=False)
-            except:
-                pass
-        try:
-            word.Quit()
-        except:
-            pass
