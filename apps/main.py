@@ -9,6 +9,9 @@ from dotenv import load_dotenv
 import sys
 import uuid
 from apps.wordgenAgent.app.api import generate_proposal
+from fastapi import Body
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
 
 load_dotenv()
 
@@ -34,6 +37,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class OCRRequest(BaseModel):
+    config: Optional[str] = None
+    docConfig: Optional[Dict[str, Any]] = None
+    timestamp: Optional[str] = None
+
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'vdb'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'workers', 'ocr'))
@@ -123,11 +132,20 @@ async def get_files():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ocr/{folder_name}")
-async def process_ocr(folder_name: str = Path(..., description="Folder name to process")):
+async def process_ocr(folder_name: str = Path(..., description="Folder name to process"), request: OCRRequest = Body(...)):
     """Process folder with enhanced OCR text extraction and save to Milvus collections + Generate comprehensive proposal"""
     try:
         start_time = datetime.now()
         logger.info(f"Processing folder: {folder_name}")
+
+        user_config = request.config
+        doc_config = request.docConfig
+        timestamp = request.timestamp
+
+        logger.info(f"Received config: {user_config}")
+        logger.info(f"Received docConfig: {doc_config}")
+        logger.info(f"Timestamp: {timestamp}")
+        print(doc_config)
         
         onedrive_service = get_onedrive_service()
         
@@ -261,66 +279,17 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         logger.info(f"Processing completed in {processing_time}")
         proposal_generation_result = {}
         try:
+            
             logger.info(f"🚀 Starting comprehensive proposal generation for folder: {folder_name}")
-            proposal_result = generate_proposal(uuid=folder_name)
-            
-            proposal_generation_result = {
-                "status": "success",
-                "message": "Comprehensive proposal generated successfully",
-                "features_included": [
-                    "6-7 page detailed proposal content",
-                    "Architecture diagrams showing system components",
-                    "Multi-language support (detected from OCR text)",
-                    "Technical specifications and methodologies",
-                    "Risk analysis and mitigation strategies",
-                    "Performance metrics and KPIs",
-                    "Quality assurance frameworks"
-                ],
-                "output_location": "output/proposal*.docx (or similar with counter)",
-                "processing_notes": "Proposal includes intelligently placed architecture diagrams"
-            }
-            
-            logger.info(f"✅ Comprehensive proposal generation completed for folder: {folder_name}")
+            output_path = generate_proposal(uuid=folder_name, user_config=doc_config)  
+            logger.info(f"✅ Comprehensive proposal PATH is here............: {output_path}")
             
         except Exception as e:
             logger.error(f"❌ Comprehensive proposal generation failed for folder {folder_name}: {e}")
-            proposal_generation_result = {
-                "status": "failed",
-                "error": str(e),
-                "message": "Proposal generation encountered an error, but OCR processing was successful",
-                "fallback_action": "You can retry proposal generation separately or check the logs for detailed error information"
-            }
-        
+            
         return {
             "folder_name": folder_name,
-            "processing_summary": {
-                "total_files_found": len(all_files),
-                "pdf_files_found": len(pdf_files),
-                "files_processed_successfully": len(processed_files),
-                "files_failed": len(failed_files),
-                "total_pages_processed": sum([f.get('pages_processed', 0) for f in processed_files]),
-                "total_words_extracted": sum([f.get('total_words', 0) for f in processed_files]),
-                "rfp_files_count": len([f for f in processed_files if f.get('folder_type') == 'rfp_files']),
-                "supportive_files_count": len([f for f in processed_files if f.get('folder_type') == 'supportive_files'])
-            },
-            "extracted_content": extracted_content,  
-            "processed_files_details": processed_files,
-            "failed_files": failed_files,
-            "ocr_processing_sample": {
-                "total_ocr_results": len(all_ocr_results),
-                "sample_results": all_ocr_results[:2],  
-                "structure_info": "Each result contains: file_name, file_type, page, content, word_count, timestamp"
-            },
-            "vector_storage": vector_result,
-            "proposal_generation": proposal_generation_result,
-            "processing_time": processing_time,
-            "timestamp": datetime.now().isoformat(),
-            "enhanced_features": {
-                "ocr_text_processing": "High-quality text extraction using Azure Document Intelligence",
-                "comprehensive_content": "6-7 pages with detailed technical specifications", 
-                "intelligent_text_chunking": "Optimized content chunking for vector storage",
-                "multi_language_detection": "Automatic language detection and proposal generation in native language"
-            }
+            "download_url": f"/download/{folder_name}.docx"
         }
     
     except HTTPException:
@@ -328,6 +297,19 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
     except Exception as e:
         logger.error(f"OCR processing error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+from fastapi.responses import FileResponse
+
+@app.get("/download/{filename}")
+def download_file(filename: str):
+    file_path = os.path.join("output", filename)
+    if not os.path.exists(file_path):
+        return {"error": "File not found"}
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 
 @app.get("/milvus")
 async def get_milvus(

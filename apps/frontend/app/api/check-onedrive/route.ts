@@ -9,6 +9,7 @@ const oneDriveUserId = process.env.AZURE_ONEDRIVE_USER_ID!; // UPN or GUID
 
 async function getAccessToken() {
   const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+  console.log("Tenant:", tenantId, "ClientId:", clientId, "UserId:", oneDriveUserId?.slice(0,6));
   const data = {
     client_id: clientId,
     scope: "https://graph.microsoft.com/.default",

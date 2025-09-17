@@ -2,13 +2,15 @@ import json
 import logging
 import os
 from pathlib import Path
+from apps.wordgenAgent.app.config_setting import build_updated_config
+
 
 try:
     import win32com.client as win32
 except Exception as e:
     raise RuntimeError("win32com is required. Install with: pip install pywin32") from e
 
-CONFIG = {
+default_CONFIG = {
     "visible_word": False,         
     "output_path": "output/proposal.docx",
     "language_lcid": 1025,         
@@ -63,7 +65,7 @@ CONFIG = {
     "footer_padding": 6,
 }
 
-# ---- Minimal Word constants ----
+
 WD_ALIGN_LEFT = 0
 WD_ALIGN_CENTER = 1
 WD_ALIGN_RIGHT = 2
@@ -105,7 +107,6 @@ def is_valid_image_file(file_path):
     except Exception:
         return False
 
-print(is_valid_image_file(CONFIG.get("header_logo_path")))
 
 def rtl_paragraph(paragraph, align=WD_ALIGN_RIGHT):
     """Apply RTL defaults to a paragraph."""
@@ -504,11 +505,10 @@ def setup_header_footer(doc):
 import pythoncom
 from win32com.client import gencache
 import logging
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wordcom")
 
-def build_word_from_proposal(proposal_dict, output_path="proposal69.docx", visible=False):
+def build_word_from_proposal(proposal_dict,user_config, output_path="proposal69.docx", visible=False ):
     """Create a Word docx from the labeled Arabic proposal JSON via Word COM with VERTICAL architecture diagram support."""
     import json
     if isinstance(proposal_dict, str):
@@ -518,6 +518,9 @@ def build_word_from_proposal(proposal_dict, output_path="proposal69.docx", visib
         except Exception as e:
             logger.error(f"❌ proposal_dict is str and not valid JSON: {e}")
             raise
+    global CONFIG
+    CONFIG = build_updated_config(default_CONFIG,user_config)
+    print(CONFIG)
 
     title = proposal_dict.get("title", "").strip()
     sections = proposal_dict.get("sections", [])

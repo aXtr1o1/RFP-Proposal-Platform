@@ -66,23 +66,32 @@ def _milvus_query_with_fallback(col: Collection, expr: str, output_fields: list,
 
 def _connect_milvus() -> None:
     """Connect to Milvus using environment variables."""
-    host = os.getenv("MILVUS_HOST", "localhost")
-    port = int(os.getenv("MILVUS_PORT", "19530"))
-    secure_env = os.getenv("MILVUS_SECURE", "false").strip().lower()
-    secure = secure_env in ("1", "true", "yes", "on")
+    logger.info(f"milvus connection started")
+    uri = os.getenv("MILVUS_URI")
     user = os.getenv("MILVUS_USER")
     password = os.getenv("MILVUS_PASSWORD")
 
-    connect_kwargs = {
-        "alias": "default",
-        "host": host,
-        "port": str(port),
-        "secure": secure,
-    }
+    connect_kwargs = {"alias": "default"}
+
+    if uri:
+        connect_kwargs["uri"] = uri
+        logger.info(f"milvus connected")
+    else:
+        host = os.getenv("MILVUS_HOST")
+        port = os.getenv("MILVUS_PORT", "19530")
+        secure_env = os.getenv("MILVUS_SECURE", "false").strip().lower()
+        secure = secure_env in ("1", "true", "yes", "on")
+
+        connect_kwargs.update({
+            "host": host,
+            "port": port,
+            "secure": secure,
+        })
+
     if user and password:
         connect_kwargs["user"] = user
         connect_kwargs["password"] = password
-    
+
     try:
         connections.connect(**connect_kwargs)
     except Exception as exc:
@@ -552,7 +561,7 @@ def _create_fallback_proposal(proposal_text: str, supportive_text: str, native_l
 
 # ---------- API Endpoints ----------
 
-def generate_proposal(uuid):
+def generate_proposal(uuid , user_config):
     """Generate a detailed proposal text from RFP files in Milvus collection in the native language."""
     try:
         rfp_text = fetch_rfp_text_by_uuid(str(uuid))
@@ -619,12 +628,12 @@ def generate_proposal(uuid):
             logger.info("Continuing with original proposal without architecture diagrams")
 
         try:
-            output_path = build_word_from_proposal(proposal_dict, output_path="output/proposal69.docx", visible=False)
-            logger.info(f"Word document generated successfully: {output_path}")
+
+            output_path = build_word_from_proposal(proposal_dict, output_path=f"output/{uuid}.docx", visible=False , user_config=user_config)
+            return output_path
         except Exception as word_error:
             logger.error(f"Word document generation failed: {word_error}")
         
-        print("this is the final proposal", json.dumps(proposal_dict, ensure_ascii=False, indent=2))
         
     except RetryError as rex:
         cause = getattr(rex, "last_attempt", None)
@@ -648,6 +657,8 @@ def generate_proposal(uuid):
         raise HTTPException(status_code=500, detail=str(exc))
 
 # ---------- Architecture Diagram Integration ----------
+
+
 
 def generate_and_integrate_architecture_diagram(proposal_dict: dict, rfp_text: str, native_language: str) -> dict:
     """
