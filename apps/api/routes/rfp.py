@@ -34,7 +34,7 @@ if not all([TENANT_ID, CLIENT_ID, CLIENT_SECRET, OCR_KEY, OCR_ENDPOINT]):
 # Import Milvus client
 try:
     sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'vdb'))
-    from milvus_client import get_milvus_client
+    from apps.vdb.milvus_client import get_milvus_client
     logger.info("Milvus client imported successfully")
 except ImportError as e:
     logger.warning(f"Milvus client not found: {e}")
@@ -44,14 +44,14 @@ except ImportError as e:
 try:
     workers_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'workers', 'ocr')
     sys.path.append(workers_path)
-    from worker import get_ocr_worker
+    from apps.workers.ocr.worker import get_ocr_worker
     logger.info("OCR Worker imported successfully")
 except ImportError as e:
     logger.warning(f"OCR Worker not found: {e}")
     get_ocr_worker = None
 
 try:
-    from text_ocr_service import get_text_ocr_service
+    from apps.workers.ocr.text_ocr_service import get_text_ocr_service
     logger.info("Text OCR Service imported successfully")
 except ImportError as e:
     logger.warning(f"Text OCR Service not found: {e}")

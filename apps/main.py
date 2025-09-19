@@ -50,8 +50,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'workers', '
 
 from apps.api.routes.rfp import get_onedrive_service
 from apps.vdb.milvus_client import get_milvus_client
-
 from apps.workers.ocr.worker import get_ocr_worker
+from apps.supabase.supabase_service import upload_and_save_pdf
 
 try:
     from apps.workers.ocr.text_ocr_service import get_text_ocr_service
@@ -147,6 +147,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         logger.info(f"Received config: {user_config}")
         logger.info(f"Received docConfig: {doc_config}")
         logger.info(f"Timestamp: {timestamp}")
+        logger.info(f"laguage received: {language}")
         logger.info(f"laguage received: {language}")
         print(doc_config)
         onedrive_service = get_onedrive_service()
@@ -282,36 +283,81 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
             output_path = generate_proposal(uuid=folder_name, user_config=doc_config, language=language)
             logger.info(f"Comprehensive proposal PATH is here............: {output_path}")
             local_docx = os.path.join("output", f"{folder_name}.docx")
-            onedrive_info = {}
+            local_pdf = os.path.join("output", f"{folder_name}.pdf")
             try:
-                # ensure the destination folder exists
-                onedrive_service.ensure_folder_path(rfp_folder['drive_id'], search_path)
+                convert(local_docx, local_pdf)
+                logger.info(f"Converted DOCX to PDF: {local_pdf}")
+            except Exception as e:
+                logger.error(f"PDF conversion failed: {e}")
+                local_pdf = None
 
-                # upload into the SAME folder
+
+            onedrive_info = {}
+
+
+            # Upload the generated document back to OneDrive
+
+            try:
+                onedrive_service.ensure_folder_path(rfp_folder['drive_id'], search_path)
                 dest_rel_path = f"{search_path}/{folder_name}.docx"
                 uploaded_item = onedrive_service.upload_small_file(
                     rfp_folder['drive_id'],
                     dest_rel_path,
                     local_docx
                 )
+                web_url_docx = uploaded_item.get("webUrl")
 
-                # webUrl is the OneDrive/SharePoint UI link (good for opening/previewing)
-                web_url = uploaded_item.get("webUrl")
+
+
+                # upload the PDF file (if conversion succeeded)
+
+                web_url_pdf = None
+                if local_pdf:
+                    dest_pdf_path = f"{search_path}/{folder_name}.pdf"
+                    uploaded_pdf = onedrive_service.upload_small_file(
+                        rfp_folder['drive_id'],
+                        dest_pdf_path,
+                        local_pdf
+                    )
+                    web_url_pdf = uploaded_pdf.get("webUrl")
 
                 # optional: create a view-only share link for easy embedding
-                share_url = onedrive_service.create_share_link(
+                share_docx = onedrive_service.create_share_link(
                     rfp_folder['drive_id'],
                     uploaded_item.get("id"),
-                    scope="anonymous",  # or "organization"
+                    scope="anonymous",  
                     link_type="view"
                 )
 
+                share_pdf = None
+                if local_pdf and uploaded_pdf:
+                    share_pdf = onedrive_service.create_share_link(
+                        rfp_folder['drive_id'],
+                        uploaded_pdf.get("id"),
+                        scope="anonymous",
+                        link_type="view"
+                    )
+
+
                 onedrive_info = {
-                    "uploaded": True,
-                    "webUrl": web_url,
-                    "shareUrl": share_url  # might be None if policy blocks createLink
+                    "uploaded_docx": True,
+                    "docx_webUrl": web_url_docx,
+                    "docx_shareUrl": share_docx,
+                    "uploaded_pdf": bool(local_pdf),
+                    "pdf_webUrl": web_url_pdf,
+                    "pdf_shareUrl": share_pdf
                 }
-                logger.info(f"Uploaded proposal to OneDrive: {web_url}")
+
+
+
+                logger.info(f"Uploaded proposal (DOCX + PDF) to OneDrive")
+                logger.info(f"Uploaded proposal to OneDrive: {web_url_docx}")
+                logger.info(f"Share link (DOCX): {share_docx}")
+                pdf_supabase_url = upload_and_save_pdf(local_pdf, f"{folder_name}.pdf", uuid=folder_name, pdf_share_url=share_pdf)
+                if local_pdf:  
+                    logger.info(f"Uploaded PDF to OneDrive: {web_url_pdf}")
+                    logger.info(f"Share link (PDF): {share_pdf}")
+
             except Exception as e:
                 logger.warning(f"OneDrive upload failed: {e}")
                 onedrive_info = {"uploaded": False, "error": str(e)}
@@ -321,8 +367,8 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
             
         return {
             "folder_name": folder_name,
-    "download_url": f"/download/{folder_name}.docx",
-    "onedrive": onedrive_info
+            "onedrive": onedrive_info,
+            "supabase_url" : pdf_supabase_url,
         }
     
     except HTTPException:
