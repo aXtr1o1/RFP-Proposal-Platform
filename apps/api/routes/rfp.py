@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple,Optional
 import msal
 import requests
 from datetime import datetime
@@ -7,6 +7,8 @@ import logging
 from dotenv import load_dotenv
 import urllib.parse
 import sys
+import pathlib
+import json
 
 load_dotenv()
 
@@ -134,6 +136,73 @@ class OneDriveService:
                     })
         
         return drives
+    def _auth_headers(self, extra=None):
+        h = {"Authorization": f"Bearer {self.access_token}"}
+        if extra: h.update(extra)
+        return h
+
+    def ensure_folder_path(self, drive_id: str, path: str) -> Dict:
+        """
+        Ensure 'path' exists under the given drive. Creates it if missing.
+        Returns the folder item JSON.
+        """
+        # Try to GET the folder
+        url = f"{self.base_url}/drives/{drive_id}/root:/{urllib.parse.quote(path)}"
+        r = requests.get(url, headers=self._auth_headers())
+        if r.status_code == 200:
+            return r.json()
+        if r.status_code != 404:
+            r.raise_for_status()
+
+        # Create the chain of subfolders step by step
+        segments = [p for p in pathlib.PurePosixPath(path).parts if p not in ("/", "")]
+        parent_url = f"{self.base_url}/drives/{drive_id}/root/children"
+        parent_path = ""
+        for seg in segments:
+            parent_path = f"{parent_path}/{seg}" if parent_path else seg
+            get_url = f"{self.base_url}/drives/{drive_id}/root:/{urllib.parse.quote(parent_path)}"
+            g = requests.get(get_url, headers=self._auth_headers())
+            if g.status_code == 200:
+                continue
+            if g.status_code != 404:
+                g.raise_for_status()
+            # create this segment
+            payload = {"name": seg, "folder": {}, "@microsoft.graph.conflictBehavior": "fail"}
+            c = requests.post(
+                f"{self.base_url}/drives/{drive_id}/root:/{urllib.parse.quote(parent_path.rsplit('/',1)[0]) or ''}:/children",
+                headers=self._auth_headers({"Content-Type":"application/json"}),
+                data=json.dumps(payload)
+            )
+            if c.status_code not in (200, 201):
+                c.raise_for_status()
+        # Return final folder
+        rf = requests.get(url, headers=self._auth_headers())
+        rf.raise_for_status()
+        return rf.json()
+
+    def upload_small_file(self, drive_id: str, dest_path: str, local_file_path: str) -> Dict:
+        """
+        PUT /content for files up to ~4MB (docx usually OK). Overwrites if exists.
+        dest_path like: 'RFP-Uploads/{folder_name}/{filename}.docx'
+        """
+        up_url = f"{self.base_url}/drives/{drive_id}/root:/{urllib.parse.quote(dest_path)}:/content"
+        with open(local_file_path, "rb") as f:
+            r = requests.put(up_url, headers=self._auth_headers(), data=f)
+        r.raise_for_status()
+        return r.json()
+
+    def create_share_link(self, drive_id: str, item_id: str, scope: str = "anonymous", link_type: str = "view") -> Optional[str]:
+        """
+        Returns a shareable URL (view-only by default). Requires Files.ReadWrite.All (App) permissions.
+        """
+        url = f"{self.base_url}/drives/{drive_id}/items/{item_id}/createLink"
+        payload = {"type": link_type, "scope": scope}
+        r = requests.post(url, headers=self._auth_headers({"Content-Type":"application/json"}), data=json.dumps(payload))
+        if r.status_code in (200, 201):
+            data = r.json()
+            return data.get("link", {}).get("webUrl")
+        # If createLink is disabled by policy, just return None (frontend can use webUrl)
+        return None
     
     def get_folders_in_drives(self):
         """Get folders in all drives"""

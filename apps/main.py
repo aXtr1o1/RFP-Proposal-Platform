@@ -147,6 +147,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         logger.info(f"Received config: {user_config}")
         logger.info(f"Received docConfig: {doc_config}")
         logger.info(f"Timestamp: {timestamp}")
+        logger.info(f"laguage received: {language}")
         print(doc_config)
         onedrive_service = get_onedrive_service()
         
@@ -236,7 +237,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
             }
             
             if rfp_results:
-                logger.info(f"💾 Saving {len(rfp_results)} RFP results to rfp_files collection")
+                logger.info(f"Saving {len(rfp_results)} RFP results to rfp_files collection")
                 rfp_client = get_milvus_client("rfp_files")
                 if rfp_client.is_available():
                     rfp_ids = rfp_client.save_documents(rfp_results, folder_name)
@@ -252,7 +253,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
                     vector_result["collections"]["rfp_files"] = {"status": "failed", "reason": "Milvus client not available"}
             
             if supportive_results:
-                logger.info(f"💾 Saving {len(supportive_results)} supportive results to supportive_files collection")
+                logger.info(f"Saving {len(supportive_results)} supportive results to supportive_files collection")
                 supportive_client = get_milvus_client("supportive_files")
                 if supportive_client.is_available():
                     supportive_ids = supportive_client.save_documents(supportive_results, folder_name)
@@ -264,7 +265,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
                         "status": "success"
                     }
                     vector_result["total_documents_saved"] += len(supportive_ids)
-                    logger.info(f"✅ Saved {len(supportive_ids)} supportive documents to Milvus")
+                    logger.info(f"Saved {len(supportive_ids)} supportive documents to Milvus")
                 else:
                     vector_result["collections"]["supportive_files"] = {"status": "failed", "reason": "Milvus client not available"}
             
@@ -277,16 +278,51 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         proposal_generation_result = {}
         try:
             
-            logger.info(f"🚀 Starting comprehensive proposal generation for folder: {folder_name}")
+            logger.info(f"Starting comprehensive proposal generation for folder: {folder_name}")
             output_path = generate_proposal(uuid=folder_name, user_config=doc_config, language=language)
-            logger.info(f"✅ Comprehensive proposal PATH is here............: {output_path}")
+            logger.info(f"Comprehensive proposal PATH is here............: {output_path}")
+            local_docx = os.path.join("output", f"{folder_name}.docx")
+            onedrive_info = {}
+            try:
+                # ensure the destination folder exists
+                onedrive_service.ensure_folder_path(rfp_folder['drive_id'], search_path)
+
+                # upload into the SAME folder
+                dest_rel_path = f"{search_path}/{folder_name}.docx"
+                uploaded_item = onedrive_service.upload_small_file(
+                    rfp_folder['drive_id'],
+                    dest_rel_path,
+                    local_docx
+                )
+
+                # webUrl is the OneDrive/SharePoint UI link (good for opening/previewing)
+                web_url = uploaded_item.get("webUrl")
+
+                # optional: create a view-only share link for easy embedding
+                share_url = onedrive_service.create_share_link(
+                    rfp_folder['drive_id'],
+                    uploaded_item.get("id"),
+                    scope="anonymous",  # or "organization"
+                    link_type="view"
+                )
+
+                onedrive_info = {
+                    "uploaded": True,
+                    "webUrl": web_url,
+                    "shareUrl": share_url  # might be None if policy blocks createLink
+                }
+                logger.info(f"Uploaded proposal to OneDrive: {web_url}")
+            except Exception as e:
+                logger.warning(f"OneDrive upload failed: {e}")
+                onedrive_info = {"uploaded": False, "error": str(e)}
             
         except Exception as e:
-            logger.error(f"❌ Comprehensive proposal generation failed for folder {folder_name}: {e}")
+            logger.error(f"Comprehensive proposal generation failed for folder {folder_name}: {e}")
             
         return {
             "folder_name": folder_name,
-            "download_url": f"/download/{folder_name}.docx"
+    "download_url": f"/download/{folder_name}.docx",
+    "onedrive": onedrive_info
         }
     
     except HTTPException:

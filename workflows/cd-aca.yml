@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/api/**'
+      - 'apps/nextapi/**'
       - 'apps/frontend/**'
       - '.github/workflows/**'
 jobs:

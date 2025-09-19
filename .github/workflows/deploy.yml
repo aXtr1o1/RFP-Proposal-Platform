@@ -1,0 +1,48 @@
+name: Deploy to EC2 (PM2)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/frontend/**'
+      - '.github/workflows/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no Administrator@${{ secrets.EC2_HOST }} << 'EOF'
+            cd C:/Users/Administrator/Documents/RFP-Proposal-Platform
+
+            echo "Pulling latest code..."
+            git reset --hard
+            git pull origin main
+
+            echo "Installing backend deps..."
+            cd apps/api
+            pip install -r requirements.txt
+            cd ../..
+
+            echo "Installing frontend deps..."
+            cd apps/frontend
+            npm install
+            npm run build
+            cd ../..
+
+            echo "Restarting PM2 apps..."
+            pm2 restart fastapi-app --update-env
+            pm2 restart frontend-app --update-env
+            pm2 save
+          EOF
