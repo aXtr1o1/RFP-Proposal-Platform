@@ -18,3 +18,4 @@ openai==1.44.1
 tenacity==8.4.2
 pywin32==306
 docx2pdf
+supabase
