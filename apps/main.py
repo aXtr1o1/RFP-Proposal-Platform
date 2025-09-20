@@ -151,7 +151,6 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         logger.info(f"Timestamp: {timestamp}")
         logger.info(f"laguage received: {language}")
         logger.info(f"laguage received: {language}")
-        print(doc_config)
         onedrive_service = get_onedrive_service()
         
         folders = onedrive_service.get_folders_in_drives()
