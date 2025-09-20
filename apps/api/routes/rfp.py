@@ -63,7 +63,7 @@ class OneDriveService:
         self.client_id = CLIENT_ID
         self.client_secret = CLIENT_SECRET
         self.access_token = None
-        self.refresh_token = None
+        self._authenticate()
         self.base_url = "https://graph.microsoft.com/v1.0"
         if get_ocr_worker:
             try:
@@ -73,11 +73,7 @@ class OneDriveService:
                 self.ocr_worker = None
         else:
             self.ocr_worker = None
-        try: 
-            self._authenticate()
-
-        except:
-            self._refresh_access_token()
+    
     
     def _authenticate(self):
         """Authenticate with Microsoft Graph API"""
@@ -94,36 +90,10 @@ class OneDriveService:
             
             if "access_token" in result:
                 self.access_token = result["access_token"]
-                self.refresh_token = result['refresh_token']
+                logger.info("Expires in:", result['expires_in'])
                 logger.info("OneDrive authentication successful")
             else:
                 raise Exception(f"Authentication failed: {result.get('error_description')}")
-        except Exception as e:
-            logger.error(f"Authentication error: {str(e)}")
-            raise
-
-    def _refresh_access_token(self):
-        """Refresh Access Token with Refresh Token"""
-        try:
-            scopes = ["https://graph.microsoft.com/.default"]
-            refresh_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-            data = {
-                "client_id": self.client_id,
-                "scope": scopes,
-                "refresh_token": self.refresh_token,
-                "grant_type": "refresh_token",
-                "client_secret": self.client_secret
-            }
-
-            # Make the request
-            response = requests.post(refresh_url, data=data)
-
-            if response.status_code == 200:
-                token_data = response.json()
-                self.access_token = token_data['access_token']
-            else:
-                raise Exception(f"Refresh failed: {response.text}")
-            
         except Exception as e:
             logger.error(f"Authentication error: {str(e)}")
             raise
@@ -138,7 +108,7 @@ class OneDriveService:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            logger.error(f"API request failed for {endpoint}: {str(e)}")
+            # logger.error(f"API request failed for {endpoint}: {str(e)}")
             return None
     
     def get_all_drives(self):
