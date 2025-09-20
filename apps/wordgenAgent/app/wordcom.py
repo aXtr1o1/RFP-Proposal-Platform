@@ -72,7 +72,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wordcom")
 
-def build_word_from_proposal(proposal_dict, user_config, output_path="proposal69.docx", visible=False ):
+def build_word_from_proposal(proposal_dict, user_config, output_path, language, visible=False):
     """Create a Word docx from the labeled Arabic proposal JSON via Word COM with VERTICAL architecture diagram support."""
     import json
     if isinstance(proposal_dict, str):
@@ -84,8 +84,8 @@ def build_word_from_proposal(proposal_dict, user_config, output_path="proposal69
             raise
     global CONFIG
     CONFIG = build_updated_config(default_CONFIG,user_config)
+    native_language = language
     print(CONFIG)
-
     title = proposal_dict.get("title", "").strip()
     sections = proposal_dict.get("sections", [])
     logger.info(f"Generating Word doc with title: {title} and {len(sections)} sections")
@@ -177,8 +177,38 @@ def build_word_from_proposal(proposal_dict, user_config, output_path="proposal69
                         )
 
             # Bullet points
-            if points:
-                add_bullet_list(doc, points)
+            # if points:
+            #     add_bullet_list(doc, points)
+            logger.info("thissss is the language found in the wordcom", native_language)
+            if native_language == "english":
+
+                if points:
+                    logger.debug(f"Adding bullet points for section {i+1}")
+                    for point in points:
+                        add_rtl_paragraph(
+                            doc,
+                            point.strip(),
+                            style_name="List Bullet",
+                            align=CONFIG["default_alignment"],
+                            font_size=CONFIG["font_size"],
+                            font_color=CONFIG.get("content_font_color", 0),
+                            bold=False,
+                        )
+
+            if native_language == "arabic":
+                if points:
+                    logger.debug(f"Adding bullet points for section {i+1}")
+                    for point in points:
+                        add_rtl_paragraph(
+                            doc,
+                            point.strip(),
+                            # style_name="List Bullet",
+                            align=CONFIG["default_alignment"],
+                            font_size=CONFIG["font_size"],
+                            font_color=CONFIG.get("content_font_color", 0),
+                            bold=False,
+                        )
+
 
             # Table
             if headers or rows:
@@ -297,6 +327,45 @@ def add_rtl_paragraph(doc, text, style_name=None, align=WD_ALIGN_RIGHT, font_siz
     
     para.Range.InsertParagraphAfter()
     return para
+
+
+# def add_rtl_paragraph(doc, text, style_name=None, align=3, font_size=None, font_color=None, bold=None):
+#     """Insert a paragraph with RTL formatting and an optional style using Word COM."""
+#     para = doc.Paragraphs.Add()
+    
+#     # Apply the specified style
+#     if style_name:
+#         try:
+#             para.Style = style_name
+#         except Exception:
+#             pass
+    
+#     # Set the paragraph text
+#     para.Range.Text = text
+    
+#     # Set the paragraph alignment (for RTL, typically align = 3)
+#     para.Range.ParagraphFormat.Alignment = align  # Right alignment (for RTL)
+
+#     # Apply bullet style if style is 'List Bullet'
+#     if style_name == "List Bullet":
+#         para.Range.ListFormat.ApplyBulletDefault()
+
+#     try:
+#         # Set font size, color, and bold if specified
+#         if font_size:
+#             para.Range.Font.Size = font_size
+#         if font_color is not None:
+#             para.Range.Font.Color = int(font_color)
+#         if bold is not None:
+#             para.Range.Font.Bold = 1 if bold else 0
+#     except Exception as e:
+#         pass
+    
+#     # Ensure paragraph is added to the document
+#     para.Range.InsertParagraphAfter()
+#     return para
+
+
 
 def add_bullet_list(doc, items):
     """Add a bullet list with RTL formatting."""
@@ -510,7 +579,7 @@ def add_table_rtl(doc, headers, rows):
                     cell = table.Cell(current_row, c)
                     cell.Range.Text = str(val)
                     cell.Range.ParagraphFormat.ReadingOrder = WD_READINGORDER_RTL
-                    cell.Range.ParagraphFormat.Alignment = WD_ALIGN_RIGHT
+                    cell.Range.ParagraphFormat.Alignment = WD_ALIGN_CENTER
                     try:
                         cell.Range.Font.Size = CONFIG["table_font_size"]
                         cell.Range.Font.Color = int(CONFIG.get("table_font_color", 0))

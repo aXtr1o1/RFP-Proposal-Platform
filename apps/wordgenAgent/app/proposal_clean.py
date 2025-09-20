@@ -58,7 +58,10 @@ def safe_literal_eval(s: str) -> Any:
     Try to parse a Python-literal-style dict string robustly.
     Falls back to targeted fixes if trailing commas or duplicated commas appear.
     """
+    e2=''
+    e3=''
     try:
+        print(f'Before shit:{s}')
         return ast.literal_eval(s)
     except Exception as e:
         print(f"First parse attempt failed: {e}")
@@ -67,7 +70,9 @@ def safe_literal_eval(s: str) -> Any:
             cleaned = clean_corrupted_json_text(s)
             cleaned_block = first_balanced_brace_block(cleaned)
             return ast.literal_eval(cleaned_block)
+            
         except Exception as e2:
+            e2=e2
             print(f"Second attempt with cleaning failed: {e2}")
         
         try:
@@ -76,6 +81,7 @@ def safe_literal_eval(s: str) -> Any:
             fixed_block = first_balanced_brace_block(fixed)
             return ast.literal_eval(fixed_block)
         except Exception as e3:
+            e3=e3
             print(f"Third attempt with regex fixes failed: {e3}")
         
         try:
@@ -85,8 +91,7 @@ def safe_literal_eval(s: str) -> Any:
         except Exception as e4:
             raise ValueError(f"Could not parse input as Python literal after multiple attempts.\n"
                            f"Original error: {e}\n"
-                           f"After cleaning: {e2}\n" 
-                           f"After regex fixes: {e3}\n"
+
                            f"After aggressive cleaning: {e4}")
 
 def dedupe_sections_by_heading(obj: Dict[str, Any]) -> Dict[str, Any]:

@@ -4,11 +4,11 @@ from typing import Optional, List
 import logging
 import json, re
 from fastapi import FastAPI, HTTPException
+import httpx
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 from dotenv import load_dotenv
 from pymilvus import connections, Collection, MilvusException
-
 from apps.wordgenAgent.app.proposal_clean import proposal_cleaner
 from apps.wordgenAgent.app.wordcom import build_word_from_proposal
 
@@ -76,24 +76,13 @@ def _connect_milvus() -> None:
     if uri:
         connect_kwargs["uri"] = uri
         logger.info(f"milvus connected")
-    else:
-        host = os.getenv("MILVUS_HOST")
-        port = os.getenv("MILVUS_PORT", "19530")
-        secure_env = os.getenv("MILVUS_SECURE", "false").strip().lower()
-        secure = secure_env in ("1", "true", "yes", "on")
-
-        connect_kwargs.update({
-            "host": host,
-            "port": port,
-            "secure": secure,
-        })
 
     if user and password:
         connect_kwargs["user"] = user
         connect_kwargs["password"] = password
 
     try:
-        connections.connect(**connect_kwargs)
+        connections.connect(**connect_kwargs)  # type: ignore
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Milvus connection failed: {exc}")
 
@@ -160,57 +149,216 @@ def fetch_supportive_files_text_by_uuid(uuid: str) -> str:
         logger.exception("Milvus query failed")
         raise HTTPException(status_code=500, detail=f"Milvus query failed: {exc}")
 
+
+#---------------------services-----------------------------
+
+
+def _normalize_sections(data: dict[str, any]) -> dict[str, any]: # type: ignore
+    """Ensure sections only contain allowed keys and have correct shapes."""
+    allowed_section_keys = {"heading", "content", "points", "table"}
+    if "sections" in data and isinstance(data["sections"], list):
+        normalized = []
+        for sec in data["sections"]:
+            if not isinstance(sec, dict): 
+                continue
+            cleaned = {k: v for k, v in sec.items() if k in allowed_section_keys}
+            # coerce types
+            if "heading" in cleaned and not isinstance(cleaned["heading"], str):
+                cleaned["heading"] = str(cleaned["heading"])
+            if "content" in cleaned and not isinstance(cleaned["content"], str):
+                cleaned["content"] = str(cleaned["content"])
+            # points
+            if "points" in cleaned:
+                if not isinstance(cleaned["points"], list):
+                    cleaned.pop("points", None)
+                else:
+                    cleaned["points"] = [str(p) for p in cleaned["points"] if isinstance(p, (str,int,float))]
+                    if not cleaned["points"]:
+                        cleaned.pop("points", None)
+            # table
+            if "table" in cleaned:
+                tbl = cleaned["table"]
+                if not isinstance(tbl, dict):
+                    cleaned.pop("table", None)
+                else:
+                    headers = tbl.get("headers")
+                    rows = tbl.get("rows")
+                    if not (isinstance(headers, list) and all(isinstance(h, (str,int,float)) for h in headers)):
+                        cleaned.pop("table", None)
+                    elif not (isinstance(rows, list) and all(isinstance(r, list) for r in rows)):
+                        cleaned.pop("table", None)
+                    else:
+                        cleaned["table"] = {
+                            "headers": [str(h) for h in headers],
+                            "rows": [[str(c) for c in r] for r in rows]
+                        }
+            # require heading & content
+            if "heading" in cleaned and "content" in cleaned:
+                normalized.append(cleaned)
+        data["sections"] = normalized
+    return data
+
+def _json_only(text: str) -> dict[str, any]: # type: ignore
+    """Parse JSON strictly; raise if invalid."""
+    try:
+        obj = json.loads(text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Model did not return valid JSON: {e}")
+    if not isinstance(obj, dict) or "title" not in obj or "sections" not in obj:
+        raise HTTPException(status_code=500, detail="JSON missing required keys: 'title' and 'sections'.")
+    if not isinstance(obj["title"], str):
+        obj["title"] = str(obj["title"])
+    obj = _normalize_sections(obj)
+    return obj
+
+
 # ---------- LLM utilities ----------
 
-def _extract_chat_content(resp) -> str:
-    """Extract text content from OpenAI chat response robustly."""
-    try:
-        choice = resp.choices[0]
-        msg = getattr(choice, "message", None) or {}
-        content = getattr(msg, "content", None)
-        if isinstance(content, str) and content.strip():
-            return content
-        raise ValueError("No content returned from model")
-    except Exception as exc:
-        logger.exception("Failed to extract content from OpenAI response")
-        raise
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def detect_language(rfp_text: str) -> str:
-    """Detect the primary language of the RFP text."""
+def generate_company_profile_json(supporting_materials: str) -> str:
+    """Generate a detailed company profile JSON from supporting materials."""
     if OpenAI is None:
         raise HTTPException(status_code=500, detail="openai package not available")
     
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
-    
+
+    MAX_SUPPORTING_LEN = 80_000  # ~80k chars as a soft cap
+    sm = supporting_materials.strip()
+    if len(sm) > MAX_SUPPORTING_LEN:
+        sm = sm[:MAX_SUPPORTING_LEN] + "\n\n[TRUNCATED]\n"
+
+    company_digest_system = """You are an expert proposal analyst.
+            Extract a structured, comprehensive CompanyDigest (JSON) from the provided 'supporting_text'.
+            Rules:
+            - Use ONLY information in supporting_text; no external facts.
+            - Translate Arabic to English for the digest, but preserve proper nouns (institutions, programs) in Arabic with an English gloss if known.
+            - If a field is missing, use "Not specified".
+            - Keep it concise but complete; don't exceed ~1200 tokens.
+            - Include 'source_attribution' with brief quotes/section labels from supporting_text for key claims.
+            """
+
+    company_digest_user = f"""
+    supporting_text (verbatim):
+    ---
+    {supporting_materials}
+    ---
+
+    Produce JSON with this exact schema:
+
+    {{
+    "company_profile": {{
+        "legal_name": "...",
+        "brand_name": "...",
+        "hq_location": "...",
+        "founded_year": "...",
+        "mission": "...",
+        "vision": "...",
+        "values": ["..."]
+    }},
+    "capabilities": {{
+        "domains": ["..."],                 # e.g., الحج والعمرة experience mgmt, PMO, training
+        "services": ["..."],                # consulting, program design, CX, PMO, pricing studies, etc.
+        "methodologies": ["..."],           # e.g., best practices tailoring, impact measurement
+        "differentiators": ["..."],         # deep sector expertise, network, etc.
+        "partners": ["..."]                 # notable local/international partners
+    }},
+    "track_record": [
+        {{
+        "project_title": "...",
+        "client": "...",
+        "year_or_period": "...",
+        "scope_summary": "...",
+        "outcomes_kpis": ["...","..."]
+        }}
+    ],
+    "sector_context": {{
+        "rationale": "...",                 # Vision 2030 alignment; scale figures
+        "key_figures": ["..."]              # e.g., 30M target, 22.5M in 2019, etc. (only if present in text)
+    }},
+    "resources": {{
+        "team_overview": "...",             # experts, national+intl blend
+        "tooling_platforms": ["..."],       # if any
+        "languages": ["Arabic","English", "..."]
+    }},
+    "compliance_and_qa": {{
+        "standards": ["..."],
+        "qa_approach": ["..."],
+        "data_privacy_security": ["..."]
+    }},
+    "contact": {{
+        "website": "...",
+        "email": "...",
+        "phone": "...",
+        "address": "..."
+    }},
+    "source_attribution": [
+        {{"claim":"deep sector expertise","evidence":"<short quote or section label>"}},
+        {{"claim":"partners list","evidence":"<short quote or section label>"}}
+    ]
+    }}
+    """
+
+
+    messages = [
+        {
+            "role": "system", 
+            "content": company_digest_system
+        },
+        {
+            "role": "user", 
+            "content": company_digest_user
+        }
+    ]
+
+    def _sanitize_json_text(txt: str) -> str:
+        # Strip common wrappers like ```json ... ```
+        t = txt.strip()
+        if t.startswith("```"):
+            t = t.strip("`")
+            # remove potential leading 'json'
+            if t.lower().startswith("json"):
+                t = t[4:].lstrip()
+        # Trim anything before first '{' and after last '}'
+        l = t.find("{")
+        r = t.rfind("}")
+        if l != -1 and r != -1 and r > l:
+            t = t[l:r+1]
+        return t.strip()
+
     import httpx
-    http_client = httpx.Client()
-    client = OpenAI(api_key=api_key, http_client=http_client)
-    
-    language_prompt = f"""Analyze this text and identify the primary language. Consider the following:
-1. The main language used throughout the document
-2. The language of technical terms and specifications
-3. The language of legal and contractual language
-4. The language of headings and structure
+    timeout = httpx.Timeout(20.0, connect=10.0, read=30.0, write=30.0)
+    with httpx.Client(timeout=timeout) as http_client:
+        client = OpenAI(api_key=api_key, http_client=http_client)
 
-Text sample: {rfp_text[:2000]}
+        messages = [
+            {"role": "system", "content": company_digest_system},
+            {"role": "user", "content": company_digest_user},
+        ]
 
-Respond with ONLY the language name in English (e.g., 'Arabic', 'English')."""
-    
-    lang_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": language_prompt}],
-        temperature=0.1,
-        max_tokens=50,
-    )
-    detected_language = _extract_chat_content(lang_resp).strip()
-    logger.info(f"Detected native language: {detected_language}")
-    return detected_language
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,  # type: ignore
+                temperature=0.25,
+                max_tokens=2200,
+                response_format={"type": "json_object"},  # <- key line
+            )
+            logger.info("OpenAI response received for company profile generation")
+            content = resp.choices[0].message.content if resp and resp.choices else ""
+
+            # Sanitize & parse
+            cleaned = _sanitize_json_text(content) #type:ignore
+            return cleaned
+
+        except RetryError as re:
+            logger.error(f"OpenAI request failed after retries: {re}")
+            raise HTTPException(status_code=500, detail="OpenAI request failed after retries")
+
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def generate_proposal_with_openai(rfp_text: str, native_language: str) -> str:
+def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting_materials: str, user_config: str) ->dict: # type: ignore
     """Generate a comprehensive proposal from RFP text in the native language."""
     if OpenAI is None:
         raise HTTPException(status_code=500, detail="openai package not available")
@@ -219,349 +367,144 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str) -> str:
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
     
-    import httpx
     http_client = httpx.Client()
     client = OpenAI(api_key=api_key, http_client=http_client)
     
-    system_prompts = {
-        "Arabic": """أنت خبير في كتابة المقترحات التقنية والتنموية. 
-مهمتك إنشاء مقترح شامل ومفصل باللغة العربية (6-7 صفحات على الأقل) يتضمن:
-1. معالجة شاملة لجميع متطلبات RFP ومعايير التقييم بتفاصيل محددة ومفصلة
-2. محتوى تقني مفصل ومنهجية واضحة وجدول زمني شامل مع تفسيرات كاملة
-3. تغطية شاملة للامتثال والشهادات والمؤهلات بأمثلة محددة ومفصلة
-4. أقسام مفصلة للتسعير والشروط والأحكام مع شروحات واضحة
-5. تضمين النماذج المطلوبة والجداول والملاحق مع محتوى كامل
-6. اتباع البنية واللغة الدقيقة المطلوبة في RFP
-7. تقديم محتوى مفصل وشامل تحت كل قسم (على الأقل 200-400 كلمة لكل قسم رئيسي)
-8. إظهار فهم عميق لمتطلبات RFP من خلال ردود مفصلة ومحددة
-9. تضمين منهجيات محددة وجداول زمنية مفصلة وتسليمات واضحة
-10. إظهار الخبرة المهنية والقدرة التقنية مع أمثلة محددة
-11. تضمين تحليل شامل للمخاطر واستراتيجيات التخفيف
-12. تقديم خطة إدارة مشروع مفصلة
-13. تضمين مقاييس الأداء ومؤشرات النجاح المحددة
-14. إظهار الابتكار والحلول الإبداعية
-15. تقديم ضمانات الجودة ومراقبة الأداء""",
-        
-        "English": """You are an expert in technical and development proposal writing.
-Your task is to create a comprehensive, detailed proposal in English (minimum 6-7 pages) that:
-1. Addresses ALL RFP requirements and evaluation criteria with extensive specific details
-2. Includes comprehensive technical approach, clear methodology, and detailed timeline with complete explanations
-3. Covers compliance, certifications, and qualifications comprehensively with specific examples
-4. Has detailed sections for pricing, terms, and conditions with clear explanations
-5. Includes all required forms, matrices, and appendices with complete content
-6. Follows the exact structure and language required by the RFP
-7. Provides substantial, detailed content under each section (minimum 200-400 words per major section)
-8. Demonstrates deep understanding of RFP requirements through detailed, specific responses
-9. Includes specific methodologies, detailed timelines, and clear deliverables
-10. Shows professional expertise and technical capability with specific examples
-11. Includes comprehensive risk analysis and mitigation strategies
-12. Provides detailed project management approach
-13. Includes specific performance metrics and success indicators
-14. Demonstrates innovation and creative solutions
-15. Provides quality assurance and performance monitoring frameworks"""
-    }
+    system_prompts ="""You are an expert in technical and development proposal writing.
+        Your task is to create a comprehensive, detailed proposal in English (minimum 6-7 pages) that:
+        1. Addresses ALL RFP requirements and evaluation criteria with extensive specific details
+        2. Includes comprehensive technical approach, clear methodology, and detailed timeline with complete explanations
+        3. Covers compliance, certifications, and qualifications comprehensively with specific examples
+        4. Has detailed sections for pricing, terms, and conditions with clear explanations
+        5. Includes all required forms, matrices, and appendices with complete content
+        6. Follows the exact structure and language required by the RFP
+        7. Provides substantial, detailed content under each section (minimum 200-400 words per major section)
+        8. Demonstrates deep understanding of RFP requirements through detailed, specific responses
+        9. Includes specific methodologies, detailed timelines, and clear deliverables
+        10. Shows professional expertise and technical capability with specific examples
+        11. Includes comprehensive risk analysis and mitigation strategies
+        12. Provides detailed project management approach
+        13. Includes specific performance metrics and success indicators
+        14. Demonstrates innovation and creative solutions
+        15. Provides quality assurance and performance monitoring frameworks
+        16. Merge the RFP with the company's supporting materials for company-specific sections.
+        17. Output MUST be valid JSON only (no markdown fences, no commentary)."""
     
-    system_prompt = system_prompts.get(native_language, system_prompts["Arabic"])
+    JSON_SCHEMA_TEXT = """
+        Return ONLY a JSON object with this exact structure and keys (no extra keys, no prose):
+
+        {
+        "title": "string",
+        "sections": [
+            {
+            "heading": "string",
+            "content": "string",
+            "points": ["string", "..."]    // include ONLY if bullet points exist; otherwise omit this key
+            ,
+            "table": {                      // include ONLY if this section has a table; otherwise omit this key
+                "headers": ["string", "..."],
+                "rows": [["string","..."], ["string","..."]]
+            }
+            }
+        ]
+        }
+        """
+
+    task_instructions = f"""TASK: Create a comprehensive, detailed proposal in {native_language} (minimum 6-7 pages) that includes:
+                following the exact outline below. Populate company-specific parts from the supporting materials.
+        For every major section, include rich paragraphs in "content", add "points" only if there are bullet items,
+        and include a "table" only if a table is relevant (with headers and rows). Do NOT invent partners or facts not present.
+        {JSON_SCHEMA_TEXT}
+        For each section, provide:
+        - Detailed, comprehensive content (200-400 words)
+        - Specific key points (3-5 points per section)
+        - Explanatory tables with detailed data where appropriate
+
+        Ensure each section contains:
+        1. Detailed explanation of the topic
+        2. Specific examples and practical cases
+        3. Clear methodologies
+        4. Specific timelines
+        5. Performance measurement indicators
+
+        The proposal must be comprehensive, detailed, and practically implementable.
+
+        --- USER CUSTOM CONFIGURATION ---
+        {user_config}
+        use this to add tone, structure, and specific requirements to the proposal.
+
+        """
     
-    task_instructions = {
-        "Arabic": f"""المهمة: إنشاء مقترح شامل ومفصل باللغة العربية (على الأقل 6-7 صفحات) يتضمن:
 
-لكل قسم، قدم:
-- محتوى مفصل وشامل (200-400 كلمة)
-- نقاط رئيسية محددة (3-5 نقاط لكل قسم)
-- جداول توضيحية مع بيانات مفصلة حيثما كان مناسباً
+    proposal_template = """
+        Proposal Response: Development of Job Standards and Qualifications for Hajj and Umrah Service Providers
+        Prepared by: [Company Name]
 
-تأكد من أن كل قسم يحتوي على:
-1. شرح مفصل للموضوع
-2. أمثلة محددة وحالات عملية
-3. منهجيات واضحة
-4. جداول زمنية محددة
-5. مؤشرات قياس الأداء
-
-يجب أن يكون المقترح شاملاً ومفصلاً وقابلاً للتطبيق العملي.""",
-        
-        "English": f"""TASK: Create a comprehensive, detailed proposal in {native_language} (minimum 6-7 pages) that includes:
-
-For each section, provide:
-- Detailed, comprehensive content (200-400 words)
-- Specific key points (3-5 points per section)
-- Explanatory tables with detailed data where appropriate
-
-Ensure each section contains:
-1. Detailed explanation of the topic
-2. Specific examples and practical cases
-3. Clear methodologies
-4. Specific timelines
-5. Performance measurement indicators
-
-The proposal must be comprehensive, detailed, and practically implementable."""
-    }
+        Executive Summary
+        Company Introduction
+        Understanding of the RFP and Objectives
+        Technical Approach and Methodology
+            *Framework Overview
+            *Phased Methodology
+            *Methodological Pillars
+        Project Architecture
+            *System Components
+            *Data Flow & Integration
+            *Technology Stack
+        Relevant Experience and Case Evidence
+        Project Team and Roles
+        Work Plan, Timeline, and Milestones
+        Quality Assurance and Risk Management
+        KPIs and Service Levels
+        Data Privacy, Security, and IP
+        Compliance with RFP Requirements
+        Deliverables Summary
+        Assumptions
+        Pricing Approach (Summary)
+        Why [Your Company]
+        """
     
-    task_instruction = task_instructions.get(native_language, task_instructions["Arabic"])
     
     messages = [
         {
             "role": "system", 
-            "content": system_prompt
+            "content": system_prompts
         },
         {
             "role": "user", 
             "content": (
-                f"RFP DOCUMENT (Requirements & Specifications):\n" + (rfp_text or "")[:60000] +
-                f"\n\n{task_instruction}\n\n"
-                f"IMPORTANT: The entire proposal must be written in {native_language}. "
-                f"Each section must have detailed content, specific bullet points, and relevant tables. "
-                f"Avoid placeholder text like 'سيتم توضيح' - instead provide actual detailed content."
+                f"RFP DOCUMENT (Requirements & Specifications):\n" + (rfp_text or "") + "\n\n"
+                f"COMPANY BACKGROUND AND SUPPORTING MATERIALS:\n{supporting_materials}\n\n"
+                f"\n\n{task_instructions}\n\n"
+                f"IMPORTANT: The proposal must follow this structure exactly:\n"
+                f"{proposal_template}\n\n"
+                f"IMPORTANT: The entire proposal must be written in {native_language}.(including headings).\n"
+                f"Each section must have detailed content (200-400 words), bullet points, and tables where relevant. "
+                f"No placeholder text—provide actual detailed content."
             )
         }
     ]
-    
+
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=messages,
+        messages=messages,  # type: ignore
         temperature=0.5, 
-        max_tokens=16000,  
+        max_tokens=16000,
+        response_format={"type": "json_object"},  
     )
-    return _extract_chat_content(resp).strip()
 
-# ---------- Supportive content ----------
+    raw = resp.choices[0].message.content if resp and resp.choices else ""
+    raw_prased=json.loads(str(raw))
+    print(raw_prased)
+    return raw_prased
 
-def customize_proposal_with_supportive_content_json(
-    proposal_text: str, 
-    supportive_text: str, 
-    native_language: str = "en",
-    model="gpt-4o-mini",
-    temperature: float = 0.7,
-    max_tokens: int = 16000
-) -> dict:
-    """
-    generated proposal using supportive content with enhanced detail and robust JSON parsing.
-    """
-    if OpenAI is None:
-        raise HTTPException(status_code=500, detail="openai package not available")
-    
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set")
-    
-    import httpx
-    http_client = httpx.Client()
-    client = OpenAI(api_key=api_key, http_client=http_client)
 
-    try:
-        prompt = f"""
-أنت كاتب مقترحات خبير. لديك مسودة مقترح أولية ومعلومات شركة داعمة.
-مهمتك دمجها في مقترح احترافي ومقنع ومفصل.
 
-- استخدم المعلومات الداعمة لإبراز الخبرة والعروض
-- اضمن التدفق المنطقي والنبرة المهنية
-- اكتب باللغة {native_language}
-- قدم محتوى مفصل وشامل لكل قسم (200-400 كلمة)
-- تجنب النصوص الشكلية مثل "سيتم توضيح" - قدم محتوى فعلي
-- اخرج JSON صالح فقط. لا نصوص إضافية
-- استخدم علامات اقتباس مزدوجة فقط وتجنب الفواصل المنقوطة في النصوص
 
---- متطلبات صيغة JSON ---
-يجب أن يكون الناتج النهائي كائن JSON منظم كالتالي:
-{{
-  "title": "عنوان المقترح الرئيسي",
-  "sections": [
-    {{
-      "heading": "عنوان القسم",
-      "content": "محتوى مفصل وشامل في شكل فقرة",
-      "points": ["النقطة 1", "النقطة 2", "النقطة 3"],
-      "table": {{
-        "headers": ["العمود الأول", "العمود الثاني"],
-        "rows": [
-          ["الصف الأول - العمود الأول", "الصف الأول - العمود الثاني"],
-          ["الصف الثاني - العمود الأول", "الصف الثاني - العمود الثاني"]
-        ]
-      }}
-    }}
-  ]
-}}
-
---- معلومات الشركة الداعمة ---
-{supportive_text[:3000]}
-
---- مسودة المقترح الأولية ---
-{proposal_text[:8000]}
-
-الآن أنشئ المقترح النهائي في صيغة JSON المطلوبة بمحتوى مفصل وشامل.
-تأكد من أن JSON صالح بدون أخطاء في علامات الاقتباس أو الفواصل.
-"""
-
-        logger.info(f"Sending enhanced customization request to {model}")
-    
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "أنت كاتب مقترحات خبير ومنسق JSON. أنتج JSON صالح فقط بمحتوى مفصل. استخدم علامات اقتباس مزدوجة فقط وتجنب الأحرف الخاصة."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-
-        raw_output = response.choices[0].message.content.strip()
-        logger.info(f"Raw OpenAI response length: {len(raw_output)}")
-        logger.info(f"Raw OpenAI response first 200 chars: {raw_output[:200]}...")
-        
-        final_proposal_json = _parse_json_with_fallbacks(raw_output)
-
-        logger.info("Enhanced customized proposal generated successfully in JSON format")
-        return final_proposal_json
-
-    except Exception as exc:
-        logger.exception("Error generating proposal")
-        return _create_fallback_proposal(proposal_text, supportive_text, native_language)
-
-def _parse_json_with_fallbacks(raw_output: str) -> dict:
-    """
-    Parse JSON with multiple fallback strategies to handle malformed responses.
-    """
-    logger.info("Attempting JSON parsing with fallback strategies...")
-    
-    try:
-        if raw_output.startswith("```"):
-            raw_output = raw_output.replace("```json", "").replace("```")
-        
-        final_proposal_json = json.loads(raw_output)
-        logger.info("✅ Strategy 1: Direct JSON parsing successful")
-        return final_proposal_json
-    except json.JSONDecodeError as e:
-        logger.warning(f"❌ Strategy 1 failed: {e}")
-    
-    try:
-        cleaned_output = _clean_json_response(raw_output)
-        final_proposal_json = json.loads(cleaned_output)
-        logger.info("✅ Strategy 2: Cleaned JSON parsing successful")
-        return final_proposal_json
-    except json.JSONDecodeError as e:
-        logger.warning(f"❌ Strategy 2 failed: {e}")
-    
-    try:
-        json_block = _extract_json_block(raw_output)
-        final_proposal_json = json.loads(json_block)
-        logger.info("✅ Strategy 3: JSON block extraction successful")
-        return final_proposal_json
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.warning(f"❌ Strategy 3 failed: {e}")
-    
-    try:
-        fixed_output = _fix_json_delimiters(raw_output)
-        final_proposal_json = json.loads(fixed_output)
-        logger.info("✅ Strategy 4: JSON delimiter fix successful")
-        return fixed_output
-    except json.JSONDecodeError as e:
-        logger.warning(f"❌ Strategy 4 failed: {e}")
-    
-    try:
-        if raw_output.strip().startswith('{') and 'title' in raw_output:
-            import ast
-            final_proposal_json = ast.literal_eval(raw_output)
-            if isinstance(final_proposal_json, dict):
-                logger.info("✅ Strategy 5: AST literal_eval successful")
-                return final_proposal_json
-    except (ValueError, SyntaxError) as e:
-        logger.warning(f"❌ Strategy 5 failed: {e}")
-    
-    logger.error("All JSON parsing strategies failed, creating fallback proposal")
-    raise ValueError(f"Could not parse JSON response after all fallback strategies. Raw response: {raw_output[:500]}...")
-
-def _clean_json_response(raw_output: str) -> str:
-    """
-    Clean common JSON formatting issues.
-    """
-    cleaned = raw_output.replace("```json", "").replace("```")
-    cleaned = cleaned.replace("'", '"')  
-    cleaned = re.sub(r',(\s*[}$$])', r'\1', cleaned)
-    cleaned = re.sub(r'"\s*\n\s*"', '",\n    "', cleaned)
-    cleaned = re.sub(r'(?<!\$$"([^"]*)"([^"]*)"', r'"\1\\"\\"\2"', cleaned)
-    
-    return cleaned
-
-def _extract_json_block(raw_output: str) -> str:
-    """
-    Extract the main JSON block from response.
-    """
-    start = raw_output.find('{')
-    if start == -1:
-        raise ValueError("No opening brace found")
-    brace_count = 0
-    for i in range(start, len(raw_output)):
-        if raw_output[i] == '{':
-            brace_count += 1
-        elif raw_output[i] == '}':
-            brace_count -= 1
-            if brace_count == 0:
-                return raw_output[start:i+1]
-    
-    raise ValueError("No matching closing brace found")
-
-def _fix_json_delimiters(raw_output: str) -> str:
-    """
-    Fix common delimiter issues in JSON.
-    """
-    lines = raw_output.split('\n')
-    fixed_lines = []
-    
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
-        if line.endswith(('}', ']')) and i < len(lines) - 1:
-            next_line = lines[i + 1].strip()
-            if next_line and not next_line.startswith(('}', ']')) and not line.endswith(','):
-                if not (line.endswith('}') and next_line.startswith(']')):
-                    line += ','
-        
-        fixed_lines.append(line)
-    
-    return '\n'.join(fixed_lines)
-
-def _create_fallback_proposal(proposal_text: str, supportive_text: str, native_language: str) -> dict:
-    """
-    Create a basic fallback proposal structure when JSON parsing fails.
-    """
-    logger.info("Creating fallback proposal structure")
-    title_match = re.search(r'title["\s]*:[\s]*["\']([^"\']+)["\']', proposal_text, re.IGNORECASE)
-    title = title_match.group(1) if title_match else "مقترح شامل للرد على طلب العروض (RFP)"
-    sections = []
-    text_parts = re.split(r'\n\s*\n', proposal_text)
-    
-    for i, part in enumerate(text_parts[:8]): 
-        if len(part.strip()) > 50:  
-            sections.append({
-                "heading": f"القسم {i+1}" if native_language == "Arabic" else f"Section {i+1}",
-                "content": part.strip()[:800],  
-                "points": [],
-                "table": {"headers": [], "rows": []}
-            })
-    if not sections:
-        sections = [
-            {
-                "heading": "مقدمة" if native_language == "Arabic" else "Introduction",
-                "content": proposal_text[:500] if proposal_text else "محتوى المقترح الأساسي",
-                "points": ["نقطة أساسية 1", "نقطة أساسية 2"] if native_language == "Arabic" else ["Basic point 1", "Basic point 2"],
-                "table": {"headers": [], "rows": []}
-            },
-            {
-                "heading": "التفاصيل التقنية" if native_language == "Arabic" else "Technical Details", 
-                "content": supportive_text[:500] if supportive_text else "التفاصيل التقنية للمقترح",
-                "points": [],
-                "table": {"headers": [], "rows": []}
-            }
-        ]
-    
-    return {
-        "title": title,
-        "sections": sections
-    }
 
 # ---------- API Endpoints ----------
 
-def generate_proposal(uuid , user_config, language) :
+def generate_proposal(uuid , doc_config, language , user_config):
     """Generate a detailed proposal text from RFP files in Milvus collection in the native language."""
     try:
         rfp_text = fetch_rfp_text_by_uuid(str(uuid))
@@ -575,62 +518,17 @@ def generate_proposal(uuid , user_config, language) :
             supportive_text = ""  
         
         logger.info(f"Retrieved {len(supportive_text)} characters of supportive files text for uuid {uuid}")
-        
-        native_language = detect_language(rfp_text)
         native_language = language
         logger.info(f"Detected native language: {native_language}")
+        supportive_materials = generate_company_profile_json(supportive_text)
+        proposal_dict = generate_proposal_with_openai(rfp_text, native_language, supportive_materials, user_config)
+        logger.info(f"Generated proposal JSON with {proposal_dict} characters")
+        print('this is the type paathukoo',{type(proposal_dict)})
         
-        proposal_text = generate_proposal_with_openai(rfp_text, native_language)
-        
-
-        try:
-            final_proposal = customize_proposal_with_supportive_content_json(proposal_text, supportive_text, native_language)
-        except Exception as customization_error:
-            logger.error(f"Proposal customization failed: {customization_error}")
-            final_proposal = {
-                "title": "مقترح شامل للرد على طلب العروض (RFP)" if native_language == "Arabic" else "Comprehensive RFP Response Proposal",
-                "sections": [
-                    {
-                        "heading": "المحتوى الأساسي" if native_language == "Arabic" else "Main Content",
-                        "content": proposal_text[:1000],  
-                        "points": [],
-                        "table": {"headers": [], "rows": []}
-                    }
-                ]
-            }
-        
-        try:
-            final_proposal_str = json.dumps(final_proposal, ensure_ascii=False, indent=2)
-            cleaned_proposal = proposal_cleaner(input_text=final_proposal_str)
-            
-            if isinstance(cleaned_proposal, str):
-                try:
-                    proposal_dict = json.loads(cleaned_proposal)
-                except json.JSONDecodeError:
-                    logger.warning("Cleaned proposal is not valid JSON, using original")
-                    proposal_dict = final_proposal
-            else:
-                proposal_dict = cleaned_proposal
-        except Exception as cleaning_error:
-            logger.error(f"Proposal cleaning failed: {cleaning_error}")
-            proposal_dict = final_proposal
-
-        # === ARCHITECTURE DIAGRAM INTEGRATION ===
-        try:
-            logger.info("Starting architecture diagram integration")
-            enhanced_proposal_dict = generate_and_integrate_architecture_diagram(
-                proposal_dict, rfp_text, native_language
-            )
-            proposal_dict = enhanced_proposal_dict
-            logger.info("Architecture diagram successfully integrated into proposal")
-            
-        except Exception as e:
-            logger.error(f"Architecture diagram integration failed: {e}")
-            logger.info("Continuing with original proposal without architecture diagrams")
 
         try:
 
-            output_path = build_word_from_proposal(proposal_dict, output_path=f"output/{uuid}.docx", visible=False , user_config=user_config)
+            output_path = build_word_from_proposal(proposal_dict, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=native_language)
             return output_path
         except Exception as word_error:
             logger.error(f"Word document generation failed: {word_error}")
@@ -656,147 +554,153 @@ def generate_proposal(uuid , user_config, language) :
     except Exception as exc:
         logger.exception("Unhandled error in generate_proposal")
         raise HTTPException(status_code=500, detail=str(exc))
+    
+
+
+
+
+
 
 # ---------- Architecture Diagram Integration ----------
 
 
 
-def generate_and_integrate_architecture_diagram(proposal_dict: dict, rfp_text: str, native_language: str) -> dict:
-    """
-    Generate architecture diagram and integrate it into the proposal.
-    """
-    try:
-        from apps.wordgenAgent.app.architecture_diagram import ProposalArchitectureDiagramGenerator
+# def generate_and_integrate_architecture_diagram(proposal_dict: dict, rfp_text: str, native_language: str) -> dict:
+#     """
+#     Generate architecture diagram and integrate it into the proposal.
+#     """
+#     try:
+#         from apps.wordgenAgent.app.architecture_diagram import ProposalArchitectureDiagramGenerator
         
-        logger.info("Starting architecture diagram generation")
-        diagram_generator = ProposalArchitectureDiagramGenerator()
-        diagram_result = diagram_generator.generate_architecture_diagram_from_proposal(
-            proposal_dict, rfp_text, native_language
-        )
+#         logger.info("Starting architecture diagram generation")
+#         diagram_generator = ProposalArchitectureDiagramGenerator()
+#         diagram_result = diagram_generator.generate_architecture_diagram_from_proposal(
+#             proposal_dict, rfp_text, native_language
+#         )
         
-        if not diagram_result.get("success"):
-            logger.warning(f"Architecture diagram generation failed: {diagram_result.get('error')}")
-            return proposal_dict  
-        diagram_section = diagram_result.get("diagram_section")
-        if not diagram_section:
-            logger.warning("No diagram section returned")
-            return proposal_dict
-        enhanced_proposal = integrate_diagram_section_with_openai(
-            proposal_dict, diagram_section, native_language
-        )
+#         if not diagram_result.get("success"):
+#             logger.warning(f"Architecture diagram generation failed: {diagram_result.get('error')}")
+#             return proposal_dict  
+#         diagram_section = diagram_result.get("diagram_section")
+#         if not diagram_section:
+#             logger.warning("No diagram section returned")
+#             return proposal_dict
+#         enhanced_proposal = integrate_diagram_section_with_openai(
+#             proposal_dict, diagram_section, native_language
+#         )
         
-        logger.info("✅ Architecture diagram successfully integrated into proposal")
-        return enhanced_proposal
+#         logger.info("✅ Architecture diagram successfully integrated into proposal")
+#         return enhanced_proposal
         
-    except Exception as e:
-        logger.error(f"Error in architecture diagram integration: {e}")
-        return proposal_dict  
+#     except Exception as e:
+#         logger.error(f"Error in architecture diagram integration: {e}")
+#         return proposal_dict  
 
-def integrate_diagram_section_with_openai(proposal_dict: dict, diagram_section: dict, native_language: str) -> dict:
-    """
-    Use OpenAI to intelligently place the architecture diagram section in the proposal.
-    """
-    if OpenAI is None:
-        logger.warning("OpenAI not available, using fallback placement")
-        return _fallback_diagram_placement(proposal_dict, diagram_section)
+# def integrate_diagram_section_with_openai(proposal_dict: dict, diagram_section: dict, native_language: str) -> dict:
+#     """
+#     Use OpenAI to intelligently place the architecture diagram section in the proposal.
+#     """
+#     if OpenAI is None:
+#         logger.warning("OpenAI not available, using fallback placement")
+#         return _fallback_diagram_placement(proposal_dict, diagram_section)
     
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        logger.warning("OpenAI API key not available, using fallback placement")
-        return _fallback_diagram_placement(proposal_dict, diagram_section)
+#     api_key = os.getenv("OPENAI_API_KEY")
+#     if not api_key:
+#         logger.warning("OpenAI API key not available, using fallback placement")
+#         return _fallback_diagram_placement(proposal_dict, diagram_section)
     
-    try:
-        import httpx
-        http_client = httpx.Client()
-        client = OpenAI(api_key=api_key, http_client=http_client)
+#     try:
+#         import httpx
+#         http_client = httpx.Client()
+#         client = OpenAI(api_key=api_key, http_client=http_client)
         
-        placement_prompts = {
-            "Arabic": """
-            أنت خبير في كتابة المقترحات التقنية. لديك مقترح كامل وقسم جديد للهندسة التقنية.
+#         placement_prompts = {
+#             "Arabic": """
+#             أنت خبير في كتابة المقترحات التقنية. لديك مقترح كامل وقسم جديد للهندسة التقنية.
             
-            مهمتك: تحديد أفضل مكان لإدراج قسم الهندسة التقنية في المقترح.
+#             مهمتك: تحديد أفضل مكان لإدراج قسم الهندسة التقنية في المقترح.
             
-            المقترح الحالي (العناوين فقط):
-            {section_headings}
+#             المقترح الحالي (العناوين فقط):
+#             {section_headings}
             
-            قسم الهندسة التقنية الجديد:
-            العنوان: {diagram_heading}
+#             قسم الهندسة التقنية الجديد:
+#             العنوان: {diagram_heading}
             
-            أعد ترتيب أقسام المقترح مع إدراج قسم الهندسة التقنية في المكان المناسب.
-            أعد قائمة بترتيب العناوين الجديد فقط.
-            """,
+#             أعد ترتيب أقسام المقترح مع إدراج قسم الهندسة التقنية في المكان المناسب.
+#             أعد قائمة بترتيب العناوين الجديد فقط.
+#             """,
             
-            "English": """
-            You are an expert technical proposal writer. You have a complete proposal and a new technical architecture section.
+#             "English": """
+#             You are an expert technical proposal writer. You have a complete proposal and a new technical architecture section.
             
-            Your task: Determine the best placement for the technical architecture section within the proposal.
+#             Your task: Determine the best placement for the technical architecture section within the proposal.
             
-            Current proposal (headings only):
-            {section_headings}
+#             Current proposal (headings only):
+#             {section_headings}
             
-            New technical architecture section:
-            Heading: {diagram_heading}
+#             New technical architecture section:
+#             Heading: {diagram_heading}
             
-            Reorder the proposal sections with the technical architecture section in the most appropriate location.
-            Return only the new ordering of headings.
-            """
-        }
-        current_sections = proposal_dict.get("sections", [])
-        section_headings = [section.get("heading", "") for section in current_sections]
+#             Reorder the proposal sections with the technical architecture section in the most appropriate location.
+#             Return only the new ordering of headings.
+#             """
+#         }
+#         current_sections = proposal_dict.get("sections", [])
+#         section_headings = [section.get("heading", "") for section in current_sections]
         
-        prompt_template = placement_prompts.get(native_language, placement_prompts["Arabic"])
-        placement_prompt = prompt_template.format(
-            section_headings="\n".join([f"{i+1}. {heading}" for i, heading in enumerate(section_headings)]),
-            diagram_heading=diagram_section.get("heading", "")
-        )
+#         prompt_template = placement_prompts.get(native_language, placement_prompts["Arabic"])
+#         placement_prompt = prompt_template.format(
+#             section_headings="\n".join([f"{i+1}. {heading}" for i, heading in enumerate(section_headings)]),
+#             diagram_heading=diagram_section.get("heading", "")
+#         )
         
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a proposal structure expert. Provide optimal section ordering."},
-                {"role": "user", "content": placement_prompt}
-            ],
-            temperature=0.2,
-            max_tokens=500
-        )
-        ai_response = response.choices.message.content.strip()
-        logger.info(f"AI placement suggestion received: {ai_response[:100]}...")
-        return _smart_diagram_placement(proposal_dict, diagram_section, ai_response)
+#         response = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             messages=[
+#                 {"role": "system", "content": "You are a proposal structure expert. Provide optimal section ordering."},
+#                 {"role": "user", "content": placement_prompt}
+#             ],
+#             temperature=0.2,
+#             max_tokens=500
+#         )
+#         ai_response = response.choices.message.content.strip() # type: ignore
+#         logger.info(f"AI placement suggestion received: {ai_response[:100]}...")
+#         return _smart_diagram_placement(proposal_dict, diagram_section, ai_response)
         
-    except Exception as e:
-        logger.error(f"Error in AI-powered diagram placement: {e}")
-        return _fallback_diagram_placement(proposal_dict, diagram_section)
+#     except Exception as e:
+#         logger.error(f"Error in AI-powered diagram placement: {e}")
+#         return _fallback_diagram_placement(proposal_dict, diagram_section)
 
-def _smart_diagram_placement(proposal_dict: dict, diagram_section: dict, ai_suggestion: str) -> dict:
-    """
-    Smart placement of diagram section based on AI suggestion and proposal structure.
-    """
-    sections = proposal_dict.get("sections", [])
+# def _smart_diagram_placement(proposal_dict: dict, diagram_section: dict, ai_suggestion: str) -> dict:
+#     """
+#     Smart placement of diagram section based on AI suggestion and proposal structure.
+#     """
+#     sections = proposal_dict.get("sections", [])
     
-    technical_keywords = ["technical", "تقني", "scope", "نطاق", "requirements", "متطلبات", "solution", "حل"]
+#     technical_keywords = ["technical", "تقني", "scope", "نطاق", "requirements", "متطلبات", "solution", "حل"]
     
-    best_position = len(sections) // 2  
+#     best_position = len(sections) // 2  
     
-    for i, section in enumerate(sections):
-        heading = section.get("heading", "").lower()
-        if any(keyword in heading for keyword in technical_keywords):
-            best_position = i + 1
-            break
-    best_position = min(best_position, len(sections))
-    sections.insert(best_position, diagram_section)
-    proposal_dict["sections"] = sections
+#     for i, section in enumerate(sections):
+#         heading = section.get("heading", "").lower()
+#         if any(keyword in heading for keyword in technical_keywords):
+#             best_position = i + 1
+#             break
+#     best_position = min(best_position, len(sections))
+#     sections.insert(best_position, diagram_section)
+#     proposal_dict["sections"] = sections
     
-    logger.info(f"Architecture diagram placed at position {best_position + 1}")
-    return proposal_dict
+#     logger.info(f"Architecture diagram placed at position {best_position + 1}")
+#     return proposal_dict
 
-def _fallback_diagram_placement(proposal_dict: dict, diagram_section: dict) -> dict:
-    """
-    Fallback method to place diagram section (after first 2 sections).
-    """
-    sections = proposal_dict.get("sections", [])
-    insert_position = min(2, len(sections))
-    sections.insert(insert_position, diagram_section)
+# def _fallback_diagram_placement(proposal_dict: dict, diagram_section: dict) -> dict:
+#     """
+#     Fallback method to place diagram section (after first 2 sections).
+#     """
+#     sections = proposal_dict.get("sections", [])
+#     insert_position = min(2, len(sections))
+#     sections.insert(insert_position, diagram_section)
     
-    proposal_dict["sections"] = sections
-    logger.info(f"Architecture diagram placed at fallback position {insert_position + 1}")
-    return proposal_dict
+#     proposal_dict["sections"] = sections
+#     logger.info(f"Architecture diagram placed at fallback position {insert_position + 1}")
+#     return proposal_dict
