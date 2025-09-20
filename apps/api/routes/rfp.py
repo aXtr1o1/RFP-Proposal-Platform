@@ -63,6 +63,7 @@ class OneDriveService:
         self.client_id = CLIENT_ID
         self.client_secret = CLIENT_SECRET
         self.access_token = None
+        self._authenticate()
         self.base_url = "https://graph.microsoft.com/v1.0"
         if get_ocr_worker:
             try:
@@ -72,8 +73,7 @@ class OneDriveService:
                 self.ocr_worker = None
         else:
             self.ocr_worker = None
-            
-        self._authenticate()
+    
     
     def _authenticate(self):
         """Authenticate with Microsoft Graph API"""
@@ -90,13 +90,14 @@ class OneDriveService:
             
             if "access_token" in result:
                 self.access_token = result["access_token"]
+                logger.info("Expires in:", result['expires_in'])
                 logger.info("OneDrive authentication successful")
             else:
                 raise Exception(f"Authentication failed: {result.get('error_description')}")
         except Exception as e:
             logger.error(f"Authentication error: {str(e)}")
             raise
-    
+
     def _make_request(self, endpoint):
         """Make authenticated request to Microsoft Graph API"""
         headers = {"Authorization": f"Bearer {self.access_token}"}
@@ -107,7 +108,7 @@ class OneDriveService:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            logger.error(f"API request failed for {endpoint}: {str(e)}")
+            # logger.error(f"API request failed for {endpoint}: {str(e)}")
             return None
     
     def get_all_drives(self):
