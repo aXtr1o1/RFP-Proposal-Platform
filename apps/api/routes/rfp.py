@@ -106,7 +106,7 @@ class OneDriveService:
         """Refresh Access Token with Refresh Token"""
         try:
             scopes = ["https://graph.microsoft.com/.default"]
-            refresh_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token" 
+            refresh_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
             data = {
                 "client_id": self.client_id,
                 "scope": scopes,
