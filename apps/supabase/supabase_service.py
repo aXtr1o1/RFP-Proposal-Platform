@@ -9,13 +9,13 @@ logger = logging.getLogger(__name__)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY) # type: ignore
 
 
 
 def upload_and_save_pdf(file_path, file_name,uuid, pdf_share_url):
 
-    bucket_name = "pdf"   # make sure this bucket exist
+    bucket_name = "pdf"
     with open(file_path, "rb") as f:
         data = f.read()
 

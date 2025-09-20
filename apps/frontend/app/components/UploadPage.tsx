@@ -3,6 +3,199 @@
 import React, { useState, useRef } from 'react';
 import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, Palette, AlignLeft, Table, Layout, Type, Eye, Download, Globe, Maximize2, Clock, CheckCircle2, AlertCircle, Loader } from 'lucide-react';
 
+
+
+
+let pdfjsLoaded = false;
+
+function loadPdfJsOnce(): Promise<void> {
+  if (pdfjsLoaded) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    script.async = true;
+    script.onload = () => {
+      pdfjsLoaded = true;
+      resolve();
+    };
+    script.onerror = () => reject(new Error("Failed to load PDF.js"));
+    document.head.appendChild(script);
+  });
+}
+
+type PdfViewerProps = { pdfUrl: string };
+
+// 1) Base component with proper props
+const PdfViewerBase: React.FC<PdfViewerProps> = ({ pdfUrl }) => {
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    loadPdfJsOnce()
+      .then(() => alive && setIsLoading(false))
+      .catch((e) => {
+        if (alive) {
+          setError(e.message || "Failed to load PDF viewer");
+          setIsLoading(false);
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
+          <h4 className="text-lg font-medium text-gray-800 mb-2">PDF Viewer Error</h4>
+          <p className="text-sm text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => window.open(pdfUrl, "_blank")}
+            className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700"
+          >
+            Open in New Tab
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader className="animate-spin mx-auto mb-4 text-gray-600" size={48} />
+          <h4 className="text-lg font-medium text-gray-800 mb-2">Loading PDF Viewer</h4>
+          <p className="text-sm text-gray-600">Please wait...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
+
+  return (
+    <div className="h-full">
+      {/* key only changes when the URL changes; prevents remounts on other state changes */}
+      <iframe
+        key={pdfUrl}
+        src={viewerUrl}
+        className="w-full h-full border-none"
+        title="PDF Document Viewer"
+        onError={() => setError("Failed to load PDF document")}
+      />
+    </div>
+  );
+};
+
+// 2) Memoized export with props comparator
+export const PdfViewer = React.memo(
+  PdfViewerBase,
+  (prev, next) => prev.pdfUrl === next.pdfUrl
+);
+
+
+type OutputProps = {
+  generatedDocument: string | null;
+  pdfUrl: string | null;        // (previewPdfUrl ?? pdfLink)
+  wordLink: string | null;
+  pdfLink: string | null;
+};
+
+const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
+  generatedDocument,
+  pdfUrl,
+  wordLink,
+  pdfLink,
+}) => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
+      {/* Header with actions */}
+      <div className="border-b border-gray-100 p-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="text-green-500" size={16} />
+          <h3 className="text-sm font-medium text-gray-800">Generated Proposal</h3>
+          {generatedDocument && (
+            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+              {generatedDocument}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {wordLink && (
+            <button
+              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
+              onClick={() => window.open(`${wordLink}?download=1`, "_blank")}
+              title="Download Word document"
+            >
+              <Download size={16} />
+              Word
+            </button>
+          )}
+          {pdfLink && (
+            <button
+              className="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors duration-200 flex items-center gap-2"
+              onClick={() => window.open(`${pdfLink}?download=1`, "_blank")}
+              title="Download PDF document"
+            >
+              <Download size={16} />
+              PDF
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Body / Preview */}
+      <div className="flex-1 overflow-hidden">
+        {pdfUrl ? (
+          <PdfViewer pdfUrl={pdfUrl} />
+        ) : (
+          <div className="h-full flex items-center justify-center bg-gray-50">
+            <div className="text-center max-w-md">
+              <FileText className="mx-auto mb-4 text-green-500" size={64} />
+              <h4 className="text-lg font-medium text-gray-800 mb-2">Document Ready</h4>
+              <p className="text-sm text-gray-600 mb-4">
+                Your proposal document has been generated successfully.
+              </p>
+              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
+                  <p className="text-xs text-gray-500">Status: Generated Successfully</p>
+                  {generatedDocument && (
+                    <p className="text-xs text-gray-500">File: {generatedDocument}</p>
+                  )}
+                </div>
+              </div>
+              {wordLink && (
+                <button
+                  onClick={() => window.open(wordLink, "_blank")}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center gap-2 mx-auto"
+                >
+                  <Eye size={16} />
+                  View Document
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// 2) Memoized export with a shallow comparator
+export const OutputDocumentDisplay = React.memo(
+  OutputDocumentDisplayBase,
+  (prev, next) =>
+    prev.generatedDocument === next.generatedDocument &&
+    prev.pdfUrl === next.pdfUrl &&
+    prev.wordLink === next.wordLink &&
+    prev.pdfLink === next.pdfLink
+);
+
 interface UploadPageProps {}
 
 const UploadPage: React.FC<UploadPageProps> = () => {
@@ -167,7 +360,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`/api/ocr/${uuid}`, {
+    const res = await fetch(`http://localhost:8000/ocr/${uuid}`, 
+      
+      {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -427,7 +622,58 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     </div>
   );
 
-  const InputField = ({ 
+  // const InputField = ({ 
+  //   label, 
+  //   value, 
+  //   onChange, 
+  //   type = 'text', 
+  //   placeholder = '', 
+  //   options = [] 
+  // }: {
+  //   label: string;
+  //   value: string | boolean;
+  //   onChange: (value: string | boolean) => void;
+  //   type?: 'text' | 'number' | 'select' | 'checkbox' | 'color';
+  //   placeholder?: string;
+  //   options?: { value: string; label: string }[];
+  // }) => (
+  //   <div>
+  //     <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+  //     {type === 'select' ? (
+  //       <select
+  //         value={value as string}
+  //         onChange={(e) => onChange(e.target.value)}
+  //         className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900"
+  //       >
+  //         {options.map(option => (
+  //           <option key={option.value} value={option.value}>{option.label}</option>
+  //         ))}
+  //       </select>
+  //     ) : type === 'checkbox' ? (
+  //       <label className="flex items-center gap-2">
+  //         <input
+  //           type="checkbox"
+  //           checked={value as boolean}
+  //           onChange={(e) => onChange(e.target.checked)}
+  //           className="w-3 h-3 text-gray-600 border-gray-300 rounded focus:ring-1 focus:ring-gray-400 text-gray-900"
+  //         />
+  //         <span className="text-xs text-gray-600">Enable</span>
+  //       </label>
+  //     ) : (
+  //       <input
+  //         type={type}
+  //         value={value as string}
+  //         onChange={(e) => onChange(e.target.value)}
+  //         placeholder={placeholder}
+  //         className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900"
+  //       />
+  //     )}
+  //   </div>
+  // );
+
+
+
+  const InputField = React.memo(({ 
     label, 
     value, 
     onChange, 
@@ -441,40 +687,76 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     type?: 'text' | 'number' | 'select' | 'checkbox' | 'color';
     placeholder?: string;
     options?: { value: string; label: string }[];
-  }) => (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      {type === 'select' ? (
-        <select
-          value={value as string}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900"
-        >
-          {options.map(option => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      ) : type === 'checkbox' ? (
-        <label className="flex items-center gap-2">
+  }) => {
+    const [localValue, setLocalValue] = React.useState(value);
+    const [isFocused, setIsFocused] = React.useState(false);
+
+    // Only update local value when prop changes and input is not focused
+    React.useEffect(() => {
+      if (!isFocused) {
+        setLocalValue(value);
+      }
+    }, [value, isFocused]);
+
+    const handleFocus = () => {
+      setIsFocused(true);
+    };
+
+    const handleBlur = () => {
+      setIsFocused(false);
+      onChange(localValue);
+    };
+
+    const handleChange = (newValue: string | boolean) => {
+      setLocalValue(newValue);
+      
+      // For non-text inputs, update immediately
+      if (type === 'select' || type === 'checkbox') {
+        onChange(newValue);
+      }
+    };
+
+    return (
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+        {type === 'select' ? (
+          <select
+            value={localValue as string}
+            onChange={(e) => handleChange(e.target.value)}
+            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900"
+          >
+            {options.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        ) : type === 'checkbox' ? (
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={localValue as boolean}
+              onChange={(e) => handleChange(e.target.checked)}
+              className="w-3 h-3 text-gray-600 border-gray-300 rounded focus:ring-1 focus:ring-gray-400 text-gray-900"
+            />
+            <span className="text-xs text-gray-600">Enable</span>
+          </label>
+        ) : (
           <input
-            type="checkbox"
-            checked={value as boolean}
-            onChange={(e) => onChange(e.target.checked)}
-            className="w-3 h-3 text-gray-600 border-gray-300 rounded focus:ring-1 focus:ring-gray-400 text-gray-900"
+            type={type}
+            value={localValue as string}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            placeholder={placeholder}
+            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900"
           />
-          <span className="text-xs text-gray-600">Enable</span>
-        </label>
-      ) : (
-        <input
-          type={type}
-          value={value as string}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900"
-        />
-      )}
-    </div>
-  );
+        )}
+      </div>
+    );
+  });
+
+
+
+
 
   const LoadingDisplay = () => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
@@ -483,173 +765,15 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           <Loader className="animate-spin mx-auto text-gray-600" size={48} />
         </div>
         <h3 className="text-xl font-medium text-gray-900 mb-2">Processing Your Documents</h3>
-        {/* <p className="text-sm text-gray-600 mb-6">{processingStage}</p>
-         */}
         <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
           <div 
             className="bg-gray-600 h-3 rounded-full transition-all duration-500 ease-out" 
             style={{ width: `${uploadProgress}%` }}
           ></div>
         </div>
-        
-        {/* <div className="text-sm text-gray-500 font-medium">
-          {uploadProgress}% Complete
-        </div> */}
       </div>
     </div>
   );
-
-  // PDF.js viewer component for displaying OneDrive PDF  
-  const PdfViewer = ({ pdfUrl }: { pdfUrl: string }) => {
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    React.useEffect(() => {
-      // Load PDF.js library
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-      script.async = true;
-      
-      script.onload = () => {
-        setIsLoading(false);
-      };
-      
-      script.onerror = () => {
-        setError('Failed to load PDF viewer');
-        setIsLoading(false);
-      };
-      
-      document.head.appendChild(script);
-      
-      return () => {
-        document.head.removeChild(script);
-      };
-    }, []);
-
-    if (error) {
-      return (
-        <div className="h-full flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-            <h4 className="text-lg font-medium text-gray-800 mb-2">PDF Viewer Error</h4>
-            <p className="text-sm text-gray-600 mb-4">{error}</p>
-            <button 
-              onClick={() => window.open(pdfUrl, '_blank')}
-              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700"
-            >
-              Open in New Tab
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    if (isLoading) {
-      return (
-        <div className="h-full flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <Loader className="animate-spin mx-auto mb-4 text-gray-600" size={48} />
-            <h4 className="text-lg font-medium text-gray-800 mb-2">Loading PDF Viewer</h4>
-            <p className="text-sm text-gray-600">Please wait...</p>
-          </div>
-        </div>
-      );
-    }
-
-    // Use PDF.js viewer with embedded viewer
-    const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
-
-    return (
-      <div className="h-full">
-        <iframe
-          src={viewerUrl}
-          className="w-full h-full border-none"
-          title="PDF Document Viewer"
-          onError={() => {
-            setError('Failed to load PDF document');
-          }}
-        />
-      </div>
-    );
-  };
-
-  // Enhanced output document display with PDF.js integration
-  const OutputDocumentDisplay = () => {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
-        {/* Header with Download Buttons */}
-        <div className="border-b border-gray-100 p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="text-green-500" size={16} />
-            <h3 className="text-sm font-medium text-gray-800">Generated Proposal</h3>
-            {generatedDocument && (
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                {generatedDocument}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {wordLink && (
-              <button 
-                className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
-                onClick={() => window.open(`${wordLink}?download=1`, "_blank")}
-                title="Download Word document"
-              >
-                <Download size={16} />
-                Word
-              </button>
-            )}
-
-            {pdfLink && (
-              <button 
-                className="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors duration-200 flex items-center gap-2"
-                onClick={() => window.open(`${pdfLink}?download=1`, "_blank")}
-                title="Download PDF document"
-              >
-                <Download size={16} />
-                PDF
-              </button>
-            )}
-          </div>
-        </div>
-        
-        {/* PDF Preview Area */}
-        <div className="flex-1 overflow-hidden">
-          {previewPdfUrl || pdfLink ? (
-            <PdfViewer pdfUrl={(previewPdfUrl ?? pdfLink)!} />
-          ) : (
-            <div className="h-full flex items-center justify-center bg-gray-50">
-              <div className="text-center max-w-md">
-                <FileText className="mx-auto mb-4 text-green-500" size={64} />
-                <h4 className="text-lg font-medium text-gray-800 mb-2">Document Ready</h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  Your proposal document has been generated successfully.
-                </p>
-                <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
-                    <p className="text-xs text-gray-500">Status: Generated Successfully</p>
-                    {generatedDocument && (
-                      <p className="text-xs text-gray-500">File: {generatedDocument}</p>
-                    )}
-                  </div>
-                </div>
-                {wordLink && (
-                  <button 
-                    onClick={() => window.open(wordLink, '_blank')}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center gap-2 mx-auto"
-                  >
-                    <Eye size={16} />
-                    View Document
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   const GeneratedDocumentSection = () => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -790,7 +914,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             {isUploading ? (
               <LoadingDisplay />
             ) : generatedDocument ? (
-              <OutputDocumentDisplay />
+              <OutputDocumentDisplay
+                generatedDocument={generatedDocument}
+                pdfUrl={previewPdfUrl ?? pdfLink}
+                wordLink={wordLink}
+                pdfLink={pdfLink}
+              />
             ) : (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
                 <div className="text-center">

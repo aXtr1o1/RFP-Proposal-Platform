@@ -282,7 +282,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         try:
             
             logger.info(f"Starting comprehensive proposal generation for folder: {folder_name}")
-            output_path = generate_proposal(uuid=folder_name, user_config=doc_config, language=language)
+            output_path = generate_proposal(uuid=folder_name, doc_config=doc_config, language=language, user_config=user_config)
             logger.info(f"Comprehensive proposal PATH is here............: {output_path}")
             local_docx = os.path.join("output", f"{folder_name}.docx")
             local_pdf = os.path.join("output", f"{folder_name}.pdf")
@@ -326,7 +326,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
                 # optional: create a view-only share link for easy embedding
                 share_docx = onedrive_service.create_share_link(
                     rfp_folder['drive_id'],
-                    uploaded_item.get("id"),
+                    uploaded_item.get("id"), # type: ignore
                     scope="anonymous",  
                     link_type="view"
                 )
@@ -335,7 +335,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
                 if local_pdf and uploaded_pdf:
                     share_pdf = onedrive_service.create_share_link(
                         rfp_folder['drive_id'],
-                        uploaded_pdf.get("id"),
+                        uploaded_pdf.get("id"), # type: ignore
                         scope="anonymous",
                         link_type="view"
                     )
