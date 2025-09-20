@@ -24,19 +24,22 @@ jobs:
       - name: Deploy to EC2
         run: |
           ssh -o StrictHostKeyChecking=no Administrator@${{ secrets.EC2_HOST }} << 'EOF'
-            cd C:/Users/Administrator/Documents/RFP-Proposal-Platform
+            cd C:/Users/Administrator/Documents/rfp-proposal-platform
 
             echo "Pulling latest code..."
             git reset --hard
             git pull origin main
 
             echo "Activating Python venv..."
-            source ../RFPvenv/Scripts/activate
+            # If using PowerShell on Windows
+            ../RFPvenv/Scripts/activate.ps1
+            # If using Git Bash on Windows (uncomment instead)
+            # source ../RFPvenv/Scripts/activate
 
             echo "Installing backend deps..."
-            cd apps/api
+            cd apps
             pip install -r requirements.txt
-            cd ../..
+            cd ..
 
             echo "Installing frontend deps..."
             cd apps/frontend
