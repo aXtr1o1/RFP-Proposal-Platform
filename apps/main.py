@@ -27,7 +27,8 @@ app = FastAPI(
     description="RFP document processing with enhanced OCR text extraction and proposal generation",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 app.add_middleware(
