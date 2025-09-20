@@ -3,10 +3,6 @@ name: Deploy to EC2 (PM2)
 on:
   push:
     branches: [master]
-    paths:
-      - 'apps/api/**'
-      - 'apps/frontend/**'
-      - '.github/workflows/**'
 
 jobs:
   deploy:
