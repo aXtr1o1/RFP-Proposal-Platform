@@ -73,7 +73,7 @@ class OneDriveService:
                 self.ocr_worker = None
         else:
             self.ocr_worker = None
-        try:
+        try: 
             self._authenticate()
 
         except:
