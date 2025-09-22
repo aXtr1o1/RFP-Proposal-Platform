@@ -290,35 +290,73 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }
   };
 
+  // const handleDrop = (e: React.DragEvent, fileType: 'rfp' | 'supporting') => {
+  //   e.preventDefault();
+  //   e.stopPropagation();
+  //   if (fileType === 'rfp') setDragActiveRfp(false);
+  //   else setDragActiveSupporting(false);
+
+  //   const files = Array.from(e.dataTransfer.files).filter(file => 
+  //     file.type === 'application/pdf' || 
+  //     file.type === 'application/msword' || 
+  //     file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  //   );
+
+  //   if (fileType === 'rfp') {
+  //     setRfpFiles(prev => [...prev, ...files]);
+  //   } else {
+  //     setSupportingFiles(prev => [...prev, ...files]);
+  //   }
+  // };
+
+  // const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, fileType: 'rfp' | 'supporting') => {
+  //   if (e.target.files) {
+  //     const files = Array.from(e.target.files);
+  //     if (fileType === 'rfp') {
+  //       setRfpFiles(prev => [...prev, ...files]);
+  //     } else {
+  //       setSupportingFiles(prev => [...prev, ...files]);
+  //     }
+  //   }
+  // };
+
+
   const handleDrop = (e: React.DragEvent, fileType: 'rfp' | 'supporting') => {
     e.preventDefault();
     e.stopPropagation();
     if (fileType === 'rfp') setDragActiveRfp(false);
     else setDragActiveSupporting(false);
 
-    const files = Array.from(e.dataTransfer.files).filter(file => 
-      file.type === 'application/pdf' || 
-      file.type === 'application/msword' || 
-      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    const valid = Array.from(e.dataTransfer.files).filter(f =>
+      f.type === 'application/pdf' ||
+      f.type === 'application/msword' ||
+      f.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     );
+    const file = valid[0];
+    if (!file) return;
 
-    if (fileType === 'rfp') {
-      setRfpFiles(prev => [...prev, ...files]);
-    } else {
-      setSupportingFiles(prev => [...prev, ...files]);
-    }
+    if (fileType === 'rfp') setRfpFiles([file]);
+    else setSupportingFiles([file]);
   };
+
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, fileType: 'rfp' | 'supporting') => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      if (fileType === 'rfp') {
-        setRfpFiles(prev => [...prev, ...files]);
-      } else {
-        setSupportingFiles(prev => [...prev, ...files]);
-      }
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (
+      file.type === 'application/pdf' ||
+      file.type === 'application/msword' ||
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ) {
+      if (fileType === 'rfp') setRfpFiles([file]);
+      else setSupportingFiles([file]);
     }
+    // Clear the input so the same file can be re-selected if needed
+    e.currentTarget.value = '';
   };
+
+
 
   const removeFile = (index: number, fileType: 'rfp' | 'supporting') => {
     if (fileType === 'rfp') {
@@ -360,7 +398,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`/api/ocr/${uuid}`, 
+    const res = await fetch(`http://localhost:3000/ocr/${uuid}`, 
       
       {
       method: "POST",
@@ -622,54 +660,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     </div>
   );
 
-  // const InputField = ({ 
-  //   label, 
-  //   value, 
-  //   onChange, 
-  //   type = 'text', 
-  //   placeholder = '', 
-  //   options = [] 
-  // }: {
-  //   label: string;
-  //   value: string | boolean;
-  //   onChange: (value: string | boolean) => void;
-  //   type?: 'text' | 'number' | 'select' | 'checkbox' | 'color';
-  //   placeholder?: string;
-  //   options?: { value: string; label: string }[];
-  // }) => (
-  //   <div>
-  //     <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-  //     {type === 'select' ? (
-  //       <select
-  //         value={value as string}
-  //         onChange={(e) => onChange(e.target.value)}
-  //         className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900"
-  //       >
-  //         {options.map(option => (
-  //           <option key={option.value} value={option.value}>{option.label}</option>
-  //         ))}
-  //       </select>
-  //     ) : type === 'checkbox' ? (
-  //       <label className="flex items-center gap-2">
-  //         <input
-  //           type="checkbox"
-  //           checked={value as boolean}
-  //           onChange={(e) => onChange(e.target.checked)}
-  //           className="w-3 h-3 text-gray-600 border-gray-300 rounded focus:ring-1 focus:ring-gray-400 text-gray-900"
-  //         />
-  //         <span className="text-xs text-gray-600">Enable</span>
-  //       </label>
-  //     ) : (
-  //       <input
-  //         type={type}
-  //         value={value as string}
-  //         onChange={(e) => onChange(e.target.value)}
-  //         placeholder={placeholder}
-  //         className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900"
-  //       />
-  //     )}
-  //   </div>
-  // );
 
 
 
@@ -1179,7 +1169,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         <input
           ref={rfpInputRef}
           type="file"
-          multiple
+          // multiple
           accept=".pdf,.doc,.docx"
           onChange={(e) => handleFileSelect(e, 'rfp')}
           className="hidden"
@@ -1187,7 +1177,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         <input
           ref={supportingInputRef}
           type="file"
-          multiple
+          // multiple
           accept=".pdf,.doc,.docx"
           onChange={(e) => handleFileSelect(e, 'supporting')}
           className="hidden"

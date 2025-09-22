@@ -8,6 +8,7 @@ __pycache__/
 *.so
 
 node_modules/
+.next/
 
 # Distribution / packaging
 .Python
