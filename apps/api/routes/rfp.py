@@ -90,7 +90,7 @@ class OneDriveService:
             
             if "access_token" in result:
                 self.access_token = result["access_token"]
-                logger.info("Expires in:", result['expires_in'])
+                logger.info(f"Expires in: {result['expires_in']}")
                 logger.info("OneDrive authentication successful")
             else:
                 raise Exception(f"Authentication failed: {result.get('error_description')}")

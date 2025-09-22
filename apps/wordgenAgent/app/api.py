@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from pymilvus import connections, Collection, MilvusException
 from apps.wordgenAgent.app.proposal_clean import proposal_cleaner
 from apps.wordgenAgent.app.wordcom import build_word_from_proposal
+import time
 
 try:
     from openai import OpenAI
@@ -118,8 +119,40 @@ def fetch_rfp_text_by_uuid(uuid: str) -> str:
         logger.exception("Milvus query failed")
         raise HTTPException(status_code=500, detail=f"Milvus query failed: {exc}")
 
+# def fetch_supportive_files_text_by_uuid(uuid: str) -> str:
+#     """Fetch concatenated text from supportive_files collection for a given folder_name (uuid)."""
+#     conn = _connect_milvus()
+    
+#     try:
+#         col = Collection("supportive_files")
+#         col.load()
+        
+#         expr = f'folder_name == "{uuid}"'
+#         logger.info(f"Milvus query expr: {expr} on collection: supportive_files")
+#         results = _milvus_query_with_fallback(
+#             col,
+#             expr=expr,
+#             output_fields=["content", "chunk_index", "file_name"],
+#             limit=16384,
+#         )
+        
+#         logger.info(f"Milvus query returned {len(results)} rows for uuid={uuid}")
+        
+#         try:
+#             results.sort(key=lambda r: r.get("chunk_index", 0))
+#         except Exception as sort_exc:
+#             logger.warning(f"Sort warning: {sort_exc}")
+        
+#         texts: List[str] = [r.get("content", "") for r in results if r.get("content")]
+#         return "\n\n".join(texts)
+        
+#     except Exception as exc:
+#         logger.exception("Milvus query failed")
+#         raise HTTPException(status_code=500, detail=f"Milvus query failed: {exc}")
+
+
 def fetch_supportive_files_text_by_uuid(uuid: str) -> str:
-    """Fetch concatenated text from supportive_files collection for a given folder_name (uuid)."""
+    """Fetch concatenated text from rfp_files collection for a given folder_name (uuid)."""
     _connect_milvus()
     
     try:
@@ -128,6 +161,7 @@ def fetch_supportive_files_text_by_uuid(uuid: str) -> str:
         
         expr = f'folder_name == "{uuid}"'
         logger.info(f"Milvus query expr: {expr} on collection: supportive_files")
+        
         results = _milvus_query_with_fallback(
             col,
             expr=expr,
@@ -148,7 +182,6 @@ def fetch_supportive_files_text_by_uuid(uuid: str) -> str:
     except Exception as exc:
         logger.exception("Milvus query failed")
         raise HTTPException(status_code=500, detail=f"Milvus query failed: {exc}")
-
 
 #---------------------services-----------------------------
 
@@ -507,14 +540,16 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
 def generate_proposal(uuid , doc_config, language , user_config):
     """Generate a detailed proposal text from RFP files in Milvus collection in the native language."""
     try:
-        rfp_text = fetch_rfp_text_by_uuid(str(uuid))
+        rfp_text = fetch_rfp_text_by_uuid(str(uuid).strip())
         if not rfp_text:
             raise HTTPException(status_code=404, detail="No RFP knowledge found for provided uuid")
         
         logger.info(f"Retrieved {len(rfp_text)} characters of RFP text for uuid {uuid}")
-        supportive_text = fetch_supportive_files_text_by_uuid(uuid)
+        logger.info("SLEEPING FOR 1 SECONDS")
+        time.sleep(1)
+        supportive_text = fetch_supportive_files_text_by_uuid(str(uuid).strip())
         if not supportive_text:
-            logger.warning("No supportive files found for the provided uuid. Proceeding without it.")
+            logger.warning(f"No supportive files found for the provided uuid {uuid}. Proceeding without it.")
             supportive_text = ""  
         
         logger.info(f"Retrieved {len(supportive_text)} characters of supportive files text for uuid {uuid}")
