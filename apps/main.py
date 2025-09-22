@@ -231,6 +231,7 @@ async def process_ocr(folder_name: str = Path(..., description="Folder name to p
         try:
             rfp_results = [r for r in all_ocr_results if r.get('file_type') == 'rfp_files']
             supportive_results = [r for r in all_ocr_results if r.get('file_type') == 'supportive_files']
+            logging.info(f"This is the ocr supportive_result: {supportive_results}")
             
             vector_result = {
                 "vector_stored": True,
