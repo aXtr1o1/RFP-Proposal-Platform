@@ -427,6 +427,7 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
         Return ONLY a JSON object with this exact structure and keys (no extra keys, no prose):
 
         {
+        "title": "Professional proposal title reflecting client name and project scope"
         "title": "string",
         "sections": [
             {
@@ -453,6 +454,12 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
         - Specific key points (3-5 points per section)
         - Explanatory tables with detailed data where appropriate
 
+        The "title" field must:
+        - Concisely reflect the RFP subject and company offering
+        - Include the client name or project name from the RFP if available
+        - Be professional, specific, and aligned with the proposal content
+
+
         Ensure each section contains:
         1. Detailed explanation of the topic
         2. Specific examples and practical cases
@@ -470,8 +477,8 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
     
 
     proposal_template = """
-        Proposal Title: `provide Proposal Title`
-        Prepared by: `provide Company Name`
+        Proposal Response: [Proposal Title]
+        Prepared by: [Company Name]
 
         Executive Summary
         Company Introduction

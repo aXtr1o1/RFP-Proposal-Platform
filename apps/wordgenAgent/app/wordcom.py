@@ -179,7 +179,6 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, language, 
             # Bullet points
             # if points:
             #     add_bullet_list(doc, points)
-            logger.info(f"thissss is the language found in the wordcom: {native_language}")
             if native_language == "english":
 
                 if points:
