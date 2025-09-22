@@ -42,5 +42,5 @@ def upload_and_save_pdf(file_path, file_name,uuid, pdf_share_url):
         "pdf_final_url": pdf_supabase_url,
     }
     resp = supabase.table("pdf_table").insert(payload).execute()
-    logger.info("✅ Row inserted into pdf_table:", resp.data)
+    logger.info(f"✅ Row inserted into pdf_table: {resp.data}")
     return pdf_supabase_url
