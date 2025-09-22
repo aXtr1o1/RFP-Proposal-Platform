@@ -461,11 +461,9 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
             - Ensure the title is specific, relevant, and aligned with the proposal content.
             - Use professional language; avoid generic terms like “proposal,” “submission,” or “offer.”
             - Keep it engaging, clear, and suitable for formal business documents.
-        
-        Prepared By Line:
-            - Include a “Prepared by” line immediately after the title.
+            - Include a “Prepared by” in the title itself naturally.
             - Reflect understanding of the RFP and supporting materials.
-            - Include the name(s) of the individual(s) or company preparing the proposal.
+            - Include the name(s) of the individual(s) or company preparing the proposal in the prepared by.
 
 
         Ensure each section contains:
@@ -488,8 +486,7 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
 
 
     proposal_template = """
-        [Professional Proposal Title reflecting RFP and company solution]  
-        Prepared by: [Name(s) or Company Name]
+        [Professional Proposal Title reflecting RFP and company solution alongwith Prepared By]
 
         Executive Summary
         Company Introduction
