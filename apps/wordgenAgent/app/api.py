@@ -472,9 +472,12 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
         --- USER CUSTOM CONFIGURATION ---
         {user_config}
         use this to add tone, structure, and specific requirements to the proposal.
+        [NON-NEGOTIABLE DIRECTIVES]
+        • Treat USER_CONFIG as binding contract requirements.
+        • For each directive in USER_CONFIG, add a dedicated section in "sections" with a precise heading.
 
         """
-    
+
 
     proposal_template = """
         Proposal Response: [Proposal Title]
