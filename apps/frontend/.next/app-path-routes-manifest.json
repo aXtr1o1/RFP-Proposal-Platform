@@ -1,7 +1,7 @@
 {
+  "/_not-found/page": "/_not-found",
   "/nextapi/check-onedrive/route": "/nextapi/check-onedrive",
   "/favicon.ico/route": "/favicon.ico",
-  "/_not-found/page": "/_not-found",
   "/nextapi/upload/route": "/nextapi/upload",
   "/page": "/"
 }

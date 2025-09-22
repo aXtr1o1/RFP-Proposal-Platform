@@ -97,7 +97,7 @@
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "C:\\Users\\sanje_3wfdh8z\\OneDrive\\Desktop\\RFP\\RFP-Proposal-Platform\\apps\\frontend",
+    "outputFileTracingRoot": "C:\\Users\\Administrator\\Documents\\RFP-Proposal-Platform\\apps\\frontend",
     "experimental": {
       "useSkewCookie": false,
       "nodeMiddleware": false,
@@ -156,7 +156,7 @@
       "middlewarePrefetch": "flexible",
       "optimisticClientCache": true,
       "manualClientBasePath": false,
-      "cpus": 15,
+      "cpus": 7,
       "memoryBasedWorkersCount": false,
       "imgOptConcurrency": null,
       "imgOptTimeoutInSeconds": 7,
@@ -288,10 +288,10 @@
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.ts",
     "turbopack": {
-      "root": "C:\\Users\\sanje_3wfdh8z\\OneDrive\\Desktop\\RFP\\RFP-Proposal-Platform\\apps\\frontend"
+      "root": "C:\\Users\\Administrator\\Documents\\RFP-Proposal-Platform\\apps\\frontend"
     }
   },
-  "appDir": "C:\\Users\\sanje_3wfdh8z\\OneDrive\\Desktop\\RFP\\RFP-Proposal-Platform\\apps\\frontend",
+  "appDir": "C:\\Users\\Administrator\\Documents\\RFP-Proposal-Platform\\apps\\frontend",
   "relativeAppDir": "",
   "files": [
     ".next\\routes-manifest.json",

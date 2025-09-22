@@ -1,4 +1,4 @@
-// File: C:\Users\sanje_3wfdh8z\OneDrive\Desktop\RFP\RFP-Proposal-Platform\apps\frontend\app\layout.tsx
+// File: C:\Users\Administrator\Documents\RFP-Proposal-Platform\apps\frontend\app\layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
