@@ -454,10 +454,18 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
         - Specific key points (3-5 points per section)
         - Explanatory tables with detailed data where appropriate
 
-        The "title" field must:
-        - Concisely reflect the RFP subject and company offering
-        - Include the client name or project name from the RFP if available
-        - Be professional, specific, and aligned with the proposal content
+        Instruction for Generating Proposal Title and Prepared By Line:
+        Proposal Title:
+            - Create a concise, professional title that clearly reflects the RFP subject and the company’s solution or offering.
+            - Include the client name or project name if specified in the RFP.
+            - Ensure the title is specific, relevant, and aligned with the proposal content.
+            - Use professional language; avoid generic terms like “proposal,” “submission,” or “offer.”
+            - Keep it engaging, clear, and suitable for formal business documents.
+        
+        Prepared By Line:
+            - Include a “Prepared by” line immediately after the title.
+            - Reflect understanding of the RFP and supporting materials.
+            - Include the name(s) of the individual(s) or company preparing the proposal.
 
 
         Ensure each section contains:
@@ -477,8 +485,8 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
     
 
     proposal_template = """
-        Proposal Response: [Proposal Title]
-        Prepared by: [Company Name]
+        [Professional Proposal Title reflecting RFP and company solution]  
+        Prepared by: [Name(s) or Company Name]
 
         Executive Summary
         Company Introduction
