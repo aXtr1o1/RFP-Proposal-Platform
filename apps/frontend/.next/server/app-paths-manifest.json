@@ -1,0 +1,7 @@
+{
+  "/nextapi/check-onedrive/route": "app/nextapi/check-onedrive/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/nextapi/upload/route": "app/nextapi/upload/route.js",
+  "/page": "app/page.js"
+}
