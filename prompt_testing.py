@@ -292,8 +292,8 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
     
 
     proposal_template = """
-        Proposal Response: Development of Job Standards and Qualifications for Hajj and Umrah Service Providers
-        Prepared by: [Company Name]
+        Proposal Title: `provide Proposal Title`
+        Prepared by: `provide Company Name`
 
         1) Executive Summary
         2) Company Introduction

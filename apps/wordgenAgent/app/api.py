@@ -470,8 +470,8 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
     
 
     proposal_template = """
-        Proposal Response: Development of Job Standards and Qualifications for Hajj and Umrah Service Providers
-        Prepared by: [Company Name]
+        Proposal Title: `provide Proposal Title`
+        Prepared by: `provide Company Name`
 
         Executive Summary
         Company Introduction
@@ -528,7 +528,7 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
 
     raw = resp.choices[0].message.content if resp and resp.choices else ""
     raw_prased=json.loads(str(raw))
-    print(raw_prased)
+    # print(raw_prased)
     return raw_prased
 
 
@@ -540,13 +540,13 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
 def generate_proposal(uuid , doc_config, language , user_config):
     """Generate a detailed proposal text from RFP files in Milvus collection in the native language."""
     try:
+        logger.info("SLEEPING FOR 2 SECONDS")
+        time.sleep(2)
         rfp_text = fetch_rfp_text_by_uuid(str(uuid).strip())
         if not rfp_text:
             raise HTTPException(status_code=404, detail="No RFP knowledge found for provided uuid")
         
         logger.info(f"Retrieved {len(rfp_text)} characters of RFP text for uuid {uuid}")
-        logger.info("SLEEPING FOR 1 SECONDS")
-        time.sleep(1)
         supportive_text = fetch_supportive_files_text_by_uuid(str(uuid).strip())
         if not supportive_text:
             logger.warning(f"No supportive files found for the provided uuid {uuid}. Proceeding without it.")
@@ -558,7 +558,7 @@ def generate_proposal(uuid , doc_config, language , user_config):
         supportive_materials = generate_company_profile_json(supportive_text)
         proposal_dict = generate_proposal_with_openai(rfp_text, native_language, supportive_materials, user_config)
         logger.info(f"Generated proposal JSON with {proposal_dict} characters")
-        print('this is the type paathukoo',{type(proposal_dict)})
+        # print('this is the type paathukoo',{type(proposal_dict)})
         
 
         try:
