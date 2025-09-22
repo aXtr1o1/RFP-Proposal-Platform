@@ -454,10 +454,18 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
         - Specific key points (3-5 points per section)
         - Explanatory tables with detailed data where appropriate
 
-        The "title" field must:
-        - Concisely reflect the RFP subject and company offering
-        - Include the client name or project name from the RFP if available
-        - Be professional, specific, and aligned with the proposal content
+        Instruction for Generating Proposal Title and Prepared By Line:
+        Proposal Title:
+            - Create a concise, professional title that clearly reflects the RFP subject and the company’s solution or offering.
+            - Include the client name or project name if specified in the RFP.
+            - Ensure the title is specific, relevant, and aligned with the proposal content.
+            - Use professional language; avoid generic terms like “proposal,” “submission,” or “offer.”
+            - Keep it engaging, clear, and suitable for formal business documents.
+        
+        Prepared By Line:
+            - Include a “Prepared by” line immediately after the title.
+            - Reflect understanding of the RFP and supporting materials.
+            - Include the name(s) of the individual(s) or company preparing the proposal.
 
 
         Ensure each section contains:
@@ -480,8 +488,8 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
 
 
     proposal_template = """
-        Proposal Response: [Proposal Title]
-        Prepared by: [Company Name]
+        [Professional Proposal Title reflecting RFP and company solution]  
+        Prepared by: [Name(s) or Company Name]
 
         Executive Summary
         Company Introduction
@@ -538,7 +546,7 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
 
     raw = resp.choices[0].message.content if resp and resp.choices else ""
     raw_prased=json.loads(str(raw))
-    print(raw_prased)
+    # print(raw_prased)
     return raw_prased
 
 
@@ -550,13 +558,13 @@ def generate_proposal_with_openai(rfp_text: str, native_language: str,supporting
 def generate_proposal(uuid , doc_config, language , user_config):
     """Generate a detailed proposal text from RFP files in Milvus collection in the native language."""
     try:
+        logger.info("SLEEPING FOR 2 SECONDS")
+        time.sleep(2)
         rfp_text = fetch_rfp_text_by_uuid(str(uuid).strip())
         if not rfp_text:
             raise HTTPException(status_code=404, detail="No RFP knowledge found for provided uuid")
         
         logger.info(f"Retrieved {len(rfp_text)} characters of RFP text for uuid {uuid}")
-        logger.info("SLEEPING FOR 1 SECONDS")
-        time.sleep(1)
         supportive_text = fetch_supportive_files_text_by_uuid(str(uuid).strip())
         if not supportive_text:
             logger.warning(f"No supportive files found for the provided uuid {uuid}. Proceeding without it.")
@@ -568,7 +576,7 @@ def generate_proposal(uuid , doc_config, language , user_config):
         supportive_materials = generate_company_profile_json(supportive_text)
         proposal_dict = generate_proposal_with_openai(rfp_text, native_language, supportive_materials, user_config)
         logger.info(f"Generated proposal JSON with {proposal_dict} characters")
-        print('this is the type paathukoo',{type(proposal_dict)})
+        # print('this is the type paathukoo',{type(proposal_dict)})
         
 
         try:

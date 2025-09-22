@@ -360,7 +360,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`http://localhost:8000/ocr/${uuid}`, 
+    const res = await fetch(`/api/ocr/${uuid}`, 
       
       {
       method: "POST",
