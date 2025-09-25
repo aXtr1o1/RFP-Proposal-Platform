@@ -209,7 +209,7 @@ def _add_table(doc, headers, rows, cfg, rtl: bool):
     except Exception:
         pass
 
-def build_word_from_proposal(proposal_dict, user_config, output_path, language="english", visible=False):
+def build_word_from_proposal(proposal_dict, user_config, output_path, language, visible=False):
     """
     Build a DOCX using Word COM. Language-aware (Arabic/English) formatting.
     Returns absolute path to the saved DOCX.

@@ -1,151 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import axios from "axios";
-import qs from "qs";
-
-const tenantId = process.env.AZURE_TENANT_ID!;
-const clientId = process.env.AZURE_CLIENT_ID!;
-const clientSecret = process.env.AZURE_CLIENT_SECRET!;
-const oneDriveUserId = process.env.AZURE_ONEDRIVE_USER_ID!; // UPN or GUID
-
-const GRAPH = "https://graph.microsoft.com/v1.0";
-const SMALL_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4MB
-
-function cleanSeg(s: string) {
-  return (s || "").replace(/^\/+|\/+$/g, "");
-}
-function pathJoin(...segs: string[]) {
-  return segs.map((s) => encodeURIComponent(cleanSeg(s))).join("/");
-}
-
-async function getAccessToken() {
-  const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
-  const data = {
-    client_id: clientId,
-    scope: "https://graph.microsoft.com/.default",
-    client_secret: clientSecret,
-    grant_type: "client_credentials",
-  };
-  const res = await axios.post(url, qs.stringify(data), {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-  });
-  return res.data.access_token as string;
-}
-
-function graphClient(token: string) {
-  return axios.create({
-    baseURL: GRAPH,
-    headers: { Authorization: `Bearer ${token}` },
-    maxBodyLength: Infinity,
-    maxContentLength: Infinity,
-  });
-}
-
-async function getItemByPath(client: any, segments: string[]) {
-  const url = `/users/${encodeURIComponent(oneDriveUserId)}/drive/root:/${pathJoin(...segments)}`;
-  return client.get(url);
-}
-
-async function createChildFolder(client: any, parentSegments: string[], name: string) {
-  const body = { name, folder: {}, "@microsoft.graph.conflictBehavior": "rename" };
-  if (parentSegments.length === 0) {
-    // create under root
-    const url = `/users/${encodeURIComponent(oneDriveUserId)}/drive/root/children`;
-    return client.post(url, body);
-  } else {
-    const url = `/users/${encodeURIComponent(oneDriveUserId)}/drive/root:/${pathJoin(
-      ...parentSegments
-    )}:/children`;
-    return client.post(url, body);
-  }
-}
-
-/** Ensure a nested folder path exists; returns final driveItem */
-async function ensurePath(client: any, segments: string[]) {
-  const acc: string[] = [];
-  for (const seg of segments) {
-    const current = [...acc, seg];
-    try {
-      await getItemByPath(client, current);
-    } catch (e: any) {
-      if (e?.response?.status === 404) {
-        await createChildFolder(client, acc, seg);
-      } else {
-        throw e;
-      }
-    }
-    acc.push(seg);
-  }
-  const res = await getItemByPath(client, segments);
-  return res.data;
-}
-
-async function simpleUpload(
-  client: any,
-  folderSegments: string[],
-  fileName: string,
-  buffer: Buffer,
-  contentType?: string
-) {
-  const url = `/users/${encodeURIComponent(oneDriveUserId)}/drive/root:/${pathJoin(
-    ...folderSegments,
-    fileName
-  )}:/content`;
-  const res = await client.put(url, buffer, {
-    headers: {
-      "Content-Type": contentType || "application/octet-stream",
-      "Content-Length": buffer.length,
-    },
-  });
-  return res.data; // driveItem
-}
-
-async function largeUpload(
-  client: any,
-  folderSegments: string[],
-  fileName: string,
-  buffer: Buffer,
-  contentType?: string
-) {
-  // 1) Create session
-  const sessionUrl = `/users/${encodeURIComponent(oneDriveUserId)}/drive/root:/${pathJoin(
-    ...folderSegments,
-    fileName
-  )}:/createUploadSession`;
-  const sessionRes = await client.post(sessionUrl, {
-    item: { "@microsoft.graph.conflictBehavior": "replace" },
-  });
-  const uploadUrl: string = sessionRes.data.uploadUrl;
-
-  // 2) Chunked PUTs
-  const chunkSize = 8 * 1024 * 1024; // 8MB
-  const total = buffer.length;
-  let start = 0;
-
-  while (start < total) {
-    const end = Math.min(start + chunkSize, total);
-    const chunk = buffer.subarray(start, end);
-    const contentRange = `bytes ${start}-${end - 1}/${total}`;
-
-    await axios.put(uploadUrl, chunk, {
-      headers: {
-        "Content-Length": String(chunk.length),
-        "Content-Range": contentRange,
-        "Content-Type": contentType || "application/octet-stream",
-      },
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity,
-      validateStatus: (s) => (s >= 200 && s < 300) || s === 308, // 308 for intermediate chunk
-    });
-
-    start = end;
-  }
-
-  // 3) Return metadata
-  const final = await getItemByPath(client, [...folderSegments, fileName]);
-  return final.data;
-}
+import { supabaseAdmin } from "@/app/supabase/admin";
 
 export async function POST(req: Request) {
   try {
@@ -157,83 +13,223 @@ export async function POST(req: Request) {
     const rfpFiles = form.getAll("rfpFiles") as File[];
     const supportingFiles = form.getAll("supportingFiles") as File[];
 
-    if (!uuid) return NextResponse.json({ error: "uuid required" }, { status: 400 });
+    console.log('Processing upload for UUID:', uuid);
+    console.log('RFP files count:', rfpFiles.length);
+    console.log('Supporting files count:', supportingFiles.length);
 
-    const token = await getAccessToken();
-    const client = graphClient(token);
+    if (!uuid) {
+      return NextResponse.json({ error: "uuid required" }, { status: 400 });
+    }
 
-    // Ensure folder structure:
-    // RFP-Uploads/{uuid}/RFP
-    // RFP-Uploads/{uuid}/supportingFiles
-    const base = ["RFP-Uploads"];
-    await ensurePath(client, base);
+    // Validate files are provided
+    if (rfpFiles.length === 0 && supportingFiles.length === 0) {
+      return NextResponse.json({ error: "No files provided" }, { status: 400 });
+    }
 
-    const uuidPath = [...base, uuid];
-    const uuidFolder = await ensurePath(client, uuidPath);
+    // File size validation (50MB max)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
+    const allFiles = [...rfpFiles, ...supportingFiles];
+    
+    for (const file of allFiles) {
+      if (file.size > MAX_FILE_SIZE) {
+        return NextResponse.json({ 
+          error: `File ${file.name} exceeds 50MB size limit` 
+        }, { status: 400 });
+      }
+      
+      if (file.size === 0) {
+        return NextResponse.json({ 
+          error: `File ${file.name} is empty` 
+        }, { status: 400 });
+      }
+    }
 
-    const rfpPath = [...uuidPath, "RFP"];
-    const supPath = [...uuidPath, "supportingFiles"];
-    const rfpFolder = await ensurePath(client, rfpPath);
-    const supFolder = await ensurePath(client, supPath);
+    // Helper function to upload files to Supabase storage
+    const uploadOne = async (
+      bucket: string,
+      file: File,
+      index: number
+    ): Promise<{ name: string; url: string; size: number }> => {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        
+        // Create unique file path: uuid/timestamp_index_filename
+        const timestamp = Date.now();
+        const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const filePath = `${uuid}/${timestamp}_${index}_${sanitizedFileName}`;
 
-    const uploadOne = async (folderSegs: string[], f: File) => {
-      const fileName = f.name;
-      const type = f.type || "application/octet-stream";
-      const ab = await f.arrayBuffer();
-      const buf = Buffer.from(ab);
-      if (buf.length <= SMALL_UPLOAD_LIMIT) {
-        return simpleUpload(client, folderSegs, fileName, buf, type);
-      } else {
-        return largeUpload(client, folderSegs, fileName, buf, type);
+        console.log(`Uploading ${file.name} to bucket: ${bucket}, path: ${filePath}`);
+
+        // Upload to Supabase storage
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+          .from(bucket)
+          .upload(filePath, buffer, {
+            contentType: file.type || "application/octet-stream",
+            upsert: true, // Allow overwrite if file exists
+          });
+
+        if (uploadError) {
+          console.error(`Upload error for ${file.name}:`, uploadError);
+          throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
+        }
+
+        console.log(`Successfully uploaded ${file.name}:`, uploadData);
+
+        // Get public URL
+        const { data: urlData } = supabaseAdmin.storage
+          .from(bucket)
+          .getPublicUrl(filePath);
+
+        if (!urlData.publicUrl) {
+          throw new Error(`Failed to get public URL for ${file.name}`);
+        }
+
+        return { 
+          name: file.name, 
+          url: urlData.publicUrl,
+          size: file.size
+        };
+
+      } catch (error) {
+        console.error(`Error processing file ${file.name}:`, error);
+        throw error;
       }
     };
 
-    const results: {
-      baseFolder: { path: string; webUrl?: string; id?: string };
-      rfpFolder: { path: string; webUrl?: string; id?: string };
-      supportingFolder: { path: string; webUrl?: string; id?: string };
-      rfp: any[];
-      supporting: any[];
-      meta: { uuid: string; config: string };
-    } = {
-      baseFolder: { path: base.join("/") },
-      rfpFolder: { path: rfpPath.join("/") },
-      supportingFolder: { path: supPath.join("/") },
-      rfp: [],
-      supporting: [],
-      meta: { uuid, config },
-    };
+    // Upload all RFP files
+    console.log('Starting RFP file uploads...');
+    const rfpResults = await Promise.allSettled(
+      rfpFiles.map((file, index) => uploadOne("rfp", file, index))
+    );
 
-    results.baseFolder = {
-      path: uuidPath.join("/"),
-      id: uuidFolder.id,
-      webUrl: uuidFolder.webUrl,
-    };
-    results.rfpFolder = {
-      path: rfpPath.join("/"),
-      id: rfpFolder.id,
-      webUrl: rfpFolder.webUrl,
-    };
-    results.supportingFolder = {
-      path: supPath.join("/"),
-      id: supFolder.id,
-      webUrl: supFolder.webUrl,
-    };
+    // Upload all supporting files
+    console.log('Starting supporting file uploads...');
+    const supportingResults = await Promise.allSettled(
+      supportingFiles.map((file, index) => uploadOne("supporting", file, index))
+    );
 
-    for (const f of rfpFiles) {
-      const item = await uploadOne(rfpPath, f);
-      results.rfp.push({ id: item.id, name: item.name, size: item.size, webUrl: item.webUrl });
-    }
-    for (const f of supportingFiles) {
-      const item = await uploadOne(supPath, f);
-      results.supporting.push({ id: item.id, name: item.name, size: item.size, webUrl: item.webUrl });
+    // Check for upload failures
+    const failedRfpUploads = rfpResults.filter(result => result.status === 'rejected');
+    const failedSupportingUploads = supportingResults.filter(result => result.status === 'rejected');
+
+    if (failedRfpUploads.length > 0 || failedSupportingUploads.length > 0) {
+      console.error('Some uploads failed:');
+      failedRfpUploads.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`RFP file ${index}:`, result.reason);
+        }
+      });
+      failedSupportingUploads.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`Supporting file ${index}:`, result.reason);
+        }
+      });
     }
 
-    return NextResponse.json(results);
+    // Extract successful uploads
+    const successfulRfpUploads = rfpResults
+      .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
+        result.status === 'fulfilled'
+      )
+      .map(result => result.value);
+
+    const successfulSupportingUploads = supportingResults
+      .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
+        result.status === 'fulfilled'
+      )
+      .map(result => result.value);
+
+    console.log('Successful RFP uploads:', successfulRfpUploads.length);
+    console.log('Successful supporting uploads:', successfulSupportingUploads.length);
+
+    // Prepare data for database update - just the first URL as string
+    const rfpFileUrls = successfulRfpUploads.map(file => file.url);
+    const supportingFileUrls = successfulSupportingUploads.map(file => file.url);
+    
+    const rfpFileData = successfulRfpUploads.length > 0 ? successfulRfpUploads[0].url : null;
+    const supportingFileData = successfulSupportingUploads.length > 0 ? successfulSupportingUploads[0].url : null;
+
+    console.log('Saving to database with file URLs...');
+    console.log('RFP URLs:', rfpFileUrls);
+    console.log('Supporting URLs:', supportingFileUrls);
+
+    // Try to update existing record first
+    const { data: updateData, error: updateError } = await supabaseAdmin
+      .from("Data_Table")
+      .update({
+        RFP_Files: rfpFileData,
+        Supporting_Files: supportingFileData,
+      })
+      .eq("uuid", uuid)
+      .select();
+
+    let finalData = updateData;
+
+    // If no rows were updated, insert a new record
+    if (!updateError && (!updateData || updateData.length === 0)) {
+      console.log('No existing record found, creating new record...');
+      
+      const { data: insertData, error: insertError } = await supabaseAdmin
+        .from("Data_Table")
+        .insert({
+          uuid: uuid,
+          RFP_Files: rfpFileData,
+          Supporting_Files: supportingFileData,
+        })
+        .select();
+
+      if (insertError) {
+        console.error('Database insert error:', insertError);
+        throw new Error(`Database insert failed: ${insertError.message}`);
+      }
+
+      finalData = insertData;
+      console.log('New record created successfully:', insertData);
+    } else if (updateError) {
+      console.error('Database update error:', updateError);
+      throw new Error(`Database update failed: ${updateError.message}`);
+    } else {
+      console.log('Existing record updated successfully:', updateData);
+    }
+
+    // Return success response
+    const response = {
+      success: true,
+      uuid,
+      config,
+      rfp: {
+        uploaded: successfulRfpUploads,
+        failed: failedRfpUploads.length,
+        total: rfpFiles.length
+      },
+      supporting: {
+        uploaded: successfulSupportingUploads,
+        failed: failedSupportingUploads.length,
+        total: supportingFiles.length
+      },
+      summary: {
+        totalFilesProcessed: allFiles.length,
+        totalFilesUploaded: successfulRfpUploads.length + successfulSupportingUploads.length,
+        totalFilesFailed: failedRfpUploads.length + failedSupportingUploads.length
+      }
+    };
+
+    console.log('Upload process completed:', response.summary);
+    
+    return NextResponse.json(response);
+
   } catch (err: any) {
-    const status = err?.response?.status || 500;
-    const detail = err?.response?.data || err?.message || "unknown";
-    console.error("upload error", detail);
-    return NextResponse.json({ error: "upload_failed", detail }, { status });
+    console.error("Upload process failed:", err);
+    
+    // More detailed error response
+    return NextResponse.json(
+      { 
+        error: "upload_failed", 
+        detail: err.message || "Unknown error occurred",
+        timestamp: new Date().toISOString()
+      },
+      { status: 500 }
+    );
   }
 }
