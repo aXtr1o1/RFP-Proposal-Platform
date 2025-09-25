@@ -398,7 +398,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`${process.env.BACKEND_URI!}/ocr/${uuid}`,
+    const res = await fetch(`http://13.201.229.249:8000/ocr/${uuid}`,
       
       {
       method: "POST",
