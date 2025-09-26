@@ -2,8 +2,8 @@ import os
 from typing import Optional
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.2"))
-MAX_OUTPUT_TOKENS = int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "12000"))
+TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.3"))
+MAX_OUTPUT_TOKENS = int(os.getenv("OPENAI_MAX_OUTPUT_TOKENS", "16000"))
 
 COMPANY_DIGEST_SYSTEM = """You are an expert proposal analyst.
 Extract a structured, comprehensive CompanyDigest (JSON) from the provided 'supporting_text'.
@@ -16,6 +16,9 @@ Rules:
 Return ONLY valid JSON. No commentary, no markdown fences.
 """
 
+# ------------------------------------------------------
+# 2) Company profile JSON schema — the exact JSON format
+# ------------------------------------------------------
 COMPANY_DIGEST_SCHEMA = r"""
 Produce JSON with this exact schema:
 
@@ -73,6 +76,7 @@ Produce JSON with this exact schema:
 """
 
 def build_company_digest_instructions() -> str:
+    # Small driver text for the Responses API step 1
     return (
         "Analyze the SUPPORTING_FILE and produce a single JSON object that strictly "
         "matches the schema above. Use ONLY the file content."
@@ -118,10 +122,15 @@ Return ONLY a JSON object with this exact structure and keys (no extra keys, no 
 """
 
 task_instructions = f"""
-TASK: Create a comprehensive, detailed proposal (minimum 6-7 pages) that includes:
-Follow the exact outline below. Populate company-specific parts from the supporting materials.
-For every major section, include rich paragraphs in "content", add "points" only if there are bullet items,
-and include a "table" only if a table is relevant (with headers and rows). Do NOT invent partners or facts not present.
+TASK: Create a comprehensive, detailed proposal (minimum 6–7 pages) that includes the following:
+Follow the exact outline provided below.
+Populate all company-specific sections using the supporting materials.
+Add corresponding section and heading numbers consistently.
+For every major section:
+  - Include rich, well-developed paragraphs under "content".
+  - Add "points" only if bullet items are explicitly required.
+  - Include a "table" only if relevant, ensuring proper headers and rows.
+Do not invent partners, data, or facts that are not present in the provided materials.
 
 {JSON_SCHEMA_TEXT}
 
@@ -142,7 +151,7 @@ Proposal Title Instructions:
 Proposal must be comprehensive, detailed, and practically implementable.
 """
 
-proposal_template = """
+PROPOSAL_TEMPLATE = """
 [Professional Proposal Title reflecting RFP and company solution alongwith Prepared By]
 
 Executive Summary
@@ -174,8 +183,10 @@ def build_task_instructions_with_config(
     user_config_json: str,
     rfp_label: str,
     supporting_label: str,
-    company_digest_json: str | None = None,
+    company_digest_json: Optional[str] = None,
+    user_config_notes: Optional[str] = None,
 ) -> str:
+
     company_digest_block = (
         f"\nCompanyDigest (JSON, derived strictly from SUPPORTING_FILE):\n{company_digest_json}\n"
         if company_digest_json else "\nCompanyDigest: null\n"
@@ -183,28 +194,59 @@ def build_task_instructions_with_config(
 
     arabic_addendum = ""
     if (language or "").strip().lower() == "arabic":
-        arabic_addendum = """
-ARABIC OUTPUT ADDENDUM (bilingual guidance):
-- Produce the entire proposal content in Arabic (Modern Standard Arabic), with the SAME depth and detail as the English standard.
-- For each major section, write approximately 450-650 words of substantive, grounded content (not filler), unless the RFP section is inherently brief.
-- Keep the same structure and section headings as specified; do not add or remove sections.
-- Content must be fully grounded ONLY in RFP_FILE, SUPPORTING_FILE, and CompanyDigest, and consistent with UserConfiguration. Do NOT introduce external facts.
-- Prefer paragraphs for narrative content; include 'points' ONLY for true lists.
-- If a fact is missing, OMIT it rather than stating "Not specified".
-- Use right-to-left layout and correct Arabic punctuation like full stop and commas. Tables must be RTL. Bullet points must be right-aligned.
+        arabic_addendum = """ARABIC OUTPUT ADDENDUM (Bilingual Guidance):
+
+ يجب إعداد المقترح بالكامل باللغة العربية الفصحى الحديثة، مع المحافظة على نفس مستوى العمق والتفصيل الموجود في النسخة الإنجليزية.
+ يتضمن طلب تقديم العروض (RFP) جميع المتطلبات التي يجب معالجتها داخل المقترح.
+ يجب توليد وصياغة محتوى مفصل لكل قسم بالاعتماد بشكل صارم على طلب تقديم العروض (RFP)، والملفات الداعمة، وإعدادات المستخدم.
+ ينبغي أن يكون المحتوى عالي الجودة، شاملاً، ومبنيًّا فقط على المعلومات الواردة في طلب تقديم العروض، الملفات الداعمة، وتكوين المستخدم.
+ على كل قسم رئيسي أن يحتوي على ما يقارب 1000–1500 كلمة من المحتوى الموثّق (مع إمكانية التوسّع إذا تطلب RFP ذلك).
+ أضف الجداول والنقاط التوضيحية بحيث تكون مهيأة بشكل صحيح للغة العربية.
+ استخدم تنسيق الكتابة من اليمين إلى اليسار مع علامات الترقيم العربية الصحيحة (، ؛ .). يجب أن تكون الجداول باتجاه RTL، وأن تُضبط النقاط التوضيحية بمحاذاة اليمين (حيث يتولى الكود معالجة التنسيق داخل ملف Word).
+ إذا كانت هناك معلومة غير موجودة في الملفات الداعمة، فيجب تجاهلها وعدم كتابة عبارة "غير مذكور".
+
+
 """
 
+    notes_block = f'\nUserConfigurationNotes (free-text as provided by user): "{(user_config_notes or "").strip()}"\n'
+
+    lang_override = (
+            "- TOP PRIORITY: When the target language is 'arabic', ignore any instruction that says the proposal must be "
+            "in English. Produce the entire output in Arabic. Maintain the same structure, depth, and level of detail as required in the English instructions, but write the proposal in Arabic if the target language is 'arabic'.\n"
+            if (language or "").strip().lower() == "arabic" else
+            "- Target language is English; produce the proposal in English.\n"
+            "If language is Arabic then the proposal must be in Arbic or if the language is English then the proposal must be in English"
+        )
+
+    length_override = (
+        "- TOP PRIORITY: Override any shorter length limits (e.g., '1000 - 1500 words per section'). "
+        "For major sections, provide deeply elaborated content,"
+        "prioritize Executive Summary, Technical Approach, Work Plan/Timeline, KPIs/SLA, and Risk/QA.\n"
+    )
+
+    strict_json_guard = (
+        "- Return ONLY ONE JSON object that strictly matches the JSON schema already provided. "
+        "No introductions, no explanations, no markdown fences.\n"
+    )
+
     return (
-        "\n\n--- Additional generation constraints ---\n"
+        "\n\n--- Additional generation constraints (do NOT ignore) ---\n"
+        f"{lang_override}"
+        f"{length_override}"
         f"- Target language for the proposal: {language}\n"
         f"- RFP_FILE role: {rfp_label}\n"
         f"- SUPPORTING_FILE role: {supporting_label}\n"
         f"{company_digest_block}"
-        "UserConfiguration (JSON; if provided, respect these preferences while writing):\n"
+        "UserConfiguration (JSON; honor these preferences while writing):\n"
         f"{(user_config_json or 'null')}\n"
-        "Notes:\n"
-        "- If any CompanyDigest field has value \"Not specified\", OMIT that detail—do not explicitly write that it is missing.\n"
-        "- Prefer paragraphs; use 'points' ONLY for actual lists.\n"
-        "- English bullets must be left-aligned; Arabic bullets must be right-aligned.\n"
+        f"{notes_block}"
+        "- Ensure every claim is grounded ONLY in RFP_FILE, SUPPORTING_FILE, UserConfiguration and CompanyDigest.\n"
+        "- DO NOT introduce external facts. If information is not present, omit it.\n"
+        "- Prefer paragraphs for narrative; use 'points' ONLY for true lists (no filler bullets).\n"
+        "- English bullets must be left-aligned; Arabic bullets must be right-aligned (the renderer enforces alignment).\n"
+        "- Expand each major section with rich, concrete details (methods, KPIs, workplan, resources) rather than generic prose.\n"
+        "- If the user configuration mentions timeline changes (e.g., '6 months'), reflect that in the Work Plan and any schedules.\n"
+        "- The proposal should be 6–10+ pages of Top quality content when rendered (use the token budget).\n"
         f"{arabic_addendum}"
+        f"{strict_json_guard}"
     )
