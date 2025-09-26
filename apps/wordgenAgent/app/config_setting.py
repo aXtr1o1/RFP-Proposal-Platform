@@ -2,7 +2,7 @@ from copy import deepcopy
 
 WORD_ORIENTATION = {"portrait": 0, "landscape": 1}
 WORD_ALIGNMENT = {"left": 0, "center": 1, "right": 2, "justify": 3}
-WORD_READING_ORDER = {"ltr": 0, "rtl": 1} 
+WORD_READING_ORDER = {"ltr": 0, "rtl": 1}
 
 def hex_to_bgr_int(hex_color: str) -> int:
     hex_color = hex_color.lstrip('#')

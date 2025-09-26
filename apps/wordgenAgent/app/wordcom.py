@@ -26,7 +26,7 @@ default_CONFIG = {
     "visible_word": False,
     "output_path": "output/proposal.docx",
     "language_lcid": 1025,
-    "default_alignment": 0,   
+    "default_alignment": 0,
     "reading_order": 0,
     "space_before": 0,
     "space_after": 6,
@@ -209,10 +209,10 @@ def _add_table(doc, headers, rows, cfg, rtl: bool):
     except Exception:
         pass
 
-def build_word_from_proposal(proposal_dict, user_config, output_path, language, visible=False):
+def build_word_from_proposal(proposal_dict, user_config, output_path, language="english", visible=False):
     """
     Build a DOCX using Word COM. Language-aware (Arabic/English) formatting.
-    Returns absolute path to the saved DOCX.
+    Now renders 'points' as plain paragraphs (no Word bullets) to avoid bidi bullet glitches.
     """
     if isinstance(proposal_dict, str):
         proposal_dict = json.loads(proposal_dict)
@@ -224,11 +224,11 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, language, 
     if rtl:
         cfg["default_alignment"] = WD_ALIGN_RIGHT
         cfg["reading_order"] = WD_READINGORDER_RTL
-        cfg["language_lcid"] = 1025  
+        cfg["language_lcid"] = 1025  # Arabic
     else:
         cfg["default_alignment"] = WD_ALIGN_LEFT
         cfg["reading_order"] = WD_READINGORDER_LTR
-        cfg["language_lcid"] = 1033  
+        cfg["language_lcid"] = 1033  # English
 
     title = (proposal_dict.get("title") or "").strip()
     sections = proposal_dict.get("sections", [])
@@ -283,17 +283,17 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, language, 
                             color=cfg.get("content_font_color", 0), bold=False, rtl=rtl
                         )
 
+            # Render points as normal paragraphs prefixed by "- " (no Word bullet lists)
             if points:
                 for p in points:
-                    pr = _add_para(
-                        doc, str(p).strip(), style="List Bullet",
+                    t = str(p).strip()
+                    if not t:
+                        continue
+                    _add_para(
+                        doc, f"- {t}", style=cfg.get("normal_style", "Normal"),
                         align=cfg["default_alignment"], size=cfg["points_font_size"],
                         color=cfg.get("content_font_color", 0), bold=False, rtl=rtl
                     )
-                    try:
-                        pr.Range.ListFormat.ApplyBulletDefault()
-                    except Exception:
-                        pass
 
             if headers or rows:
                 _add_table(doc, headers, rows, cfg, rtl=rtl)
