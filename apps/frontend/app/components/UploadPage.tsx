@@ -439,7 +439,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`https://13.201.229.249:8000/api/initialgen/${uuid}`, {
+    const res = await fetch(`https://pseudoarticulately-ultramicroscopical-edwin.ngrok-free.dev/api/initialgen/${uuid}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -608,7 +608,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       setProcessingStage('Regenerating document...');
 
-      const res = await fetch(`https://13.201.229.249:8000/api/regenerate/${jobUuid}`, {
+      const res = await fetch(`https://pseudoarticulately-ultramicroscopical-edwin.ngrok-free.dev/api/regenerate/${jobUuid}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

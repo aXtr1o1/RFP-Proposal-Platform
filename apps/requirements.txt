@@ -9,8 +9,7 @@ pillow==10.4.0
 pytesseract==0.3.13
 openai==1.109.1
 tenacity==8.4.2
-pywin32==306; platform_system == "Windows"
-colorama==0.4.6; platform_system == "Windows"
+pywin32==306
 docx2pdf==0.1.8
 supabase==2.4.0
 httpx==0.27.2
