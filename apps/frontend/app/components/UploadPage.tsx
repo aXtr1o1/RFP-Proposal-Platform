@@ -439,7 +439,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`http://13.201.229.249:8000/initialgen/${uuid}`, {
+    const res = await fetch(`https://13.201.229.249:8000/api/initialgen/${uuid}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -608,7 +608,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       setProcessingStage('Regenerating document...');
 
-      const res = await fetch(`http://13.201.229.249:8000/regenerate/${jobUuid}`, {
+      const res = await fetch(`https://13.201.229.249:8000/api/regenerate/${jobUuid}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -876,28 +876,28 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     </div>
   );
 
-  const ConnectionStatus = () => (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-3">
-      <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
-        <Database className="text-gray-500" size={14} />
-        Connection Status
-      </h3>
-      <div className="space-y-2 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-gray-600">Supabase Database:</span>
-          <span className={`px-2 py-1 rounded-full ${
-            supabaseConnected === true 
-              ? 'bg-green-100 text-green-700' 
-              : supabaseConnected === false 
-              ? 'bg-red-100 text-red-700'
-              : 'bg-gray-100 text-gray-600'
-          }`}>
-            {supabaseConnected === true ? 'Connected' : supabaseConnected === false ? 'Disconnected' : 'Checking...'}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
+  // const ConnectionStatus = () => (
+  //   <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-3">
+  //     <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
+  //       <Database className="text-gray-500" size={14} />
+  //       Connection Status
+  //     </h3>
+  //     <div className="space-y-2 text-xs">
+  //       <div className="flex items-center justify-between">
+  //         <span className="text-gray-600">Supabase Database:</span>
+  //         <span className={`px-2 py-1 rounded-full ${
+  //           supabaseConnected === true 
+  //             ? 'bg-green-100 text-green-700' 
+  //             : supabaseConnected === false 
+  //             ? 'bg-red-100 text-red-700'
+  //             : 'bg-gray-100 text-gray-600'
+  //         }`}>
+  //           {supabaseConnected === true ? 'Connected' : supabaseConnected === false ? 'Disconnected' : 'Checking...'}
+  //         </span>
+  //       </div>
+  //     </div>
+  //   </div>
+  // );
 
   const GeneratedDocumentSection = () => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -934,8 +934,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
             <div className="space-y-1">
               {/* Connection Status */}
-              <ConnectionStatus />
-
+              
               {/* Language Selection */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
                 <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
