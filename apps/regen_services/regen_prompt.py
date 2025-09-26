@@ -39,11 +39,19 @@ class ProposalModifier:
         
         instructions += """
             IMPORTANT RULES:
+
             1. Find each selected_content in the PDF text EXACTLY as provided
             2. Apply ONLY the modification specified in the comment for that content
             3. Keep ALL other content in the PDF unchanged
             4. Maintain the original structure, formatting, and organization
             5. The modified content should seamlessly fit into the original context
+            6. Work only with the proposal content provided in the PDF text.  
+            7. Do not add new information, context, or assumptions.  
+            8. Do not paraphrase or reword untouched sections. Keep them identical.  
+            9. Only modify text where an explicit instruction is provided.  
+            10. Maintain the structure, formatting, headings, lists, and tables exactly as in the original, unless a modification requires otherwise.  
+            11. Ensure that modified text integrates seamlessly but minimally into its surrounding context.  
+            12. Output must strictly conform to the JSON schema provided. No additional commentary or metadata.  
             """
         return instructions
     

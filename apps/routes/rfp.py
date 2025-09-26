@@ -18,6 +18,15 @@ class InitialGenRequest(BaseModel):
 @router.post("/initialgen/{uuid}")
 def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
     try:
+
+        user_config = request.config
+        doc_config = request.docConfig
+        language = request.language
+
+        logger.info(f"Received config: {user_config}")
+        logger.info(f"Received docConfig: {doc_config}")
+        logger.info(f"laguage received: {language}")
+
         urls = get_pdf_urls_by_uuid(uuid)
         if not urls or not urls.get("rfp_url") or not urls.get("supporting_url"):
             raise HTTPException(status_code=404, detail="RFP/Supporting URLs not found for UUID")
@@ -69,18 +78,14 @@ def regeneration_process(uuid: str = Path(..., description="Folder name to proce
     try:
         user_config = request.config
         doc_config = request.docConfig
-        timestamp = request.timestamp
         language = request.language
 
         logger.info(f"Received config: {user_config}")
         logger.info(f"Received docConfig: {doc_config}")
-        logger.info(f"Timestamp: {timestamp}")
         logger.info(f"laguage received: {language}")
 
         payload = get_comments_base(uuid=uuid)
-        logger.info(f"laguage received: {payload}")
         context = regen_proposal_chat(payload=payload)
-        logger.info(f"laguage received: {context}")
 
         output_path = build_word_from_proposal(context, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=language)
         
