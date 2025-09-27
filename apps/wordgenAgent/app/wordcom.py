@@ -228,7 +228,6 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, language, 
     else:
         cfg["reading_order"] = WD_READINGORDER_LTR
         cfg["language_lcid"] = 1033  # English
-    logger.info(f"this is the cfg alignment value : {cfg["default_alignment"]}")
 
     title = (proposal_dict.get("title") or "").strip()
     sections = proposal_dict.get("sections", [])
