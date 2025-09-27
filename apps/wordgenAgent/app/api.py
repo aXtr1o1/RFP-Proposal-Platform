@@ -16,45 +16,28 @@ from apps.api.services.supabase_service import (
     upload_file_to_storage,
     update_proposal_in_data_table,
 )
-# All prompt text & model knobs live here (kept additive to user’s originals)
-from apps.wordgenAgent.app import prompt as P
+from apps.wordgenAgent.app import prompt5 as P
 
 logger = logging.getLogger("wordgen_api")
 
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "pdf")
 
-
-# ----------------------------
-# Small utilities (length etc.)
-# ----------------------------
 def _count_words_ar_en(text: str) -> int:
     return len([t for t in (text or "").split() if t.strip()])
 
+def _lang_flag(language: str) -> str:
+    lang = (language or "").strip().lower()
+    if lang == "arabic":
+        return (
+            "LANGUAGE_MODE: ARABIC (Modern Standard Arabic).\n"
+            "TOP PRIORITY: Output ALL fields (title, headings, content, points, table headers/rows) in Arabic only.\n"
+            "Do NOT mix languages except for proper nouns/acronyms required by the RFP."
+        )
+    return (
+        "LANGUAGE_MODE: ENGLISH.\n"
+        "TOP PRIORITY: Output ALL fields (title, headings, content, points, table headers/rows) in English only."
+    )
 
-def _short_sections(
-    proposal: dict,
-    min_words_per_section: int = 1000,   # your requirement: aim 1000–1500 words/section
-    take: int = 8
-) -> List[int]:
-    secs = proposal.get("sections", [])
-    scored = []
-    for i, s in enumerate(secs):
-        w = _count_words_ar_en(s.get("content", ""))
-        scored.append((w, i))
-    scored.sort(key=lambda x: x[0])  # shortest first
-    return [idx for (w, idx) in scored if w < min_words_per_section][:take]
-
-
-def _safe_json_loads(s: str) -> Optional[dict]:
-    try:
-        return json.loads(s)
-    except Exception:
-        return None
-
-
-# ---------------------------------------
-# Main class
-# ---------------------------------------
 class WordGenAPI:
     def __init__(self) -> None:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -92,15 +75,10 @@ class WordGenAPI:
             pythoncom.CoUninitialize()
         return pdf_path
 
-    # -------------------------------
-    # Stage 1: CompanyDigest (supporting file)
-    # -------------------------------
-    def _build_company_digest(self, supporting_file_id: str, max_out: int) -> dict:
+    def _build_company_digest(self, supporting_file_id: str ) -> dict:
         """Use the digest prompts (provided by you) to extract structured company info."""
-        completion = self.client.responses.create(
-            model=P.MODEL,
-            temperature=min(P.TEMPERATURE, 0.25),
-            max_output_tokens=max_out // 4,  # digest is compact
+        response = self.client.responses.create(
+            model="gpt-4o-mini",
             input=[{
                 "role": "user",
                 "content": [
@@ -111,14 +89,13 @@ class WordGenAPI:
                 ],
             }],
         )
-        raw = completion.output_text or ""
+        raw = response.output_text or ""
         try:
             digest = proposal_cleaner(raw)
             if isinstance(digest, dict):
                 return digest
         except Exception:
             pass
-        # Minimal fallback
         return {"company_profile": {}, "capabilities": {}, "track_record": [], "contact": {}}
 
     @staticmethod
@@ -130,69 +107,6 @@ class WordGenAPI:
             or "Your Company"
         )
 
-    # --------------------------------
-    # Stage 2b: Expand short sections
-    # --------------------------------
-    def _expand_short_sections(
-        self,
-        proposal_json: dict,
-        short_idxs: List[int],
-        language: str,
-        rfp_id: str,
-        sup_id: str,
-        system_prompts: str,
-        task_instructions: str,
-        max_out: int,
-    ) -> dict:
-        if not short_idxs:
-            return proposal_json
-        try:
-            payload = {
-                "proposal": proposal_json,
-                "expand_indices": short_idxs,
-                "language": language,
-            }
-            expand_driver = (
-                "You will receive a JSON proposal and a list of section indices that are too short. "
-                "Return ONLY a JSON with the SAME schema but with those sections expanded to ~1000–1500 words each, "
-                "grounded strictly in RFP_FILE, SUPPORTING_FILE, CompanyDigest and UserConfiguration. "
-                "No extra sections. Prefer paragraphs; use 'points' only for true lists."
-            )
-            completion = self.client.responses.create(
-                model=P.MODEL,
-                temperature=0.5 if (language or "").lower() == "arabic" else P.TEMPERATURE,
-                max_output_tokens=max_out,
-                input=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "input_file", "file_id": rfp_id},
-                        {"type": "input_file", "file_id": sup_id},
-                        {"type": "input_text", "text": system_prompts},
-                        {"type": "input_text", "text": task_instructions},
-                        {"type": "input_text", "text": expand_driver},
-                        {"type": "input_text", "text": f"JSON to expand:\n{json.dumps(payload, ensure_ascii=False)}"},
-                        {"type": "input_text", "text": "Return ONE JSON object only."},
-                    ],
-                }],
-            )
-            raw = completion.output_text or ""
-            expanded = proposal_cleaner(raw)
-            base_secs = proposal_json.get("sections", [])
-            new_secs = expanded.get("sections", [])
-            for idx in short_idxs:
-                if 0 <= idx < len(base_secs) and 0 <= idx < len(new_secs):
-                    base_secs[idx] = new_secs[idx]
-            proposal_json["sections"] = base_secs
-            if expanded.get("title"):
-                proposal_json["title"] = expanded["title"]
-            return proposal_json
-        except Exception as e:
-            logger.warning(f"Top-up expansion failed: {e}")
-            return proposal_json
-
-    # --------------------------------
-    # Public entry
-    # --------------------------------
     def generate_complete_proposal(
         self,
         uuid: str,
@@ -206,63 +120,59 @@ class WordGenAPI:
 
         start = datetime.now()
         logger.info(f"[initialgen] START for uuid={uuid}")
-
-        # 0) Upload files
         rfp_id, sup_id = self._upload_pdf_urls_to_openai(rfp_url, supporting_url)
 
-        # 1) Build CompanyDigest
-        max_out = P.MAX_OUTPUT_TOKENS
-        company_digest = self._build_company_digest(sup_id, max_out=max_out)
+        company_digest = self._build_company_digest(sup_id)
         company_name = self._detect_company_name(company_digest)
 
-        # 2) Prepare task instructions (additive over original prompts)
-        #    - user_config may be a string (free text) from the UI; keep verbatim
-        #    - also pass a compact JSON if parseable
-        user_cfg_obj = _safe_json_loads(user_config) if isinstance(user_config, str) else None
-        user_cfg_compact = json.dumps(user_cfg_obj, ensure_ascii=False) if user_cfg_obj else "null"
+        user_cfg_compact = user_config if isinstance(user_config, str) else "null"
 
-        # labels for file roles shown in the prompt
         rfp_label = "RFP/BRD: requirements, evaluation criteria, project details, and timelines"
         supporting_label = "Supporting: company profile, portfolio, capabilities, certifications, differentiators"
 
-        # Your original prompts (kept as-is)
         system_prompts = P.system_prompts
-        company_digest_json = json.dumps(company_digest, ensure_ascii=False)
+
+        task_instructions_base = getattr(P, "task_instructions", "") or ""
+        proposal_template_text = (
+            (outline.strip() if outline and outline.strip() else getattr(P, "PROPOSAL_TEMPLATE", "") or "")
+        )
+        user_cfg_notes = (user_config or "").strip()
+        user_cfg_compact = "null"
+
+        company_digest_json = json.dumps(company_digest, ensure_ascii=False) if company_digest else "{}"
         additive_block = P.build_task_instructions_with_config(
-            language=language,
-            user_config_json=user_cfg_compact,
-            rfp_label=rfp_label,
-            supporting_label=supporting_label,
-            company_digest_json=company_digest_json,
-            user_config_notes=user_config if isinstance(user_config, str) else "",
-        )
+                        language=language,
+                        user_config_json=user_cfg_compact,   
+                        rfp_label=rfp_label,
+                        supporting_label=supporting_label,
+                        company_digest_json=company_digest_json,
+                        user_config_notes=user_cfg_notes,    
+                    )
 
-        # Final task block: your original + additive, plus the outline you already keep
         task_instructions = (
-            P.task_instructions
-            + "\nIMPORTANT: The proposal must follow this structure:\n"
-            + (outline.strip() if outline and outline.strip() else P.PROPOSAL_TEMPLATE)
-            + "\n"
-            + additive_block
+            f"{task_instructions_base}"
+            f"\nIMPORTANT: The proposal must follow this structure:\n"
+            f"{proposal_template_text}\n"
+            f"{additive_block}"
         )
 
-        # 3) First pass generation
         logger.info("Calling OpenAI Responses API…")
-        completion = self.client.responses.create(
+        response = self.client.responses.create(
             model=P.MODEL,
-            temperature=0.5 if (language or "").lower() == "arabic" else P.TEMPERATURE,
-            max_output_tokens=max_out,
             input=[{
                 "role": "user",
                 "content": [
+                    {"type": "input_text", "text": _lang_flag(language)},
                     {"type": "input_file", "file_id": rfp_id},
                     {"type": "input_file", "file_id": sup_id},
+                    {"type": "input_text", "text": company_digest_json},
+                    {"type": "input_text", "text": (user_config if isinstance(user_config, str) else "")},
                     {"type": "input_text", "text": system_prompts},
                     {"type": "input_text", "text": task_instructions},
                 ],
             }],
         )
-        raw = completion.output_text or ""
+        raw = response.output_text or ""
         logger.info(f"OpenAI response chars: {len(raw)}")
 
         if "{" not in raw or '"sections"' not in raw:
@@ -271,10 +181,8 @@ class WordGenAPI:
                 "Return ONLY a single valid JSON object matching the schema. "
                 "Start with '{' and end with '}'. No explanations, no markdown, no extra text."
             )
-            completion = self.client.responses.create(
+            response = self.client.responses.create(
                 model=P.MODEL,
-                temperature=0.5 if (language or "").lower() == "arabic" else P.TEMPERATURE,
-                max_output_tokens=max_out,
                 input=[{
                     "role": "user",
                     "content": [
@@ -286,31 +194,119 @@ class WordGenAPI:
                     ],
                 }],
             )
-            raw = completion.output_text or ""
+            raw = response.output_text or ""
             logger.info(f"[retry] OpenAI response chars: {len(raw)}")
 
         cleaned = proposal_cleaner(raw)
 
-        # 4) Length top-up (expand shortest sections to ~1000–1500 words)
-        try:
-            min_words = 1000 
-            short_idxs = _short_sections(cleaned, min_words_per_section=min_words, take=8)
-            if short_idxs:
-                logger.info(f"Expanding short sections (indices): {short_idxs}")
-                cleaned = self._expand_short_sections(
-                    proposal_json=cleaned,
-                    short_idxs=short_idxs,
-                    language=language,
-                    rfp_id=rfp_id,
-                    sup_id=sup_id,
-                    system_prompts=system_prompts,
-                    task_instructions=task_instructions,
-                    max_out=max_out,
-                )
-        except Exception as e:
-            logger.warning(f"Length analysis/expansion skipped: {e}")
 
-        # 5) Build Word & PDF
+        def _normalize_proposal_shape(p: dict, company_name: str = "Your Company", language: str = "english") -> dict:
+                import json
+                if not isinstance(p, dict):
+                    return p
+
+                def _maybe_extract_json_blob(s: str) -> dict | None:
+                    """Try to extract a full JSON object from a string by locating the outermost { ... }."""
+                    if not isinstance(s, str):
+                        return None
+                    if "{" not in s or "}" not in s:
+                        return None
+                    txt = s.strip()
+                    if txt.startswith("{") and txt.endswith("}"):
+                        try:
+                            obj = json.loads(txt)
+                            return obj if isinstance(obj, dict) else None
+                        except Exception:
+                            pass
+                    try:
+                        first = txt.find("{")
+                        last = txt.rfind("}")
+                        if first != -1 and last > first:
+                            candidate = txt[first:last+1]
+                            obj = json.loads(candidate)
+                            return obj if isinstance(obj, dict) else None
+                    except Exception:
+                        return None
+                    return None
+
+                try:
+                    secs = p.get("sections") or []
+                    if secs and isinstance(secs[0], dict):
+                        h0_raw = secs[0].get("heading") or ""
+                        h0 = h0_raw.strip().lower()
+                        c0 = secs[0].get("content")
+
+                        WRAPPER_HEADS = {
+                            "draft", "generated", "wrapper", "temp", "temporary",
+                            "مسودة", "نسخة أولية", "تجريبي", "اختباري"
+                        }
+                        if h0 in WRAPPER_HEADS and isinstance(c0, str):
+                            inner = _maybe_extract_json_blob(c0)
+                            if isinstance(inner, dict) and isinstance(inner.get("sections"), list) and inner["sections"]:
+                           
+                                p = inner
+                except Exception:
+                    pass
+
+                if "sections" in p and isinstance(p["sections"], list):
+                    fixed = []
+                    for s in p["sections"]:
+                        if not isinstance(s, dict):
+                            continue
+                        heading = s.get("heading")
+                        content = s.get("content")
+                        points = s.get("points")
+                        table = s.get("table")
+
+                        h_norm = (heading or "").strip().lower()
+                        if h_norm in {"draft", "wrapper", "generated", "temp", "temporary", "مسودة", "نسخة أولية", "تجريبي", "اختباري"}:
+                            inner = _maybe_extract_json_blob(content) if isinstance(content, str) else None
+                            if isinstance(inner, dict) and isinstance(inner.get("sections"), list) and inner["sections"]:
+                                for s2 in inner["sections"]:
+                                    if isinstance(s2, dict):
+                                        fixed.append(s2)
+                            continue
+
+                        if isinstance(content, str):
+                            inner = _maybe_extract_json_blob(content)
+                            if isinstance(inner, dict) and "sections" in inner:
+                                content = ""
+
+                        if not isinstance(points, list):
+                            points = []
+                        else:
+                            points = [str(x) for x in points if isinstance(x, (str, int, float))]
+
+                        if not isinstance(table, dict):
+                            table = {"headers": [], "rows": []}
+                        headers = table.get("headers", [])
+                        rows = table.get("rows", [])
+                        headers = [str(h) for h in headers] if isinstance(headers, list) else []
+                        rows = [[str(c) for c in r] for r in rows if isinstance(r, list)] if isinstance(rows, list) else []
+
+                        fixed.append({
+                            "heading": str(heading or ""),
+                            "content": str(content or ""),
+                            "points": points,
+                            "table": {"headers": headers, "rows": rows},
+                        })
+                    p["sections"] = fixed
+
+                title = (p.get("title") or "").strip()
+                GENERIC_TITLES = {"generated proposal", "draft", "proposal", "generated", "عرض", "مسودة"}
+                if not title or title.strip().lower() in GENERIC_TITLES:
+                    if (language or "").strip().lower() == "arabic":
+                        p["title"] = f"عرض فني متكامل — مُعد من قبل {company_name}"
+                    else:
+                        p["title"] = f"Comprehensive Technical Proposal — Prepared by {company_name}"
+
+                if not isinstance(p.get("sections"), list):
+                    p["sections"] = []
+
+                return p
+        
+        cleaned = _normalize_proposal_shape(cleaned)
+
         out_dir = Path("output")
         out_dir.mkdir(parents=True, exist_ok=True)
         docx_path = out_dir / f"{uuid}.docx"
@@ -330,7 +326,8 @@ class WordGenAPI:
         except Exception as e:
             logger.warning(f"PDF conversion failed: {e}")
 
-        # 6) Upload to Supabase
+
+
         word_url = ""
         pdf_url = ""
         try:
@@ -352,10 +349,9 @@ class WordGenAPI:
             except Exception as e:
                 logger.error(f"Upload PDF failed: {e}")
 
-        # 7) Update table (resilient)
+
         updated = update_proposal_in_data_table(
             uuid,
-            json.dumps(cleaned, ensure_ascii=False),
             pdf_url,
             word_url
         )
