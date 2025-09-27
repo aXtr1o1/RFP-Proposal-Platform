@@ -182,7 +182,7 @@ def _add_table(doc, headers, rows, cfg, rtl: bool):
                 cell.Range.Text = str(h)
                 try:
                     cell.Range.ParagraphFormat.ReadingOrder = WD_READINGORDER_RTL if rtl else WD_READINGORDER_LTR
-                    cell.Range.ParagraphFormat.Alignment = WD_ALIGN_RIGHT if rtl else WD_ALIGN_LEFT
+                    cell.Range.ParagraphFormat.Alignment = 1
                     cell.Range.Bold = True
                     cell.Range.Font.Size = cfg["table_font_size"]
                     cell.Range.Font.Color = int(cfg.get("table_font_color", 0))
@@ -197,7 +197,7 @@ def _add_table(doc, headers, rows, cfg, rtl: bool):
                 cell.Range.Text = str(v)
                 try:
                     cell.Range.ParagraphFormat.ReadingOrder = WD_READINGORDER_RTL if rtl else WD_READINGORDER_LTR
-                    cell.Range.ParagraphFormat.Alignment = WD_ALIGN_RIGHT if rtl else WD_ALIGN_LEFT
+                    cell.Range.ParagraphFormat.Alignment = 1
                     cell.Range.Font.Size = cfg["table_font_size"]
                     cell.Range.Font.Color = int(cfg.get("table_font_color", 0))
                 except Exception:
@@ -209,7 +209,7 @@ def _add_table(doc, headers, rows, cfg, rtl: bool):
     except Exception:
         pass
 
-def build_word_from_proposal(proposal_dict, user_config, output_path, language="english", visible=False):
+def build_word_from_proposal(proposal_dict, user_config, output_path, language, visible=False):
     """
     Build a DOCX using Word COM. Language-aware (Arabic/English) formatting.
     Now renders 'points' as plain paragraphs (no Word bullets) to avoid bidi bullet glitches.
@@ -217,18 +217,18 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, language="
     if isinstance(proposal_dict, str):
         proposal_dict = json.loads(proposal_dict)
 
-    cfg = build_updated_config(default_CONFIG, user_config or {})
-    lang = (language or "english").lower()
+    cfg = build_updated_config(default_CONFIG, user_config)
+
+    lang = (language).lower()
     rtl = (lang == "arabic")
 
     if rtl:
-        cfg["default_alignment"] = WD_ALIGN_RIGHT
         cfg["reading_order"] = WD_READINGORDER_RTL
         cfg["language_lcid"] = 1025  # Arabic
     else:
-        cfg["default_alignment"] = WD_ALIGN_LEFT
         cfg["reading_order"] = WD_READINGORDER_LTR
         cfg["language_lcid"] = 1033  # English
+    logger.info(f"this is the cfg alignment value : {cfg["default_alignment"]}")
 
     title = (proposal_dict.get("title") or "").strip()
     sections = proposal_dict.get("sections", [])
