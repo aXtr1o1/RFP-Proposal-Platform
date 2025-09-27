@@ -53,12 +53,11 @@ def upload_file_to_storage(file_content: bytes, file_path: str, filename: str, b
     logger.info(f"Uploaded {filename} -> {url}")
     return url
 
-def update_proposal_in_data_table(uuid: str, proposal_json: str, pdf_url: str, word_url: str) -> bool:
+def update_proposal_in_data_table(uuid: str, pdf_url: str, word_url: str) -> bool:
     """
     Update proposal (JSON), Proposal_pdf, Proposal_word.
     """
     payload_full = {
-        "proposal": proposal_json,
         "Proposal_pdf": pdf_url,
         "Proposal_word": word_url,
     }
