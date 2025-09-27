@@ -43,7 +43,6 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
             language=(request.language or "english").lower(),
             outline=outline,
         )
-        logger.info(f"this is the result sent tothe front end.. : {result}")
         return result
     
 
@@ -73,6 +72,8 @@ import time
 from apps.supabase.supabase_service import upload_and_save_files , get_comments_base
 from docx2pdf import convert
 import pythoncom
+
+
 @router.post("/regenerate/{uuid}")
 def regeneration_process(uuid: str = Path(..., description="Folder name to process"), request: InitialGenRequest = Body(...)):
     try:
@@ -87,7 +88,7 @@ def regeneration_process(uuid: str = Path(..., description="Folder name to proce
         payload = get_comments_base(uuid=uuid)
         context = regen_proposal_chat(payload=payload)
 
-        output_path = build_word_from_proposal(context, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=language)
+        build_word_from_proposal(context, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=language)
         
         local_docx = os.path.join("output", f"{uuid}.docx")
         local_pdf = os.path.join("output", f"{uuid}.pdf")
@@ -99,10 +100,13 @@ def regeneration_process(uuid: str = Path(..., description="Folder name to proce
             url = upload_and_save_files(word_file_path=local_docx, word_file_name=f"{uuid}.docx", pdf_file_path=local_pdf, pdf_file_name=f"{uuid}.pdf", uuid = uuid)
         finally:
             pythoncom.CoUninitialize()
-            
+            os.remove(local_docx)
+            os.remove(local_pdf)
+
         print("regen has been Completed !!!")
         return url
 
     except ImportError as e:   
         logger.info(f"domething somthing cumthing pumthing")
 
+    

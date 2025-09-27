@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, Palette, AlignLeft, Table, Layout, Type, Eye, Download, Globe, Maximize2, Clock, CheckCircle2, AlertCircle, Loader, Database } from 'lucide-react';
-
+import { createClient } from '@supabase/supabase-js'
 import dynamic from "next/dynamic";
 const PdfAnnotator = dynamic(() => import("@/app/components/PdfAnnotator"), { ssr: false });
 
@@ -82,6 +82,8 @@ const PdfViewerBase: React.FC<PdfViewerProps> = ({ pdfUrl }) => {
     );
   }
   const cacheBustParam = `&cachebust=${Date.now()}`;   //changes here
+  // const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
+
   const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
 
   return (
@@ -251,6 +253,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [jobUuid, setJobUuid] = useState<string | null>(null);
   const [currentComments, setCurrentComments] = useState<IHighlight[]>([]);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const supabase = createClient(supabaseUrl, supabaseAnonKey)
   
   // Document configuration state
   const [docConfig, setDocConfig] = useState({
@@ -440,6 +445,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
   const postUuidConfig = async (uuid: string, config: string) => {
     const res = await fetch(`https://pseudoarticulately-ultramicroscopical-edwin.ngrok-free.dev/api/initialgen/${uuid}`, {
+
+    //const res = await fetch(`http://localhost:8000/initialgen/${uuid}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -541,29 +548,209 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         alert("Supabase connection failed. Comments will not be saved.");
       }
       
-      const form = new FormData();
-      form.append("uuid", uuid);
-      form.append("config", config);
-      form.append("docConfig", JSON.stringify(docConfig));
-      form.append("language", language);
+      // const form = new FormData();
+      // form.append("uuid", uuid);
+      // form.append("config", config);
+      // form.append("docConfig", JSON.stringify(docConfig));
+      // form.append("language", language);
 
-      rfpFiles.forEach((f) => form.append("rfpFiles", f, f.name));
-      supportingFiles.forEach((f) => form.append("supportingFiles", f, f.name));
+      // rfpFiles.forEach((f) => form.append("rfpFiles", f, f.name));
+      // supportingFiles.forEach((f) => form.append("supportingFiles", f, f.name));
 
-      const res = await fetch("/nextapi/upload", {
-        method: "POST",
-        body: form,
-      });
+      // const res = await fetch("/nextapi/upload", {
+      //   method: "POST",
+      //   body: form,
+      // });
 
-      const data = await res.json();
+      // const data = await res.json();
 
-      if (!res.ok) {
-        console.error("Upload failed:", data);
-        alert(`Upload failed: ${data?.error || res.status}`);
-        return;
-      }
+      // if (!res.ok) {
+      //   console.error("Upload failed:", data);
+      //   alert(`Upload failed: ${data?.error || res.status}`);
+      //   return;
+      // }
 
-      console.log("✅ Uploaded:", data);
+      // console.log("✅ Uploaded:", data);
+
+      const uploadFileToSupabase = async (
+        file: File,
+        bucket: string,
+        uuid: string,
+        index: number
+      ): Promise<{ name: string; url: string; size: number }> => {
+        try {
+          // Create unique file path
+          const timestamp = Date.now();
+          const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const filePath = `${uuid}/${timestamp}_${index}_${sanitizedFileName}`;
+
+          console.log(`Uploading ${file.name} to bucket: ${bucket}, path: ${filePath}`);
+
+          // Upload to Supabase storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, file, {
+              contentType: file.type || "application/octet-stream",
+              upsert: true,
+            });
+
+          if (uploadError) {
+            console.error(`Upload error for ${file.name}:`, uploadError);
+            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
+          }
+
+          console.log(`Successfully uploaded ${file.name}:`, uploadData);
+
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(filePath);
+
+          if (!urlData.publicUrl) {
+            throw new Error(`Failed to get public URL for ${file.name}`);
+          }
+
+          return { 
+            name: file.name, 
+            url: urlData.publicUrl,
+            size: file.size
+          };
+
+        } catch (error) {
+          console.error(`Error processing file ${file.name}:`, error);
+          throw error;
+        }
+      };
+
+      const updateDatabaseRecord = async (
+        uuid: string,
+        rfpFileData: string | null,
+        supportingFileData: string | null
+      ) => {
+        try {
+          // Try to update existing record first
+          const { data: updateData, error: updateError } = await supabase
+            .from("Data_Table")
+            .update({
+              RFP_Files: rfpFileData,
+              Supporting_Files: supportingFileData,
+            })
+            .eq("uuid", uuid)
+            .select();
+
+          // If no rows were updated, insert a new record
+          if (!updateError && (!updateData || updateData.length === 0)) {
+            console.log('No existing record found, creating new record...');
+            
+            const { data: insertData, error: insertError } = await supabase
+              .from("Data_Table")
+              .insert({
+                uuid: uuid,
+                RFP_Files: rfpFileData,
+                Supporting_Files: supportingFileData,
+              })
+              .select();
+
+            if (insertError) {
+              console.error('Database insert error:', insertError);
+              throw new Error(`Database insert failed: ${insertError.message}`);
+            }
+
+            console.log('New record created successfully:', insertData);
+            return insertData;
+          } else if (updateError) {
+            console.error('Database update error:', updateError);
+            throw new Error(`Database update failed: ${updateError.message}`);
+          } else {
+            console.log('Existing record updated successfully:', updateData);
+            return updateData;
+          }
+        } catch (error) {
+          console.error('Database operation failed:', error);
+          throw error;
+        }
+      };
+
+      const MAX_FILE_SIZE = 50 * 1024 * 1024;
+          const allFiles = [...rfpFiles, ...supportingFiles];
+          
+          for (const file of allFiles) {
+            if (file.size > MAX_FILE_SIZE) {
+              throw new Error(`File ${file.name} exceeds 50MB size limit`);
+            }
+            
+            if (file.size === 0) {
+              throw new Error(`File ${file.name} is empty`);
+            }
+          }
+
+          setProcessingStage('Uploading files to cloud storage...');
+          
+          // Upload RFP files directly to Supabase
+          console.log('Starting RFP file uploads...');
+          const rfpResults = await Promise.allSettled(
+            rfpFiles.map((file, index) => uploadFileToSupabase(file, "rfp", uuid, index))
+          );
+
+          // Upload supporting files directly to Supabase
+          console.log('Starting supporting file uploads...');
+          const supportingResults = await Promise.allSettled(
+            supportingFiles.map((file, index) => uploadFileToSupabase(file, "supporting", uuid, index))
+          );
+
+          // Check for upload failures
+          const failedRfpUploads = rfpResults.filter(result => result.status === 'rejected');
+          const failedSupportingUploads = supportingResults.filter(result => result.status === 'rejected');
+
+          if (failedRfpUploads.length > 0 || failedSupportingUploads.length > 0) {
+            console.error('Some uploads failed:');
+            failedRfpUploads.forEach((result, index) => {
+              if (result.status === 'rejected') {
+                console.error(`RFP file ${index}:`, result.reason);
+              }
+            });
+            failedSupportingUploads.forEach((result, index) => {
+              if (result.status === 'rejected') {
+                console.error(`Supporting file ${index}:`, result.reason);
+              }
+            });
+            
+            // Continue with successful uploads, but warn user
+            const totalFailed = failedRfpUploads.length + failedSupportingUploads.length;
+            console.warn(`${totalFailed} files failed to upload, continuing with successful uploads`);
+          }
+
+          // Extract successful uploads
+          const successfulRfpUploads = rfpResults
+            .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
+              result.status === 'fulfilled'
+            )
+            .map(result => result.value);
+
+          const successfulSupportingUploads = supportingResults
+            .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
+              result.status === 'fulfilled'
+            )
+            .map(result => result.value);
+
+          console.log('Successful RFP uploads:', successfulRfpUploads.length);
+          console.log('Successful supporting uploads:', successfulSupportingUploads.length);
+
+          // Check if we have at least one successful RFP upload
+          if (successfulRfpUploads.length === 0) {
+            throw new Error("No RFP files were successfully uploaded. Cannot proceed.");
+          }
+
+          setProcessingStage('Updating database records...');
+          
+          // Prepare data for database update
+          const rfpFileData = successfulRfpUploads.length > 0 ? successfulRfpUploads[0].url : null;
+          const supportingFileData = successfulSupportingUploads.length > 0 ? successfulSupportingUploads[0].url : null;
+
+          // Update database record
+          await updateDatabaseRecord(uuid, rfpFileData, supportingFileData);
+
+          setProcessingStage('Sending to AI processing engine...');
 
       const { docxShareUrl, pdfShareUrl } = await postUuidConfig(uuid, config);
 
@@ -607,8 +794,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       }
 
       setProcessingStage('Regenerating document...');
-
       const res = await fetch(`https://pseudoarticulately-ultramicroscopical-edwin.ngrok-free.dev/api/regenerate/${jobUuid}`, {
+      
+      //const res = await fetch(`http://localhost:8000/regenerate/${jobUuid}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
