@@ -113,25 +113,44 @@ def get_comments_base(uuid: str)-> Dict[str, Any]:
         rows = resp.data or []
         print(rows)
         if not rows:
-            raise HTTPException(status_code=404, detail="No comments found for this UUID")
+            resp =(supabase.table("Data_Table").select("Proposal_pdf").eq("uuid",uuid).order("created_at", desc=False).execute())
+            proposal_url = resp.data[0].get("Proposal_pdf")
+            payload: Dict[str, Any] = {
+                "uuid": uuid,
+                "proposal_url": proposal_url,
+                "items": [
+                    {
+                        "selected_content": "None",
+                        "comment": "None"
+                    }
+  
+                ],
+                "count": 1
+            }
 
-        urls = {r.get("proposal_url") for r in rows if r.get("proposal_url")}
-        proposal_url = next(iter(urls), None)
+            logger.info(f"this is the proposal url 1 from the supabase : {proposal_url}")
+            return payload
+        
 
-        payload: Dict[str, Any] = {
-            "uuid": uuid,
-            "proposal_url": proposal_url,
-            "items": [
-                {
-                    "selected_content": r.get("selected_content", ""),
-                    "comment": r.get("comments", "")
-                }
-                for r in rows
-            ],
-            "count": len(rows)
-        }
+        else:
+            urls = {r.get("proposal_url") for r in rows if r.get("proposal_url")}
+            proposal_url = next(iter(urls), None)
 
-        return payload
+            payload: Dict[str, Any] = {
+                "uuid": uuid,
+                "proposal_url": proposal_url,
+                "items": [
+                    {
+                        "selected_content": r.get("selected_content", ""),
+                        "comment": r.get("comments", "")
+                    }
+                    for r in rows
+                ],
+                "count": len(rows)
+            }
+
+            logger.info(f"this is the proposal url 2 from the supabase : {proposal_url}")
+            return payload
 
     except HTTPException:
         raise
