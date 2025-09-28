@@ -1057,9 +1057,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             style={{ width: `${uploadProgress}%` }}
           ></div>
         </div>
-        {processingStage && (
+        {/* {processingStage && (
           <p className="text-sm text-gray-600">{processingStage}</p>
-        )}
+        )} */}
       </div>
     </div>
   );

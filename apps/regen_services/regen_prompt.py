@@ -55,7 +55,7 @@ class ProposalModifier:
             """
         return instructions
     
-    def process_proposal(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def process_proposal(self, payload: Dict[str, Any], language) -> Dict[str, Any]:
         """Main processing function"""
 
         pdf_text = self.extract_pdf_text(payload['proposal_url'])
@@ -115,7 +115,7 @@ class ProposalModifier:
         }
         
         # System prompt
-        system_prompt = """You are an expert in technical and development proposal writing.
+        system_prompt = f"""You are an expert in technical and development proposal writing.
 
                 You will receive:
                 1. The full text of a PDF proposal
@@ -127,6 +127,7 @@ class ProposalModifier:
                 3. Apply ONLY the requested modifications to those specific pieces
                 4. Keep everything else exactly the same
                 5. Structure the final result according to the JSON schema
+                6. generate only in this lanuage : {language}
 
                 Return the complete modified proposal in the specified JSON format."""
 
@@ -163,10 +164,10 @@ from typing import Dict, Any
 
 # Load environment variables from .env file
 load_dotenv()
-def regen_proposal_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
+def regen_proposal_chat(payload: Dict[str, Any], language ) -> Dict[str, Any]:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("Missing OPENAI_API_KEY in environment variables")
     modifier = ProposalModifier(api_key)
-    return modifier.process_proposal(payload)
+    return modifier.process_proposal(payload, language)
 
