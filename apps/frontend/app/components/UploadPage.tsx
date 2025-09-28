@@ -444,7 +444,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`https://zqcxy-13-201-229-249.a.free.pinggy.link/api/initialgen/${uuid}`, {
+    const res = await fetch(`https://ixgul-13-201-229-249.a.free.pinggy.link/api/initialgen/${uuid}`, {
 
 
     //const res = await fetch(`http://localhost:8000/initialgen/${uuid}`, {
@@ -795,7 +795,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       }
 
       setProcessingStage('Regenerating document...');
-      const res = await fetch(`https://zqcxy-13-201-229-249.a.free.pinggy.link/api/regenerate/${jobUuid}`, {
+      const res = await fetch(`https://ixgul-13-201-229-249.a.free.pinggy.link/api/regenerate/${jobUuid}`, {
+        
       //https://ayysx-13-201-229-249.a.free.pinggy.link/api/initialgen
       //const res = await fetch(`http://localhost:8000/regenerate/${jobUuid}`, {
         method: "POST",
