@@ -4,12 +4,11 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional, List
 from pathlib import Path
-
+from concurrent.futures import ThreadPoolExecutor
 import requests
 import pythoncom
 from docx2pdf import convert
 from openai import OpenAI
-
 from apps.wordgenAgent.app.wordcom import build_word_from_proposal
 from apps.wordgenAgent.app.proposal_clean import proposal_cleaner
 from apps.api.services.supabase_service import (
@@ -21,9 +20,6 @@ from apps.wordgenAgent.app import prompt5 as P
 logger = logging.getLogger("wordgen_api")
 
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "pdf")
-
-def _count_words_ar_en(text: str) -> int:
-    return len([t for t in (text or "").split() if t.strip()])
 
 def _lang_flag(language: str) -> str:
     lang = (language or "").strip().lower()
@@ -44,26 +40,49 @@ class WordGenAPI:
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is required")
         self.client = OpenAI(api_key=api_key)
+        logger.info("OpenAI client initialized")
 
     @staticmethod
     def _clean_url(url: str) -> str:
-        return (url or "").split("?")[0]
+        cleaned_url = (url or "").split("?")[0]
+        logger.debug(f"Cleaned URL: {cleaned_url}")
+        return cleaned_url
+
+    def _download_pdf(self, url: str) -> bytes:
+        cleaned_url = self._clean_url(url)
+        logger.info(f"Starting download of PDF: {cleaned_url}")
+        response = requests.get(cleaned_url, timeout=15)
+        response.raise_for_status()
+        logger.info(f"Finished download of PDF: {cleaned_url} ({len(response.content)} bytes)")
+        return response.content
 
     def _download_two_pdfs(self, rfp_url: str, supporting_url: str) -> Tuple[bytes, bytes]:
-        rfp_u = self._clean_url(rfp_url)
-        sup_u = self._clean_url(supporting_url)
-        logger.info(f"Downloading RFP: {rfp_u}")
-        rfp_bytes = requests.get(rfp_u, timeout=60).content
-        logger.info(f"Downloading Supporting: {sup_u}")
-        sup_bytes = requests.get(sup_u, timeout=60).content
+        logger.info("Beginning parallel download of two PDFs")
+        with ThreadPoolExecutor() as executor:
+            future_rfp = executor.submit(self._download_pdf, rfp_url)
+            future_sup = executor.submit(self._download_pdf, supporting_url)
+            rfp_bytes = future_rfp.result()
+            sup_bytes = future_sup.result()
+        logger.info("Completed parallel download of two PDFs")
         return rfp_bytes, sup_bytes
+
+    def _upload_pdf_bytes_to_openai(self, pdf_bytes: bytes, filename: str) -> str:
+        logger.info(f"Uploading {filename} to OpenAI")
+        file_obj = self.client.files.create(file=(filename, pdf_bytes, "application/pdf"), purpose="user_data")
+        logger.info(f"Uploaded {filename} as file ID: {file_obj.id}")
+        return file_obj.id
 
     def _upload_pdf_urls_to_openai(self, rfp_url: str, supporting_url: str) -> Tuple[str, str]:
         rfp_bytes, sup_bytes = self._download_two_pdfs(rfp_url, supporting_url)
-        rfpf = self.client.files.create(file=("RFP.pdf", rfp_bytes, "application/pdf"), purpose="user_data")
-        supf = self.client.files.create(file=("Supporting.pdf", sup_bytes, "application/pdf"), purpose="user_data")
-        logger.info(f"OpenAI files uploaded: rfp={rfpf.id}, supporting={supf.id}")
-        return rfpf.id, supf.id
+        logger.info("Beginning parallel upload of two PDFs to OpenAI")
+        with ThreadPoolExecutor() as executor:
+            future_rfp = executor.submit(self._upload_pdf_bytes_to_openai, rfp_bytes, "RFP.pdf")
+            future_sup = executor.submit(self._upload_pdf_bytes_to_openai, sup_bytes, "Supporting.pdf")
+            rfpf_id = future_rfp.result()
+            supf_id = future_sup.result()
+        logger.info(f"Completed parallel upload of PDFs with IDs: rfp={rfpf_id}, supporting={supf_id}")
+        return rfpf_id, supf_id
+
 
     def _convert_docx_to_pdf(self, docx_path: str) -> str:
         pdf_path = os.path.splitext(docx_path)[0] + ".pdf"
@@ -88,8 +107,18 @@ class WordGenAPI:
                     {"type": "input_text", "text": P.build_company_digest_instructions()},
                 ],
             }],
+            stream=True,
         )
-        raw = response.output_text or ""
+        chunks = []
+        for event in response:
+            if event.type == "response.output_text.delta":
+                chunks.append(event.delta)
+            elif event.type == "response.error":
+                raise RuntimeError(getattr(event, "error", "stream error"))
+            elif event.type == "response.completed":
+                break
+
+        raw = "".join(chunks)
         try:
             digest = proposal_cleaner(raw)
             if isinstance(digest, dict):
@@ -120,18 +149,18 @@ class WordGenAPI:
 
         start = datetime.now()
         logger.info(f"[initialgen] START for uuid={uuid}")
+
+        # Upload files
         rfp_id, sup_id = self._upload_pdf_urls_to_openai(rfp_url, supporting_url)
 
+        # Build CompanyDigest
         company_digest = self._build_company_digest(sup_id)
         company_name = self._detect_company_name(company_digest)
 
         user_cfg_compact = user_config if isinstance(user_config, str) else "null"
-
         rfp_label = "RFP/BRD: requirements, evaluation criteria, project details, and timelines"
         supporting_label = "Supporting: company profile, portfolio, capabilities, certifications, differentiators"
-
         system_prompts = P.system_prompts
-
         task_instructions_base = getattr(P, "task_instructions", "") or ""
         proposal_template_text = (
             (outline.strip() if outline and outline.strip() else getattr(P, "PROPOSAL_TEMPLATE", "") or "")
@@ -148,7 +177,7 @@ class WordGenAPI:
                         company_digest_json=company_digest_json,
                         user_config_notes=user_cfg_notes,    
                     )
-
+        
         task_instructions = (
             f"{task_instructions_base}"
             f"\nIMPORTANT: The proposal must follow this structure:\n"
@@ -156,9 +185,12 @@ class WordGenAPI:
             f"{additive_block}"
         )
 
+
+        # Proposal generation
         logger.info("Calling OpenAI Responses API…")
         response = self.client.responses.create(
             model=P.MODEL,
+            max_output_tokens=30000,
             input=[{
                 "role": "user",
                 "content": [
@@ -171,8 +203,18 @@ class WordGenAPI:
                     {"type": "input_text", "text": task_instructions},
                 ],
             }],
+            stream=True,
         )
-        raw = response.output_text or ""
+        chunks = []
+        for event in response:
+            if event.type == "response.output_text.delta":
+                chunks.append(event.delta)
+            elif event.type == "response.error":
+                raise RuntimeError(getattr(event, "error", "stream error"))
+            elif event.type == "response.completed":
+                break
+
+        raw = "".join(chunks)
         logger.info(f"OpenAI response chars: {len(raw)}")
 
         if "{" not in raw or '"sections"' not in raw:
@@ -183,6 +225,7 @@ class WordGenAPI:
             )
             response = self.client.responses.create(
                 model=P.MODEL,
+                max_output_tokens= 30000,
                 input=[{
                     "role": "user",
                     "content": [
@@ -193,8 +236,18 @@ class WordGenAPI:
                         {"type": "input_text", "text": strict_guard},
                     ],
                 }],
+                stream=True,
             )
-            raw = response.output_text or ""
+            chunks = []
+            for event in response:
+                if event.type == "response.output_text.delta":
+                    chunks.append(event.delta)
+                elif event.type == "response.error":
+                    raise RuntimeError(getattr(event, "error", "stream error"))
+                elif event.type == "response.completed":
+                    break
+
+            raw = "".join(chunks)
             logger.info(f"[retry] OpenAI response chars: {len(raw)}")
 
         cleaned = proposal_cleaner(raw)
@@ -228,14 +281,12 @@ class WordGenAPI:
                     except Exception:
                         return None
                     return None
-
                 try:
                     secs = p.get("sections") or []
                     if secs and isinstance(secs[0], dict):
                         h0_raw = secs[0].get("heading") or ""
                         h0 = h0_raw.strip().lower()
                         c0 = secs[0].get("content")
-
                         WRAPPER_HEADS = {
                             "draft", "generated", "wrapper", "temp", "temporary",
                             "مسودة", "نسخة أولية", "تجريبي", "اختباري"
@@ -243,11 +294,9 @@ class WordGenAPI:
                         if h0 in WRAPPER_HEADS and isinstance(c0, str):
                             inner = _maybe_extract_json_blob(c0)
                             if isinstance(inner, dict) and isinstance(inner.get("sections"), list) and inner["sections"]:
-                           
                                 p = inner
                 except Exception:
                     pass
-
                 if "sections" in p and isinstance(p["sections"], list):
                     fixed = []
                     for s in p["sections"]:
@@ -257,7 +306,6 @@ class WordGenAPI:
                         content = s.get("content")
                         points = s.get("points")
                         table = s.get("table")
-
                         h_norm = (heading or "").strip().lower()
                         if h_norm in {"draft", "wrapper", "generated", "temp", "temporary", "مسودة", "نسخة أولية", "تجريبي", "اختباري"}:
                             inner = _maybe_extract_json_blob(content) if isinstance(content, str) else None
@@ -266,17 +314,14 @@ class WordGenAPI:
                                     if isinstance(s2, dict):
                                         fixed.append(s2)
                             continue
-
                         if isinstance(content, str):
                             inner = _maybe_extract_json_blob(content)
                             if isinstance(inner, dict) and "sections" in inner:
                                 content = ""
-
                         if not isinstance(points, list):
                             points = []
                         else:
                             points = [str(x) for x in points if isinstance(x, (str, int, float))]
-
                         if not isinstance(table, dict):
                             table = {"headers": [], "rows": []}
                         headers = table.get("headers", [])
@@ -299,7 +344,6 @@ class WordGenAPI:
                         p["title"] = f"عرض فني متكامل — مُعد من قبل {company_name}"
                     else:
                         p["title"] = f"Comprehensive Technical Proposal — Prepared by {company_name}"
-
                 if not isinstance(p.get("sections"), list):
                     p["sections"] = []
 
@@ -307,6 +351,7 @@ class WordGenAPI:
         
         cleaned = _normalize_proposal_shape(cleaned)
 
+        # Build Word & PDF
         out_dir = Path("output")
         out_dir.mkdir(parents=True, exist_ok=True)
         docx_path = out_dir / f"{uuid}.docx"
@@ -326,8 +371,7 @@ class WordGenAPI:
         except Exception as e:
             logger.warning(f"PDF conversion failed: {e}")
 
-
-
+        # Upload to Supabase
         word_url = ""
         pdf_url = ""
         try:
@@ -348,8 +392,6 @@ class WordGenAPI:
                 )
             except Exception as e:
                 logger.error(f"Upload PDF failed: {e}")
-
-
         updated = update_proposal_in_data_table(
             uuid,
             pdf_url,
