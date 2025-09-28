@@ -74,7 +74,7 @@ def build_company_digest_instructions() -> str:
     return "Analyze SUPPORTING_FILE and produce one JSON object matching schema above, using only the file."
 
 system_prompts = """You are an expert in technical and development proposal writing both (Arabic and English).
-                    Your task is to create a comprehensive, detailed proposal in English (minimum 6-7 pages, 1500 - 2000 words) that:
+                    Your task is to create a comprehensive, detailed proposal in English (minimum 6-7 pages, 1000 - 1500 words) that:
                     1. Addresses ALL RFP requirements and evaluation criteria with extensive specific details
                     2. Includes comprehensive technical approach, clear methodology, and detailed timeline with complete explanations
                     3. Covers compliance, certifications, and qualifications comprehensively with specific examples
@@ -113,7 +113,7 @@ JSON_SCHEMA_TEXT =  r"""
                       """
 
 task_instructions = f"""
-                    TASK: Write detailed proposal (6–7 pages, 1500-2000 words) using RFP, Supporting file, User Config, and CompanyDigest.
+                    TASK: Write detailed proposal (6–7 pages, 1000-1500 words) using RFP, Supporting file, User Config, and CompanyDigest.
                     - Each section: 100 - 150 words (elaborate if short in RFP).
                     - Populate company-specific sections with supporting materials.
                     - Use rich paragraphs in 'content'; points/tables only if relevant.
@@ -181,6 +181,7 @@ def build_task_instructions_with_config(
     if (language or "").lower() == "arabic":
         arabic_addendum = f"""
                           ARABIC Instructions:
+                          - Generate the proposal in Modern Standard Arabic about 1000 - 1500 words.
                           - Output the entire proposal in Arabic (Modern Standard Arabic): titles, headings, sub-headings and content.
                           - Ensure the Arabic content is correct, coherent, and of high quality, strictly based on the RFP files, Supporting files (Company Digest), and User Configuration.
                           - Do not include filler or unnecessary text; generate only high-quality content.
@@ -188,6 +189,7 @@ def build_task_instructions_with_config(
                           - Use only information from the RFP, Supporting files, and User Configuration.
                           - Each section must contain at least 200 words.
                           - Tables and bullet points must be right-to-left (RTL) aligned.
+                          - Try to use this template while generating the proposal: {PROPOSAL_TEMPLATE}
                           - Follow the strict {JSON_SCHEMA_TEXT}. Do not add any content before or after the JSON schema. Do not include labels like 'Generated Proposal' or 'Draft'—only return the JSON schema as it is.
                           - Return ONLY one JSON object, with no wrappers or extra text.
                           """
@@ -195,14 +197,15 @@ def build_task_instructions_with_config(
 
     return (
         f"- Target language: {language}\n"
-        f"RFP_FILE:\n{rfp_label}\n"
-        f"SUPPORTING_FILE:\n{supporting_label}\n"
-        f"{company_digest_block}\n"
+        f"RFP_FILE:\n{rfp_label} Contains the project details.\n"
+        f"SUPPORTING_FILE:\n{supporting_label} Contains the company details.\n"
+        f"About the company:\n{company_digest_block}\n"
         f"UserConfig:\n{user_config_json or 'null'}\n"
         f"{notes_block}\n"
         "Do not write phrases such as 'the RFP mentions this, but based on the user config we updated that.' Instead, directly update and adapt the proposal accordingly. The proposal must be fully revised based on the RFP, Supporting File, and User Configuration—without explicitly stating these sources."
         "Based on the UserConfiguration change the entire proposal"
         f"{PROPOSAL_TEMPLATE} — analyze this template and maintain its structure while generating the proposal.\n"
+        "- Keep this proposal template structure exactly as is, with all headings and sub-headings.\n"
         f"{JSON_SCHEMA_TEXT}\n"
         "- The title must include the company name and scope.\n"
         "- Each section must contain at least 100–200 words (e.g., methods, KPIs, timelines).\n"
