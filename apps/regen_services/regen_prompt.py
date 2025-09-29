@@ -61,8 +61,10 @@ class ProposalModifier:
     
     def process_proposal(self, payload: Dict[str, Any], language) -> Dict[str, Any]:
         """Main processing function"""
+        logger.info("openai working ra bois ")
 
         pdf_text = self.extract_pdf_text(payload['proposal_url'])
+        logger.info(f"pdf etracted ra bois {pdf_text}")
         modification_instructions = self.create_modification_instructions(payload['items'])
         
         response_format =  r"""
@@ -131,9 +133,9 @@ class ProposalModifier:
             )
             
             result = json.loads(response.choices[0].message.content) # type: ignore
-            print("-----------------------------------------")
-            print(result)
-            print("-----------------------------------------")
+            # print("-----------------------------------------")
+            # print(result)
+            # print("-----------------------------------------")
             def clean_newlines(obj):
                 if isinstance(obj, str):
                     text = obj.replace("\n", " ")
@@ -167,6 +169,7 @@ from typing import Dict, Any
 load_dotenv()
 def regen_proposal_chat(payload: Dict[str, Any], language ) -> Dict[str, Any]:
     api_key = os.getenv("OPENAI_API_KEY")
+    logger.info("openapi_called ra bois")
     if not api_key:
         raise ValueError("Missing OPENAI_API_KEY in environment variables")
     modifier = ProposalModifier(api_key)

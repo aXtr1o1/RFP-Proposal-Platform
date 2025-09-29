@@ -214,6 +214,7 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, language, 
     Build a DOCX using Word COM. Language-aware (Arabic/English) formatting.
     Now renders 'points' as plain paragraphs (no Word bullets) to avoid bidi bullet glitches.
     """
+    logger.info("word started to build ra bois")
     if isinstance(proposal_dict, str):
         proposal_dict = json.loads(proposal_dict)
 
