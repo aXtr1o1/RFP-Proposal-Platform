@@ -106,12 +106,13 @@ def get_comments_base(uuid: str)-> Dict[str, Any]:
             .table("proposal_comments")
             .select("selected_content, comments, proposal_url, created_at")
             .eq("uuid", uuid)
-            .order("created_at", desc=False)
             .execute()
         )
+        logger.info(f"got the resp from get_comments_base da ")
 
         rows = resp.data or []
-        print(rows)
+
+        logger.info(f"this is the row paathuko : {rows}")
         if not rows:
             resp =(supabase.table("Data_Table").select("Proposal_pdf").eq("uuid",uuid).order("created_at", desc=False).execute())
             proposal_url = resp.data[0].get("Proposal_pdf")
