@@ -76,40 +76,41 @@ import pythoncom
 
 
 @router.post("/regenerate/{uuid}")
-def regeneration_process(uuid: str = Path(..., description="Folder name to process"), request: InitialGenRequest = Body(...)):
-    try:
-        user_config = request.config
-        doc_config = request.docConfig
-        language = request.language
+# def regeneration_process(uuid: str = Path(..., description="Folder name to process"), request: InitialGenRequest = Body(...)):
+#     try:
+#         user_config = request.config
+#         doc_config = request.docConfig
+#         language = request.language
 
-        logger.info(f"Received config: {user_config}")
-        logger.info(f"Received docConfig: {doc_config}")
-        logger.info(f"laguage received: {language}")
+#         logger.info(f"Received config: {user_config}")
+#         logger.info(f"Received docConfig: {doc_config}")
+#         logger.info(f"laguage received: {language}")
 
-        payload = get_comments_base(uuid=uuid)
+#         payload = get_comments_base(uuid=uuid)
         
 
-        context = regen_proposal_chat(payload=payload, language=language)
+#         context = regen_proposal_chat(payload=payload, language=language)
 
-        build_word_from_proposal(context, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=language)
+#         build_word_from_proposal(context, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=language)
         
-        local_docx = os.path.join("output", f"{uuid}.docx")
-        local_pdf = os.path.join("output", f"{uuid}.pdf")
+#         local_docx = os.path.join("output", f"{uuid}.docx")
+#         local_pdf = os.path.join("output", f"{uuid}.pdf")
         
-        try:
-            pythoncom.CoInitialize()
-            convert(local_docx, local_pdf)
-            logger.info(f"Converted DOCX to PDF: {local_pdf}")
-            url = upload_and_save_files(word_file_path=local_docx, word_file_name=f"{uuid}.docx", pdf_file_path=local_pdf, pdf_file_name=f"{uuid}.pdf", uuid = uuid)
-        finally:
-            pythoncom.CoUninitialize()
-            os.remove(local_docx)
-            os.remove(local_pdf)
+#         try:
+#             pythoncom.CoInitialize()
+#             convert(local_docx, local_pdf)
+#             logger.info(f"Converted DOCX to PDF: {local_pdf}")
+#             url = upload_and_save_files(word_file_path=local_docx, word_file_name=f"{uuid}.docx", pdf_file_path=local_pdf, pdf_file_name=f"{uuid}.pdf", uuid = uuid)
+#         finally:
+#             pythoncom.CoUninitialize()
+#             os.remove(local_docx)
+#             os.remove(local_pdf)
 
-        print("regen has been Completed !!!")
-        return url
+#         print("regen has been Completed !!!")
+#         return url
 
-    except ImportError as e:   
-        logger.info(f"domething somthing cumthing pumthing")
-
-    
+#     except ImportError as e:   
+#         logger.info(f"domething somthing cumthing pumthing")
+def func ():
+    logger.info("Regenerate called")
+    return "API returned"
