@@ -444,7 +444,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`https://devlop.axtr.in/api/initialgen/${uuid}`, {
+    const res = await fetch(`https://develop.axtr.in/api/initialgen/${uuid}`, {
     
 
     //const res = await fetch(`http://localhost:8000/initialgen/${uuid}`, {
@@ -795,7 +795,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       }
 
       setProcessingStage('Regenerating document...');
-      const res = await fetch(`https://devlop.axtr.in/api/regenerate/${jobUuid}`, {
+      const res = await fetch(`https://develop.axtr.in/api/regenerate/${jobUuid}`, {
         
       //const res = await fetch(`http://localhost:8000/regenerate/${jobUuid}`, {
         method: "POST",
