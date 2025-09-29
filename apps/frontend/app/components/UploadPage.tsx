@@ -797,7 +797,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setProcessingStage('Regenerating document...');
       const res = await fetch(`https://dev.axtr.in/api/regenerate/${jobUuid}`, {
         
-      //https://ayysx-13-201-229-249.a.free.pinggy.link/api/initialgen
       //const res = await fetch(`http://localhost:8000/regenerate/${jobUuid}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

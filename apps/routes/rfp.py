@@ -43,6 +43,7 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
             language=(request.language or "english").lower(),
             outline=outline,
         )
+        
         return result
     
 

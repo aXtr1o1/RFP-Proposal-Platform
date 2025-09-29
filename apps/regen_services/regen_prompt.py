@@ -39,20 +39,20 @@ class ProposalModifier:
         
         instructions += """
             IMPORTANT RULES:
-
-            1. Find each selected_content in the PDF text EXACTLY as provided
-            2. Apply ONLY the modification specified in the comment for that content
-            3. Keep ALL other content in the PDF unchanged
-            4. Maintain the original structure, formatting, and organization
-            5. The modified content should seamlessly fit into the original context
-            6. Work only with the proposal content provided in the PDF text.  
-            7. Do not add new information, context, or assumptions.  
-            8. Do not paraphrase or reword untouched sections. Keep them identical.  
-            9. Only modify text where an explicit instruction is provided.  
-            10. Maintain the structure, formatting, headings, lists, and tables exactly as in the original, unless a modification requires otherwise.  
-            11. Ensure that modified text integrates seamlessly but minimally into its surrounding context.  
-            12. Output must strictly conform to the JSON schema provided. No additional commentary or metadata.  
-            """
+            1. Locate each `selected_content` in the PDF text **exactly as provided**.
+            2. Apply **only** the modifications specified in the corresponding comment.
+            3. Keep all other content in the PDF **unchanged**.
+            4. Maintain the original **structure, formatting, and organization**.
+            5. Ensure the modified content integrates **seamlessly** into the original context.
+            6. Work only with the proposal content provided in the PDF text.
+            7. Do **not** add any new information, context, or assumptions.
+            8. Do **not** paraphrase or reword untouched sections; keep them **identical**.
+            9. Modify text **only** where an explicit instruction is provided.
+            10. Preserve the structure, formatting, headings, lists, and tables exactly as in the original, unless a modification requires otherwise.
+            11. Ensure that modifications are minimal but fit naturally within the surrounding context.
+            12. The output must strictly conform to the provided **JSON schema** — no additional commentary or metadata.
+            13. Do **not** include `\n` in the JSON output.
+           """
         return instructions
     
     def process_proposal(self, payload: Dict[str, Any], language) -> Dict[str, Any]:
@@ -61,58 +61,27 @@ class ProposalModifier:
         pdf_text = self.extract_pdf_text(payload['proposal_url'])
         modification_instructions = self.create_modification_instructions(payload['items'])
         
-        response_format = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "proposal_response",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "title": {
-                            "type": "string",
-                            "description": "Professional proposal title reflecting client name and project scope"
-                        },
-                        "sections": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "heading": {"type": "string"},
-                                    "content": {"type": "string"},
-                                    "points": {
-                                        "type": "array",
-                                        "items": {"type": "string"}
-                                    },
-                                    "table": {
-                                        "type": ["object", "null"],
-                                        "properties": {
-                                            "headers": {
-                                                "type": "array",
-                                                "items": {"type": "string"}
-                                            },
-                                            "rows": {
-                                                "type": "array",
-                                                "items": {
-                                                    "type": "array",
-                                                    "items": {"type": "string"}
-                                                }
-                                            }
-                                        },
-                                        "required": ["headers", "rows"],
-                                        "additionalProperties": False
-                                    }
-                                },
-                                "required": ["heading", "content", "points", "table"],
-                                "additionalProperties": False
-                            }
-                        }
-                    },
-                    "required": ["title", "sections"],
-                    "additionalProperties": False
-                }
-            }
-        }
+        response_format =  r"""
+                      Return ONLY a JSON object with this exact structure and keys (no extra keys, no prose, no extra wordings expect the JSON object):
+
+                      {
+                      "title": "Professional proposal title reflecting company name and project scope",
+                      "sections": [
+                          {
+                          "heading": "string",
+                          "content": "string",
+                          "points": ["string", "..."],
+                          "table": {
+                              "headers": ["string", "..."],
+                              "rows": [["string","..."], ["string","..."]]
+                          }
+                          }
+                      ]
+                      }
+                      """
+
+
+        
         
         # System prompt
         system_prompt = f"""You are an expert in technical and development proposal writing.
@@ -126,9 +95,10 @@ class ProposalModifier:
                 2. Find each specified content piece in the PDF
                 3. Apply ONLY the requested modifications to those specific pieces
                 4. Keep everything else exactly the same
-                5. Structure the final result according to the JSON schema
+                5. Structure the final result according to the JSON schema{response_format}
                 6. generate only in this lanuage : {language}
-
+                7. Maintain correct spacing between words, and generate **only** the modified content. Do not invent or add extra points.(eg. For the "points" field: return each item as plain text only. Do NOT use dashes, hyphens, bullet symbols, or numbering. Example: ["HQ: Riyadh, KSA", "Mission-led: impact beyond profitability"])
+            
                 Return the complete modified proposal in the specified JSON format."""
 
         # User prompt
@@ -140,20 +110,42 @@ class ProposalModifier:
             {modification_instructions}
 
             Please process this proposal and return the complete result with only the specified modifications applied.
-            """
+
+            Note: Apply only the modification instructions to the PDF. Do not change any other content from the existing PDF.
+            return only in this json scheme formate {response_format}
+        """
+
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                response_format=response_format # type: ignore
+                # response_format=response_format # type: ignore
             )
             
             result = json.loads(response.choices[0].message.content) # type: ignore
-            return result
+            print("-----------------------------------------")
+            print(result)
+            print("-----------------------------------------")
+            def clean_newlines(obj):
+                if isinstance(obj, str):
+                    text = obj.replace("\n", " ")
+                    text = text.lstrip("---").strip()
+                    return text
+                elif isinstance(obj, list):
+                    return [clean_newlines(item) for item in obj]
+                elif isinstance(obj, dict):
+                    return {key: clean_newlines(value) for key, value in obj.items()}
+                else:
+                    return obj
+
+            cleaned_data = clean_newlines(result)
+            return cleaned_data
+
+        
             
         except Exception as e:
             raise Exception(f"Error processing with OpenAI: {str(e)}")
