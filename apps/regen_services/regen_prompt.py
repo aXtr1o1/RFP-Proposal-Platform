@@ -5,6 +5,10 @@ from openai import OpenAI
 import json
 from typing import List, Dict, Any
 import re
+import logging
+
+logger = logging.getLogger("main")
+
 
 class ProposalModifier:
     def __init__(self, api_key: str):
@@ -143,6 +147,11 @@ class ProposalModifier:
                     return obj
 
             cleaned_data = clean_newlines(result)
+            logger.info(f"this is the cleaned_data type : {type(cleaned_data)}")
+            if not isinstance(cleaned_data, dict):
+                
+                raise ValueError("Expected dictionary output from OpenAI response")
+                
             return cleaned_data
 
         

@@ -85,12 +85,13 @@ def regeneration_process(uuid: str = Path(..., description="Folder name to proce
         logger.info(f"Received config: {user_config}")
         logger.info(f"Received docConfig: {doc_config}")
         logger.info(f"laguage received: {language}")
-
+        logger.info("this is the payload start da bois")
+        time.sleep(3)
         payload = get_comments_base(uuid=uuid)
-        
+        logger.info(f"payload generated ra bois {payload}")
 
         context = regen_proposal_chat(payload=payload, language=language)
-
+        logger.info(f"context generated my boy {context}")
         build_word_from_proposal(context, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=language)
         
         local_docx = os.path.join("output", f"{uuid}.docx")
