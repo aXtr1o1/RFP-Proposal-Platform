@@ -93,6 +93,7 @@ def regeneration_process(uuid: str = Path(..., description="Folder name to proce
         context = regen_proposal_chat(payload=payload, language=language)
         logger.info(f"context generated my boy {context}")
         build_word_from_proposal(context, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=language)
+        logger.info("the word has been generateed ra bois")
         
         local_docx = os.path.join("output", f"{uuid}.docx")
         local_pdf = os.path.join("output", f"{uuid}.pdf")
@@ -107,7 +108,6 @@ def regeneration_process(uuid: str = Path(..., description="Folder name to proce
             os.remove(local_docx)
             os.remove(local_pdf)
 
-        print("regen has been Completed !!!")
         return url
 
     except ImportError as e:   

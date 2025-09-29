@@ -32,7 +32,7 @@ def upload_and_save_pdf(file_path, file_name,uuid, pdf_share_url):
         data,
         {"content-type": "application/pdf", "x-upsert": "true"}
     )
-    print(resp)
+
 
 
     pdf_supabase_url = supabase.storage.from_(bucket_name).get_public_url(file_name)
@@ -66,7 +66,7 @@ def upload_and_save_files(word_file_path, word_file_name, pdf_file_path, pdf_fil
         word_data,
         {"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "x-upsert": "true"}
     )
-    print("Word upload response:", resp_word)
+
 
     word_supabase_url = supabase.storage.from_(word_bucket).get_public_url(word_file_name)
     logger.info(f"✅ Public Word URL: {word_supabase_url}")
@@ -81,7 +81,7 @@ def upload_and_save_files(word_file_path, word_file_name, pdf_file_path, pdf_fil
         pdf_data,
         {"content-type": "application/pdf", "x-upsert": "true"}
     )
-    print("PDF upload response:", resp_pdf)
+
 
     pdf_supabase_url = supabase.storage.from_(pdf_bucket).get_public_url(pdf_file_name)
     logger.info(f"✅ Public PDF URL: {pdf_supabase_url}")
