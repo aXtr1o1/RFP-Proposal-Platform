@@ -27,7 +27,6 @@ def _lang_flag(language: str) -> str:
         return (
             "LANGUAGE_MODE: ARABIC (Modern Standard Arabic).\n"
             "TOP PRIORITY: Output ALL fields (title, headings, content, points, table headers/rows) in Arabic only.\n"
-            "Do NOT mix languages except for proper nouns/acronyms required by the RFP."
         )
     return (
         "LANGUAGE_MODE: ENGLISH.\n"
@@ -122,10 +121,13 @@ class WordGenAPI:
         try:
             digest = proposal_cleaner(raw)
             if isinstance(digest, dict):
+                logger.info(f"Company Digest Completed: {digest}")
                 return digest
         except Exception:
             pass
+            logger.info("Company Digest Failed")
         return {"company_profile": {}, "capabilities": {}, "track_record": [], "contact": {}}
+
 
     @staticmethod
     def _detect_company_name(digest: dict) -> str:
@@ -161,10 +163,6 @@ class WordGenAPI:
         rfp_label = "RFP/BRD: requirements, evaluation criteria, project details, and timelines"
         supporting_label = "Supporting: company profile, portfolio, capabilities, certifications, differentiators"
         system_prompts = P.system_prompts
-        task_instructions_base = getattr(P, "task_instructions", "") or ""
-        proposal_template_text = (
-            (outline.strip() if outline and outline.strip() else getattr(P, "PROPOSAL_TEMPLATE", "") or "")
-        )
         user_cfg_notes = (user_config or "").strip()
         user_cfg_compact = "null"
 
@@ -179,9 +177,7 @@ class WordGenAPI:
                     )
         
         task_instructions = (
-            f"{task_instructions_base}"
             f"\nIMPORTANT: The proposal must follow this structure:\n"
-            f"{proposal_template_text}\n"
             f"{additive_block}"
         )
 
@@ -190,13 +186,12 @@ class WordGenAPI:
         logger.info("Calling OpenAI Responses API…")
         response = self.client.responses.create(
             model=P.MODEL,
-            max_output_tokens=30000,
+            max_output_tokens=18000,
             input=[{
                 "role": "user",
                 "content": [
                     {"type": "input_text", "text": _lang_flag(language)},
                     {"type": "input_file", "file_id": rfp_id},
-                    {"type": "input_file", "file_id": sup_id},
                     {"type": "input_text", "text": company_digest_json},
                     {"type": "input_text", "text": (user_config if isinstance(user_config, str) else "")},
                     {"type": "input_text", "text": system_prompts},
@@ -216,7 +211,8 @@ class WordGenAPI:
 
         raw = "".join(chunks)
         logger.info(f"OpenAI response chars: {len(raw)}")
-
+        
+        # Guardrails
         if "{" not in raw or '"sections"' not in raw:
             logger.warning("Model returned non-JSON; retrying with strict guardrail")
             strict_guard = (
@@ -225,7 +221,7 @@ class WordGenAPI:
             )
             response = self.client.responses.create(
                 model=P.MODEL,
-                max_output_tokens= 30000,
+                max_output_tokens= 18000,
                 input=[{
                     "role": "user",
                     "content": [
@@ -252,7 +248,7 @@ class WordGenAPI:
 
         cleaned = proposal_cleaner(raw)
 
-
+        # Clean Proposal
         def _normalize_proposal_shape(p: dict, company_name: str = "Your Company", language: str = "english") -> dict:
                 import json
                 if not isinstance(p, dict):
