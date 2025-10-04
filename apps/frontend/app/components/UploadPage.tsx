@@ -1,12 +1,20 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, Palette, AlignLeft, Table, Layout, Type, Eye, Download, Globe, Maximize2, Clock, CheckCircle2, AlertCircle, Loader } from 'lucide-react';
-
-
-
+import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, Palette, AlignLeft, Table, Layout, Type, Eye, Download, Globe, Maximize2, Clock, CheckCircle2, AlertCircle, Loader, Database } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js'
+import dynamic from "next/dynamic";
+const PdfAnnotator = dynamic(() => import("@/app/components/PdfAnnotator"), { ssr: false });
 
 let pdfjsLoaded = false;
+
+type IHighlight = {
+  id: string;
+  selectedText: string;
+  comment: string;
+  page?: number;
+  timestamp: number;
+};
 
 function loadPdfJsOnce(): Promise<void> {
   if (pdfjsLoaded) return Promise.resolve();
@@ -25,7 +33,6 @@ function loadPdfJsOnce(): Promise<void> {
 
 type PdfViewerProps = { pdfUrl: string };
 
-// 1) Base component with proper props
 const PdfViewerBase: React.FC<PdfViewerProps> = ({ pdfUrl }) => {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -53,7 +60,7 @@ const PdfViewerBase: React.FC<PdfViewerProps> = ({ pdfUrl }) => {
           <h4 className="text-lg font-medium text-gray-800 mb-2">PDF Viewer Error</h4>
           <p className="text-sm text-gray-600 mb-4">{error}</p>
           <button
-            onClick={() => window.open(pdfUrl, "_blank")}
+            onClick={() => window.open(pdfUrl)}
             className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700"
           >
             Open in New Tab
@@ -74,12 +81,13 @@ const PdfViewerBase: React.FC<PdfViewerProps> = ({ pdfUrl }) => {
       </div>
     );
   }
+  const cacheBustParam = `&cachebust=${Date.now()}`;   //changes here
+  // const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
 
   const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
 
   return (
     <div className="h-full">
-      {/* key only changes when the URL changes; prevents remounts on other state changes */}
       <iframe
         key={pdfUrl}
         src={viewerUrl}
@@ -91,18 +99,18 @@ const PdfViewerBase: React.FC<PdfViewerProps> = ({ pdfUrl }) => {
   );
 };
 
-// 2) Memoized export with props comparator
 export const PdfViewer = React.memo(
   PdfViewerBase,
   (prev, next) => prev.pdfUrl === next.pdfUrl
 );
 
-
 type OutputProps = {
   generatedDocument: string | null;
-  pdfUrl: string | null;        // (previewPdfUrl ?? pdfLink)
+  pdfUrl: string;
   wordLink: string | null;
   pdfLink: string | null;
+  jobUuid: string | null;
+  onCommentsUpdate?: (comments: IHighlight[]) => void;
 };
 
 const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
@@ -110,7 +118,19 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   pdfUrl,
   wordLink,
   pdfLink,
+  jobUuid,
+  onCommentsUpdate,
 }) => {
+  const [currentComments, setCurrentComments] = useState<IHighlight[]>([]);
+
+  const handleSaveComments = async (highlights: IHighlight[]) => {
+    setCurrentComments(highlights);
+    onCommentsUpdate?.(highlights);
+    
+    // Don't save to Supabase here, just update the local state
+    console.log(`Updated comments for UUID ${jobUuid}:`, highlights.length);
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
       {/* Header with actions */}
@@ -123,26 +143,38 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
               {generatedDocument}
             </span>
           )}
+          {currentComments.length > 0 && (
+            <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded flex items-center gap-1">
+              <Database size={12} />
+              {currentComments.length} comments
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {wordLink && (
             <button
               className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
-              onClick={() => window.open(`${wordLink}?download=1`, "_blank")}
+              onClick={() => {
+                const t = Date.now();
+                const url = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.docx&t=${t}`;
+                window.open(url, "_blank");
+              }}
               title="Download Word document"
             >
-              <Download size={16} />
-              Word
+              <Download size={16} /> Word
             </button>
           )}
           {pdfLink && (
             <button
-              className="bg-green-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-green-700 transition-colors duration-200 flex items-center gap-2"
-              onClick={() => window.open(`${pdfLink}?download=1`, "_blank")}
+              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
+              onClick={() => {
+                const t = Date.now();
+                const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.pdf&t=${t}`;
+                window.open(url, "_blank");
+              }}
               title="Download PDF document"
             >
-              <Download size={16} />
-              PDF
+              <Download size={16} /> PDF
             </button>
           )}
         </div>
@@ -151,7 +183,12 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       {/* Body / Preview */}
       <div className="flex-1 overflow-hidden">
         {pdfUrl ? (
-          <PdfViewer pdfUrl={pdfUrl} />
+          <div className="h-full">
+            <PdfAnnotator
+              url={pdfUrl}
+              onSave={handleSaveComments}
+            />
+          </div>
         ) : (
           <div className="h-full flex items-center justify-center bg-gray-50">
             <div className="text-center max-w-md">
@@ -171,7 +208,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
               </div>
               {wordLink && (
                 <button
-                  onClick={() => window.open(wordLink, "_blank")}
+                  onClick={() => window.open(wordLink)}
                   className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center gap-2 mx-auto"
                 >
                   <Eye size={16} />
@@ -186,14 +223,14 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   );
 };
 
-// 2) Memoized export with a shallow comparator
 export const OutputDocumentDisplay = React.memo(
   OutputDocumentDisplayBase,
   (prev, next) =>
     prev.generatedDocument === next.generatedDocument &&
     prev.pdfUrl === next.pdfUrl &&
     prev.wordLink === next.wordLink &&
-    prev.pdfLink === next.pdfLink
+    prev.pdfLink === next.pdfLink &&
+    prev.jobUuid === next.jobUuid
 );
 
 interface UploadPageProps {}
@@ -211,7 +248,14 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [generatedDocument, setGeneratedDocument] = useState<string | null>(null);
   const [wordLink, setWordLink] = useState<string | null>(null);
   const [pdfLink, setPdfLink] = useState<string | null>(null);
-  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null); // Supabase URL for in-app preview only
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [isGenerated, setIsGenerated] = useState(false);
+  const [jobUuid, setJobUuid] = useState<string | null>(null);
+  const [currentComments, setCurrentComments] = useState<IHighlight[]>([]);
+  const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const supabase = createClient(supabaseUrl, supabaseAnonKey)
   
   // Document configuration state
   const [docConfig, setDocConfig] = useState({
@@ -280,6 +324,64 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }));
   };
 
+  // Check Supabase connection
+  const checkSupabaseConnection = async () => {
+    try {
+      const res = await fetch("/nextapi/check-supabase");
+      if (!res.ok) {
+        console.error("check-supabase HTTP NOT OKAY", res.status);
+        return false;
+      }
+      const data = await res.json();
+      if (data.connected) {
+        console.log("✅ Supabase connected");
+        setSupabaseConnected(true);
+        return true;
+      } else {
+        console.log("❌ Supabase not connected:", data.error);
+        setSupabaseConnected(false);
+        return false;
+      }
+    } catch (err) {
+      console.error("Supabase check failed", err);
+      setSupabaseConnected(false);
+      return false;
+    }
+  };
+
+  // Save comments to Supabase
+  const saveCommentsToSupabase = async (comments: IHighlight[]) => {
+    if (!jobUuid || !previewPdfUrl || comments.length === 0) {
+      console.log("Missing data for Supabase save:", { jobUuid, previewPdfUrl, commentsCount: comments.length });
+      return false;
+    }
+
+    try {
+      const res = await fetch("/nextapi/supabase-comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uuid: jobUuid,
+          pdfUrl: previewPdfUrl,
+          comments: comments,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error("Failed to save comments to Supabase:", errorData);
+        return false;
+      }
+
+      const data = await res.json();
+      console.log("✅ Comments saved to Supabase:", data.message);
+      return true;
+    } catch (error) {
+      console.error("Error saving comments to Supabase:", error);
+      return false;
+    }
+  };
+
   const handleDrag = (e: React.DragEvent, setDragActive: (active: boolean) => void) => {
     e.preventDefault();
     e.stopPropagation();
@@ -289,37 +391,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setDragActive(false);
     }
   };
-
-  // const handleDrop = (e: React.DragEvent, fileType: 'rfp' | 'supporting') => {
-  //   e.preventDefault();
-  //   e.stopPropagation();
-  //   if (fileType === 'rfp') setDragActiveRfp(false);
-  //   else setDragActiveSupporting(false);
-
-  //   const files = Array.from(e.dataTransfer.files).filter(file => 
-  //     file.type === 'application/pdf' || 
-  //     file.type === 'application/msword' || 
-  //     file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  //   );
-
-  //   if (fileType === 'rfp') {
-  //     setRfpFiles(prev => [...prev, ...files]);
-  //   } else {
-  //     setSupportingFiles(prev => [...prev, ...files]);
-  //   }
-  // };
-
-  // const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, fileType: 'rfp' | 'supporting') => {
-  //   if (e.target.files) {
-  //     const files = Array.from(e.target.files);
-  //     if (fileType === 'rfp') {
-  //       setRfpFiles(prev => [...prev, ...files]);
-  //     } else {
-  //       setSupportingFiles(prev => [...prev, ...files]);
-  //     }
-  //   }
-  // };
-
 
   const handleDrop = (e: React.DragEvent, fileType: 'rfp' | 'supporting') => {
     e.preventDefault();
@@ -339,7 +410,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     else setSupportingFiles([file]);
   };
 
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, fileType: 'rfp' | 'supporting') => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -352,11 +422,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       if (fileType === 'rfp') setRfpFiles([file]);
       else setSupportingFiles([file]);
     }
-    // Clear the input so the same file can be re-selected if needed
     e.currentTarget.value = '';
   };
-
-
 
   const removeFile = (index: number, fileType: 'rfp' | 'supporting') => {
     if (fileType === 'rfp') {
@@ -374,33 +441,13 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     });
   };
 
-  const checkOneDriveConnection = async () => {
-    try {
-      const res = await fetch("/nextapi/check-onedrive");
-      if (!res.ok) {
-        console.error("check-onedrive HTTP NOT OKAY", res.status);
-        return false;
-      } else {
-        console.log("check-onedrive HTTP OKAY", res.status);
-      }
-      const data = await res.json();
-      if (data.connected) {
-        console.log("✅ OneDrive connected", data.drive);
-        return true;
-      } else {
-        console.log("❌ OneDrive not connected:", data.message);
-        return false;
-      }
-    } catch (err) {
-      console.error("OneDrive check failed", err);
-      return false;
-    }
-  };
+
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`${process.env.BACKEND_URI!}/ocr/${uuid}`,
-      
-      {
+    const res = await fetch(`https://develop.axtr.in/api/initialgen/${uuid}`, {
+    
+
+    //const res = await fetch(`http://localhost:8000/initialgen/${uuid}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -415,20 +462,24 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       const txt = await res.text().catch(() => "");
       throw new Error(`Backend /upload failed: ${res.status} ${txt}`);
     }
-    
-    // const result = await res.json().catch(() => ({}));
-    // const { onedrive } = result;
+
     const result = await res.json().catch(() => ({}));
-    const { onedrive, supabase_url } = result;
-    const docxShareUrl = onedrive?.docx_shareUrl;
-    const pdfShareUrl = onedrive?.pdf_shareUrl;
-    if (supabase_url) setPreviewPdfUrl(supabase_url);
+    const docxShareUrl = result.proposal_word_url;
+    const pdfShareUrl = result.proposal_pdf_url;
+    
+    setPreviewPdfUrl(null);
+    const timestamp = Date.now();
+    const cacheBustedPdfUrl = pdfShareUrl ? `${pdfShareUrl}${pdfShareUrl.includes('?') ? '&' : '?'}t=${timestamp}` : null;
+    setTimeout(() => {
+      setPreviewPdfUrl(cacheBustedPdfUrl);
+    }, 200);
+    
+
 
     console.log("Word download link:", docxShareUrl);
     console.log("PDF download link:", pdfShareUrl);
     
     return { docxShareUrl, pdfShareUrl };
-    
   };
 
   const simulateProgress = () => {
@@ -479,49 +530,235 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
     setIsUploading(true);
     setUploadProgress(0);
-    setProcessingStage('Checking OneDrive connection...');
+    setProcessingStage('Checking connections...');
     
     const progressInterval = simulateProgress();
     
     try {
       const uuid = generateUUID();
-      const connected = await checkOneDriveConnection();
-      if (!connected) {
-        alert("Please connect OneDrive first!");
-        setIsUploading(false);
-        clearInterval(progressInterval);
-        return;
+      setJobUuid(uuid);
+      
+      // Check both connections
+      const [ supabaseConnected] = await Promise.all([
+        checkSupabaseConnection()
+      ]);
+      
+
+
+      if (!supabaseConnected) {
+        alert("Supabase connection failed. Comments will not be saved.");
       }
       
-      const form = new FormData();
-      form.append("uuid", uuid);
-      form.append("config", config);
-      form.append("docConfig", JSON.stringify(docConfig));
-      form.append("language", language);
+      // const form = new FormData();
+      // form.append("uuid", uuid);
+      // form.append("config", config);
+      // form.append("docConfig", JSON.stringify(docConfig));
+      // form.append("language", language);
 
-      rfpFiles.forEach((f) => form.append("rfpFiles", f, f.name));
-      supportingFiles.forEach((f) => form.append("supportingFiles", f, f.name));
+      // rfpFiles.forEach((f) => form.append("rfpFiles", f, f.name));
+      // supportingFiles.forEach((f) => form.append("supportingFiles", f, f.name));
 
-      const res = await fetch("/nextapi/upload", {
-        method: "POST",
-        body: form,
-      });
+      // const res = await fetch("/nextapi/upload", {
+      //   method: "POST",
+      //   body: form,
+      // });
 
-      const data = await res.json();
+      // const data = await res.json();
 
-      if (!res.ok) {
-        console.error("Upload failed:", data);
-        alert(`Upload failed: ${data?.error || res.status}`);
-        return;
-      }
+      // if (!res.ok) {
+      //   console.error("Upload failed:", data);
+      //   alert(`Upload failed: ${data?.error || res.status}`);
+      //   return;
+      // }
 
-      console.log("✅ Uploaded:", data);
+      // console.log("✅ Uploaded:", data);
+
+      const uploadFileToSupabase = async (
+        file: File,
+        bucket: string,
+        uuid: string,
+        index: number
+      ): Promise<{ name: string; url: string; size: number }> => {
+        try {
+          // Create unique file path
+          const timestamp = Date.now();
+          const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const filePath = `${uuid}/${timestamp}_${index}_${sanitizedFileName}`;
+
+          console.log(`Uploading ${file.name} to bucket: ${bucket}, path: ${filePath}`);
+
+          // Upload to Supabase storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, file, {
+              contentType: file.type || "application/octet-stream",
+              upsert: true,
+            });
+
+          if (uploadError) {
+            console.error(`Upload error for ${file.name}:`, uploadError);
+            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
+          }
+
+          console.log(`Successfully uploaded ${file.name}:`, uploadData);
+
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(filePath);
+
+          if (!urlData.publicUrl) {
+            throw new Error(`Failed to get public URL for ${file.name}`);
+          }
+
+          return { 
+            name: file.name, 
+            url: urlData.publicUrl,
+            size: file.size
+          };
+
+        } catch (error) {
+          console.error(`Error processing file ${file.name}:`, error);
+          throw error;
+        }
+      };
+
+      const updateDatabaseRecord = async (
+        uuid: string,
+        rfpFileData: string | null,
+        supportingFileData: string | null
+      ) => {
+        try {
+          // Try to update existing record first
+          const { data: updateData, error: updateError } = await supabase
+            .from("Data_Table")
+            .update({
+              RFP_Files: rfpFileData,
+              Supporting_Files: supportingFileData,
+            })
+            .eq("uuid", uuid)
+            .select();
+
+          // If no rows were updated, insert a new record
+          if (!updateError && (!updateData || updateData.length === 0)) {
+            console.log('No existing record found, creating new record...');
+            
+            const { data: insertData, error: insertError } = await supabase
+              .from("Data_Table")
+              .insert({
+                uuid: uuid,
+                RFP_Files: rfpFileData,
+                Supporting_Files: supportingFileData,
+              })
+              .select();
+
+            if (insertError) {
+              console.error('Database insert error:', insertError);
+              throw new Error(`Database insert failed: ${insertError.message}`);
+            }
+
+            console.log('New record created successfully:', insertData);
+            return insertData;
+          } else if (updateError) {
+            console.error('Database update error:', updateError);
+            throw new Error(`Database update failed: ${updateError.message}`);
+          } else {
+            console.log('Existing record updated successfully:', updateData);
+            return updateData;
+          }
+        } catch (error) {
+          console.error('Database operation failed:', error);
+          throw error;
+        }
+      };
+
+      const MAX_FILE_SIZE = 50 * 1024 * 1024;
+          const allFiles = [...rfpFiles, ...supportingFiles];
+          
+          for (const file of allFiles) {
+            if (file.size > MAX_FILE_SIZE) {
+              throw new Error(`File ${file.name} exceeds 50MB size limit`);
+            }
+            
+            if (file.size === 0) {
+              throw new Error(`File ${file.name} is empty`);
+            }
+          }
+
+          setProcessingStage('Uploading files to cloud storage...');
+          
+          // Upload RFP files directly to Supabase
+          console.log('Starting RFP file uploads...');
+          const rfpResults = await Promise.allSettled(
+            rfpFiles.map((file, index) => uploadFileToSupabase(file, "rfp", uuid, index))
+          );
+
+          // Upload supporting files directly to Supabase
+          console.log('Starting supporting file uploads...');
+          const supportingResults = await Promise.allSettled(
+            supportingFiles.map((file, index) => uploadFileToSupabase(file, "supporting", uuid, index))
+          );
+
+          // Check for upload failures
+          const failedRfpUploads = rfpResults.filter(result => result.status === 'rejected');
+          const failedSupportingUploads = supportingResults.filter(result => result.status === 'rejected');
+
+          if (failedRfpUploads.length > 0 || failedSupportingUploads.length > 0) {
+            console.error('Some uploads failed:');
+            failedRfpUploads.forEach((result, index) => {
+              if (result.status === 'rejected') {
+                console.error(`RFP file ${index}:`, result.reason);
+              }
+            });
+            failedSupportingUploads.forEach((result, index) => {
+              if (result.status === 'rejected') {
+                console.error(`Supporting file ${index}:`, result.reason);
+              }
+            });
+            
+            // Continue with successful uploads, but warn user
+            const totalFailed = failedRfpUploads.length + failedSupportingUploads.length;
+            console.warn(`${totalFailed} files failed to upload, continuing with successful uploads`);
+          }
+
+          // Extract successful uploads
+          const successfulRfpUploads = rfpResults
+            .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
+              result.status === 'fulfilled'
+            )
+            .map(result => result.value);
+
+          const successfulSupportingUploads = supportingResults
+            .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
+              result.status === 'fulfilled'
+            )
+            .map(result => result.value);
+
+          console.log('Successful RFP uploads:', successfulRfpUploads.length);
+          console.log('Successful supporting uploads:', successfulSupportingUploads.length);
+
+          // Check if we have at least one successful RFP upload
+          if (successfulRfpUploads.length === 0) {
+            throw new Error("No RFP files were successfully uploaded. Cannot proceed.");
+          }
+
+          setProcessingStage('Updating database records...');
+          
+          // Prepare data for database update
+          const rfpFileData = successfulRfpUploads.length > 0 ? successfulRfpUploads[0].url : null;
+          const supportingFileData = successfulSupportingUploads.length > 0 ? successfulSupportingUploads[0].url : null;
+
+          // Update database record
+          await updateDatabaseRecord(uuid, rfpFileData, supportingFileData);
+
+          setProcessingStage('Sending to AI processing engine...');
+
       const { docxShareUrl, pdfShareUrl } = await postUuidConfig(uuid, config);
 
-      // Set the download links and trigger the display
       setWordLink(docxShareUrl);
       setPdfLink(pdfShareUrl);
-      setGeneratedDocument('Generated_Proposal.docx'); // This triggers the display
+      setGeneratedDocument('Generated_Proposal.docx'); 
+      setIsGenerated(true);
       
     } catch (error) {
       console.error('Upload failed:', error);
@@ -534,6 +771,75 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         setProcessingStage('');
       }, 2000);
     }
+  };
+
+  const handleRegenerate = async () => {
+    if (!jobUuid) {
+      alert('No job to regenerate. Please run Upload & Process first.');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+      setProcessingStage('Saving comments to database...');
+
+      // Save comments to Supabase first
+      if (currentComments.length > 0) {
+        const supabaseSaved = await saveCommentsToSupabase(currentComments);
+        if (supabaseSaved) {
+          console.log("✅ Comments saved to Supabase before regeneration");
+        } else {
+          console.log("⚠️ Failed to save comments to Supabase");
+        }
+      }
+
+      setProcessingStage('Regenerating document...');
+      const res = await fetch(`https://develop.axtr.in/api/regenerate/${jobUuid}`, {
+        
+      //const res = await fetch(`http://localhost:8000/regenerate/${jobUuid}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: config,
+          docConfig: docConfig,
+          timestamp: new Date().toISOString(),
+          language: language,
+        }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`Backend /regenerate failed: ${res.status} ${txt}`);
+      }
+
+      const result = await res.json().catch(() => ({}));
+      const docxShareUrl = result.word_url;
+      const pdfShareUrl = result.pdf_url;
+
+      setPreviewPdfUrl(null);
+      const timestamp = Date.now();
+      const cacheBustedPdfUrl = pdfShareUrl ? `${pdfShareUrl}${pdfShareUrl.includes('?') ? '&' : '?'}t=${timestamp}` : null;
+      setTimeout(() => {
+        setPreviewPdfUrl(cacheBustedPdfUrl);
+      }, 200);
+
+
+      setWordLink(docxShareUrl);
+      setPdfLink(pdfShareUrl);
+      setGeneratedDocument('Regenerated_Proposal.docx');
+    } catch (error) {
+      console.error('Regenerate failed:', error);
+      alert('Regenerate failed. Please try again.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+      setProcessingStage('');
+    }
+  };
+
+  const handleCommentsUpdate = (comments: IHighlight[]) => {
+    setCurrentComments(comments);
   };
 
   const FileUploadZone = ({ 
@@ -660,9 +966,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     </div>
   );
 
-
-
-
   const InputField = React.memo(({ 
     label, 
     value, 
@@ -681,7 +984,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     const [localValue, setLocalValue] = React.useState(value);
     const [isFocused, setIsFocused] = React.useState(false);
 
-    // Only update local value when prop changes and input is not focused
     React.useEffect(() => {
       if (!isFocused) {
         setLocalValue(value);
@@ -700,7 +1002,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     const handleChange = (newValue: string | boolean) => {
       setLocalValue(newValue);
       
-      // For non-text inputs, update immediately
       if (type === 'select' || type === 'checkbox') {
         onChange(newValue);
       }
@@ -744,10 +1045,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     );
   });
 
-
-
-
-
   const LoadingDisplay = () => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
       <div className="text-center max-w-md w-full mx-4">
@@ -761,9 +1058,35 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             style={{ width: `${uploadProgress}%` }}
           ></div>
         </div>
+        {/* {processingStage && (
+          <p className="text-sm text-gray-600">{processingStage}</p>
+        )} */}
       </div>
     </div>
   );
+
+  // const ConnectionStatus = () => (
+  //   <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-3">
+  //     <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
+  //       <Database className="text-gray-500" size={14} />
+  //       Connection Status
+  //     </h3>
+  //     <div className="space-y-2 text-xs">
+  //       <div className="flex items-center justify-between">
+  //         <span className="text-gray-600">Supabase Database:</span>
+  //         <span className={`px-2 py-1 rounded-full ${
+  //           supabaseConnected === true 
+  //             ? 'bg-green-100 text-green-700' 
+  //             : supabaseConnected === false 
+  //             ? 'bg-red-100 text-red-700'
+  //             : 'bg-gray-100 text-gray-600'
+  //         }`}>
+  //           {supabaseConnected === true ? 'Connected' : supabaseConnected === false ? 'Disconnected' : 'Checking...'}
+  //         </span>
+  //       </div>
+  //     </div>
+  //   </div>
+  // );
 
   const GeneratedDocumentSection = () => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -773,10 +1096,13 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           Generated Document
         </h3> 
       </div>
-      
-      
     </div>
   );
+
+  // Check Supabase connection on component mount
+  React.useEffect(() => {
+    checkSupabaseConnection();
+  }, []);
 
   return (
     <>
@@ -796,6 +1122,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             </div>
 
             <div className="space-y-1">
+              {/* Connection Status */}
+              
               {/* Language Selection */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
                 <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
@@ -874,27 +1202,51 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               {generatedDocument && <GeneratedDocumentSection />}
 
               <div className="pt-4">
-                <button
-                  onClick={handleUpload}
-                  disabled={isUploading || rfpFiles.length === 0 || !config.trim()}
-                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                    ${isUploading || rfpFiles.length === 0 || !config.trim()
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                      : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
-                    }`}
-                >
-                  {isUploading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Send size={16} />
-                      Upload & Process
-                    </>
-                  )}
-                </button>
+                {!isGenerated ? (
+                  <button
+                    onClick={handleUpload}
+                    disabled={isUploading || rfpFiles.length === 0 || !config.trim()}
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                      ${isUploading || rfpFiles.length === 0 || !config.trim()
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                        : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
+                      }`}
+                  >
+                    {isUploading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Send size={16} />
+                        Upload & Process
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={isUploading}
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                      ${isUploading
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
+                      }`}
+                  >
+                    {isUploading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <Database size={16} />
+                        Regenerate & Save Comments
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -906,9 +1258,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             ) : generatedDocument ? (
               <OutputDocumentDisplay
                 generatedDocument={generatedDocument}
-                pdfUrl={previewPdfUrl ?? pdfLink}
+                pdfUrl={previewPdfUrl ?? pdfLink ?? ''}
                 wordLink={wordLink}
                 pdfLink={pdfLink}
+                jobUuid={jobUuid}
+                onCommentsUpdate={handleCommentsUpdate}
               />
             ) : (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
@@ -1169,7 +1523,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         <input
           ref={rfpInputRef}
           type="file"
-          // multiple
           accept=".pdf,.doc,.docx"
           onChange={(e) => handleFileSelect(e, 'rfp')}
           className="hidden"
@@ -1177,7 +1530,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         <input
           ref={supportingInputRef}
           type="file"
-          // multiple
           accept=".pdf,.doc,.docx"
           onChange={(e) => handleFileSelect(e, 'supporting')}
           className="hidden"
