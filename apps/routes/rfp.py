@@ -12,7 +12,7 @@ from apps.api.services.supabase_service import (
     get_generated_markdown
 )
 
-from apps.regen_service.regen_prompt import regenerate_markdown_with_comments
+from apps.regen_services.regen_prompt import regenerate_markdown_with_comments
 
 from apps.wordgenAgent.app.document import generate_word_and_pdf_from_markdown
 
