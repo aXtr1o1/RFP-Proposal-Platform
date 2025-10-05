@@ -1,39 +1,31 @@
-import requests
-import PyPDF2
-from io import BytesIO
-from openai import OpenAI
+import os
 import json
-from typing import List, Dict, Any
-import re
 import logging
+from typing import Dict, Any, List
 
-logger = logging.getLogger("main")
+from openai import OpenAI
+from dotenv import load_dotenv
+
+from apps.api.services.supabase_service import (
+    supabase,
+    get_generated_markdown,
+    save_generated_markdown
+)
+
+load_dotenv()
+logger = logging.getLogger("regen_prompt")
 
 
-class ProposalModifier:
+class MarkdownModifier:
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
     
-    def extract_pdf_text(self, pdf_url: str) -> str:
-        """Download and extract text from PDF URL"""
-        try:
-            response = requests.get(pdf_url)
-            response.raise_for_status()
-            
-            pdf_file = BytesIO(response.content)
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
-            
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
-            
-            return text.strip()
-        except Exception as e:
-            raise Exception(f"Error extracting PDF text: {str(e)}")
-    
     def create_modification_instructions(self, items: List[Dict[str, str]]) -> str:
         """Create clear instructions for content modifications"""
-        instructions = "You must modify ONLY the following specific content pieces:\n\n"
+        if not items:
+            return "No modifications requested."
+        
+        instructions = "You must modify ONLY the following specific content pieces in the markdown:\n\n"
         
         for i, item in enumerate(items, 1):
             instructions += f"{i}. FIND THIS EXACT TEXT:\n"
@@ -42,136 +34,146 @@ class ProposalModifier:
             instructions += "---\n\n"
         
         instructions += """
-            IMPORTANT RULES:
-            1. Locate each `selected_content` in the PDF text **exactly as provided**.
-            2. Apply **only** the modifications specified in the corresponding comment.
-            3. Keep all other content in the PDF **unchanged**.
-            4. Maintain the original **structure, formatting, and organization**.
-            5. Ensure the modified content integrates **seamlessly** into the original context.
-            6. Work only with the proposal content provided in the PDF text.
-            7. Do **not** add any new information, context, or assumptions.
-            8. Do **not** paraphrase or reword untouched sections; keep them **identical**.
-            9. Modify text **only** where an explicit instruction is provided.
-            10. Preserve the structure, formatting, headings, lists, and tables exactly as in the original, unless a modification requires otherwise.
-            11. Ensure that modifications are minimal but fit naturally within the surrounding context.
-            12. The output must strictly conform to the provided **JSON schema** — no additional commentary or metadata.
-            13. Do **not** include `\n` in the JSON output.
-           """
+                        IMPORTANT RULES:
+                        1. Locate each `selected_content` in the markdown **exactly as provided**.
+                        2. Apply **only** the modifications specified in the corresponding comment.
+                        3. Keep all other content in the markdown **unchanged**.
+                        4. Maintain the original **markdown structure** (headers, lists, tables, formatting).
+                        5. Ensure the modified content integrates **seamlessly** into the original context.
+                        6. Do **not** add any new information, context, or assumptions.
+                        7. Do **not** paraphrase or reword untouched sections; keep them **identical**.
+                        8. Modify text **only** where an explicit instruction is provided.
+                        9. Preserve markdown formatting: `#`, `##`, `###`, `**bold**`, lists (`-`, `1.`), tables (`|`).
+                        10. Return ONLY the complete updated markdown — no JSON, no commentary, no extra text.
+                        11. Maintain proper spacing and line breaks between sections.
+                        """
         return instructions
     
-    def process_proposal(self, payload: Dict[str, Any], language) -> Dict[str, Any]:
-        """Main processing function"""
-        logger.info("openai working ra bois ")
+    def process_markdown(self, markdown: str, items: List[Dict[str, str]], language: str) -> str:
+        logger.info("Starting OpenAI markdown regeneration")
 
-        pdf_text = self.extract_pdf_text(payload['proposal_url'])
-        logger.info(f"pdf etracted ra bois {pdf_text}")
-        modification_instructions = self.create_modification_instructions(payload['items'])
+        modification_instructions = self.create_modification_instructions(items)
         
-        response_format =  r"""
-                      Return ONLY a JSON object with this exact structure and keys (no extra keys, no prose, no extra wordings expect the JSON object):
-
-                      {
-                      "title": "Professional proposal title reflecting company name and project scope",
-                      "sections": [
-                          {
-                          "heading": "string",
-                          "content": "string",
-                          "points": ["string", "..."],
-                          "table": {
-                              "headers": ["string", "..."],
-                              "rows": [["string","..."], ["string","..."]]
-                          }
-                          }
-                      ]
-                      }
-                      """
-
-
-        
-        
-        # System prompt
         system_prompt = f"""You are an expert in technical and development proposal writing.
 
-                You will receive:
-                1. The full text of a PDF proposal
-                2. Specific content pieces that need modification with their modification instructions
+                        You will receive:
+                        1. The full markdown content of a proposal
+                        2. Specific content pieces that need modification with their modification instructions
 
-                Your task:
-                1. Analyze and understand the entire PDF content
-                2. Find each specified content piece in the PDF
-                3. Apply ONLY the requested modifications to those specific pieces
-                4. Keep everything else exactly the same
-                5. Structure the final result according to the JSON schema{response_format}
-                6. generate only in this lanuage : {language}
-                7. Maintain correct spacing between words, and generate **only** the modified content. Do not invent or add extra points.(eg. For the "points" field: return each item as plain text only. Do NOT use dashes, hyphens, bullet symbols, or numbering. Example: ["HQ: Riyadh, KSA", "Mission-led: impact beyond profitability"])
-            
-                Return the complete modified proposal in the specified JSON format."""
+                        Your task:
+                        1. Analyze and understand the entire markdown content
+                        2. Find each specified content piece in the markdown
+                        3. Apply ONLY the requested modifications to those specific pieces
+                        4. Keep everything else exactly the same
+                        5. Maintain all markdown formatting (headers, lists, tables, bold, etc.)
+                        6. Generate output only in this language: {language}
+                        7. Maintain correct spacing between words
+                        8. Return ONLY the complete updated Github markdown — no JSON, no explanations, no wrappers
 
-        # User prompt
+                        CRITICAL: Your output must be pure GitHub-flavored markdown that can be rendered directly."""
+
         user_prompt = f"""
-            PDF CONTENT:
-            {pdf_text}
+                        ORIGINAL MARKDOWN:
+                        {markdown}
 
-            MODIFICATION INSTRUCTIONS:
-            {modification_instructions}
+                        MODIFICATION INSTRUCTIONS:
+                        {modification_instructions}
 
-            Please process this proposal and return the complete result with only the specified modifications applied.
-
-            Note: Apply only the modification instructions to the PDF. Do not change any other content from the existing PDF.
-            return only in this json scheme formate {response_format}
-        """
-
+                        Process this markdown and return the complete updated version with only the specified modifications applied.
+                        Return ONLY the updated markdown — no JSON, no commentary, no code blocks.
+                        """
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-5",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                # response_format=response_format # type: ignore
+                temperature=0.3
             )
             
-            result = json.loads(response.choices[0].message.content) # type: ignore
-            # print("-----------------------------------------")
-            # print(result)
-            # print("-----------------------------------------")
-            def clean_newlines(obj):
-                if isinstance(obj, str):
-                    text = obj.replace("\n", " ")
-                    text = text.lstrip("---").strip()
-                    return text
-                elif isinstance(obj, list):
-                    return [clean_newlines(item) for item in obj]
-                elif isinstance(obj, dict):
-                    return {key: clean_newlines(value) for key, value in obj.items()}
-                else:
-                    return obj
-
-            cleaned_data = clean_newlines(result)
-            logger.info(f"this is the cleaned_data type : {type(cleaned_data)}")
-            if not isinstance(cleaned_data, dict):
-                
-                raise ValueError("Expected dictionary output from OpenAI response")
-                
-            return cleaned_data
-
-        
+            content = response.choices[0].message.content
+            if not content:
+                raise ValueError("Empty response from OpenAI")
+            content = content.strip()
+            if content.startswith("```"):
+                content = content[3:].strip()
+            if content.endswith("```"):
+                content = content[:-3].strip()
+            
+            logger.info(f"Markdown regenerated successfully, length: {len(content)} chars")
+            return content
             
         except Exception as e:
+            logger.exception("Error processing with OpenAI")
             raise Exception(f"Error processing with OpenAI: {str(e)}")
 
-import os
-from dotenv import load_dotenv
-from typing import Dict, Any
 
-# Load environment variables from .env file
-load_dotenv()
-def regen_proposal_chat(payload: Dict[str, Any], language ) -> Dict[str, Any]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    logger.info("openapi_called ra bois")
-    if not api_key:
-        raise ValueError("Missing OPENAI_API_KEY in environment variables")
-    modifier = ProposalModifier(api_key)
-    return modifier.process_proposal(payload, language)
+def get_comments_for_uuid(uuid: str) -> List[Dict[str, str]]:
+    try:
+        logger.info(f"Fetching comments for uuid={uuid}")
+        res = supabase.table("Comments").select("selected_content, comment").eq("uuid", uuid).execute()
+        items = res.data if res.data else []
+        
+        logger.info(f"Found {len(items)} comments for uuid={uuid}")
+        return items
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch comments for uuid={uuid}: {e}")
+        raise
 
+def regenerate_markdown_with_comments(
+    uuid: str,
+    language: str = "english"
+) -> Dict[str, Any]:
+    try:
+        logger.info(f"Fetching existing markdown for uuid={uuid}")
+        original_markdown = get_generated_markdown(uuid)
+        if not original_markdown:
+            raise ValueError(f"No generated markdown found for uuid={uuid}. Run /initialgen first.")
+        
+        logger.info(f"Original markdown length: {len(original_markdown)} chars")
+        
+        comments = get_comments_for_uuid(uuid)
+        if not comments:
+            logger.warning(f"No comments found for uuid={uuid}, returning original markdown")
+            return {
+                "status": "success",
+                "uuid": uuid,
+                "updated_markdown": original_markdown,
+                "modifications_applied": 0,
+                "message": "No modifications to apply"
+            }
+        
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Missing OPENAI_API_KEY in environment variables")
+        
+        modifier = MarkdownModifier(api_key)
+        updated_markdown = modifier.process_markdown(
+            markdown=original_markdown,
+            items=comments,
+            language=language
+        )
+        
+        logger.info(f"Updated markdown length: {len(updated_markdown)} chars")
+        
+        logger.info(f"Saving updated markdown to Supabase for uuid={uuid}")
+        saved = save_generated_markdown(uuid, updated_markdown)
+        if not saved:
+            raise Exception("Failed to save updated markdown to Supabase")
+        
+        logger.info(f"Successfully saved updated markdown for uuid={uuid}")
+        
+        return {
+            "status": "success",
+            "uuid": uuid,
+            "updated_markdown": updated_markdown,
+            "modifications_applied": len(comments),
+            "language": language
+        }
+    
+    except Exception as e:
+        logger.exception(f"Markdown regeneration failed for uuid={uuid}")
+        raise

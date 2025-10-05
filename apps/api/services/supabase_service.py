@@ -81,3 +81,37 @@ def update_proposal_in_data_table(uuid: str, pdf_url: str, word_url: str) -> boo
                 logger.exception("update_proposal_in_data_table (fallback) failed")
                 return False
         return False
+
+def save_generated_markdown(uuid: str, content: str) -> bool:
+    """
+    Save the generated markdown to the 'Generated_Markdown' column in the Supabase table.
+    """
+    try:
+        payload = {
+            "Generated_Markdown": content
+        }
+
+        supabase.table(DATA_TABLE).update(payload).eq("uuid", uuid).execute()
+        logger.info(f"Successfully saved generated markdown for uuid={uuid}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save generated markdown for uuid={uuid}: {str(e)}")
+        return False
+
+def get_generated_markdown(uuid: str) -> Optional[str]:
+    """
+    Fetch the previously saved `Generated_Markdown` for a uuid.
+    """
+    try:
+        res = supabase.table(DATA_TABLE).select(
+            "Generated_Markdown"
+        ).eq("uuid", uuid).maybe_single().execute()
+
+        if not res.data:
+            logger.warning(f"No markdown found for uuid={uuid}")
+            return None
+
+        return res.data.get("Generated_Markdown", "")
+    except Exception as e:
+        logger.error(f"Error fetching generated markdown for uuid={uuid}: {str(e)}")
+        return None

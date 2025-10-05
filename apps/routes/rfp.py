@@ -1,40 +1,53 @@
 import logging
-from fastapi import APIRouter, HTTPException, Body, Path
-from pydantic import BaseModel
+import os
+from pathlib import Path
 from typing import Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, Body, Path
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel
 
 from apps.wordgenAgent.app.api import wordgen_api
-from apps.api.services.supabase_service import get_pdf_urls_by_uuid
+from apps.api.services.supabase_service import (
+    get_pdf_urls_by_uuid,
+    get_generated_markdown
+)
+
+from apps.regen_service.regen_prompt import regenerate_markdown_with_comments
+
+from apps.wordgenAgent.app.document import generate_word_and_pdf_from_markdown
 
 logger = logging.getLogger("routes.rfp")
 router = APIRouter()
 
+
 class InitialGenRequest(BaseModel):
-    config: Optional[str] = None           
+    config: Optional[str] = None
     docConfig: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
-    language: Optional[str] = "english"   
+    language: Optional[str] = "english"
+
 
 @router.post("/initialgen/{uuid}")
 def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
     try:
-
         user_config = request.config
         doc_config = request.docConfig
         language = request.language
 
         logger.info(f"Received config: {user_config}")
         logger.info(f"Received docConfig: {doc_config}")
-        logger.info(f"laguage received: {language}")
+        logger.info(f"language received: {language}")
 
         urls = get_pdf_urls_by_uuid(uuid)
         if not urls or not urls.get("rfp_url") or not urls.get("supporting_url"):
             raise HTTPException(status_code=404, detail="RFP/Supporting URLs not found for UUID")
+        
         logger.info(f"initialgen: uuid={uuid} urls-ok language={request.language}")
         outline = None
         if request.docConfig and isinstance(request.docConfig, dict):
             outline = request.docConfig.get("outline")
-        result = wordgen_api.generate_complete_proposal(
+        
+        generator = wordgen_api.generate_complete_proposal(
             uuid=uuid,
             rfp_url=urls["rfp_url"],
             supporting_url=urls["supporting_url"],
@@ -44,8 +57,13 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
             outline=outline,
         )
         
-        return result
-    
+        for _ in generator:
+            pass  
+        final_markdown = get_generated_markdown(uuid)
+        if not final_markdown:
+            raise HTTPException(status_code=500, detail="Proposal generation succeeded but markdown not saved")
+
+        return {"status": "success", "uuid": uuid, "proposal_content": final_markdown}
 
     except HTTPException:
         logger.exception("initialgen HTTP error")
@@ -54,63 +72,105 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
         logger.exception("initialgen failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-from fastapi.responses import FileResponse
-import os
-
-@router.get("/download/{filename}")
-def download(filename: str):
-    path = os.path.join("output", filename)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path=path, filename=filename)
-
-
-
-
-from apps.regen_services.regen_prompt import regen_proposal_chat
-from apps.wordgenAgent.app.wordcom import build_word_from_proposal
-import time
-from apps.supabase.supabase_service import upload_and_save_files , get_comments_base
-from docx2pdf import convert
-import pythoncom
-
 
 @router.post("/regenerate/{uuid}")
-def regeneration_process(uuid: str = Path(..., description="Folder name to process"), request: InitialGenRequest = Body(...)):
+def regeneration_process(
+    uuid: str = Path(..., description="UUID for the proposal to regenerate"),
+    request: InitialGenRequest = Body(...)
+):
+
     try:
-        user_config = request.config
-        doc_config = request.docConfig
-        language = request.language
-
-        logger.info(f"Received config: {user_config}")
-        logger.info(f"Received docConfig: {doc_config}")
-        logger.info(f"laguage received: {language}")
-        logger.info("this is the payload start da bois")
-        time.sleep(3)
-        payload = get_comments_base(uuid=uuid)
-        logger.info(f"payload generated ra bois {payload}")
-
-        context = regen_proposal_chat(payload=payload, language=language)
-        logger.info(f"context generated my boy {context}")
-        build_word_from_proposal(context, output_path=f"output/{uuid}.docx", visible=False , user_config=doc_config, language=language)
-        logger.info("the word has been generateed ra bois")
-        
-        local_docx = os.path.join("output", f"{uuid}.docx")
-        local_pdf = os.path.join("output", f"{uuid}.pdf")
-        
-        try:
-            pythoncom.CoInitialize()
-            convert(local_docx, local_pdf)
-            logger.info(f"Converted DOCX to PDF: {local_pdf}")
-            url = upload_and_save_files(word_file_path=local_docx, word_file_name=f"{uuid}.docx", pdf_file_path=local_pdf, pdf_file_name=f"{uuid}.pdf", uuid = uuid)
-        finally:
-            pythoncom.CoUninitialize()
-            os.remove(local_docx)
-            os.remove(local_pdf)
-
-        return url
-
-    except ImportError as e:   
-        logger.info(f"domething somthing cumthing pumthing")
-
+        logger.info(f"Starting markdown regeneration for uuid={uuid}")
+        logger.info(f"Language: {request.language}")
     
+        result = regenerate_markdown_with_comments(
+            uuid=uuid,
+            language=request.language or "english"
+        )
+        
+        logger.info(f"Markdown regeneration completed for uuid={uuid}")
+        return JSONResponse(result)
+    
+    except HTTPException:
+        logger.exception(f"regenerate HTTP error for uuid={uuid}")
+        raise
+    except Exception as e:
+        logger.exception(f"regenerate failed for uuid={uuid}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chat-stream/{uuid}")
+def chat_stream(uuid: str = Path(..., description="UUID for this proposal"),
+                language: Optional[str] = "english"):
+    try:
+        urls = get_pdf_urls_by_uuid(uuid)
+        if not urls or not urls.get("rfp_url") or not urls.get("supporting_url"):
+            raise HTTPException(status_code=404, detail="RFP/Supporting URLs not found for UUID")
+        
+        logger.info(f"chat-stream: uuid={uuid} lang={language}")
+
+        def gen():
+            for chunk in wordgen_api.iter_initialgen_stream(
+                uuid=uuid,
+                rfp_url=urls["rfp_url"],
+                supporting_url=urls["supporting_url"],
+                language=(language or "english").lower(),
+            ):
+                yield chunk
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    except HTTPException:
+        logger.exception("chat_stream HTTP error")
+        raise
+    except Exception as e:
+        logger.exception("chat_stream failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class DownloadRequest(BaseModel):
+    docConfig: Optional[Dict[str, Any]] = None
+    language: Optional[str] = "english"
+
+
+@router.post("/download/{uuid}")
+def download_proposal(
+    uuid: str = Path(..., description="UUID for this proposal"),
+    request: DownloadRequest = Body(...)
+):
+    try:
+        logger.info(f"Fetching generated markdown for uuid={uuid}")
+        md = get_generated_markdown(uuid)
+        if not md:
+            raise HTTPException(
+                status_code=404, 
+                detail="No generated content found. Run /initialgen or /chat-stream first."
+            )
+        
+        logger.info(f"Markdown retrieved for uuid={uuid}, length={len(md)} chars")
+        logger.info(f"Starting document generation for uuid={uuid}, language={request.language}")
+        
+        urls = generate_word_and_pdf_from_markdown(
+            uuid=uuid,
+            markdown=md,
+            doc_config=request.docConfig,
+            language=(request.language or "english").lower()
+        )
+        
+        logger.info(f"Document generation completed for uuid={uuid}")
+        logger.info(f"Word URL: {urls['proposal_word_url']}")
+        logger.info(f"PDF URL: {urls['proposal_pdf_url']}")
+        
+        return JSONResponse({
+            "status": "success",
+            "uuid": uuid,
+            "proposal_word_url": urls["proposal_word_url"],
+            "proposal_pdf_url": urls["proposal_pdf_url"],
+            "language": request.language or "english",
+        })
+    
+    except HTTPException:
+        logger.exception(f"download HTTP error for uuid={uuid}")
+        raise
+    except Exception as e:
+        logger.exception(f"download failed for uuid={uuid}")
+        raise HTTPException(status_code=500, detail=str(e))
