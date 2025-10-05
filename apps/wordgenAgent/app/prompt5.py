@@ -3,118 +3,39 @@ from typing import Optional
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 
-COMPANY_DIGEST_SYSTEM = """You are an expert company analyst.
-                          Extract a structured, comprehensive CompanyDigest (JSON) from the provided 'supporting_text'.
-                          Rules:
-                          - Use ONLY information in supporting_text; no external facts.
-                          - Translate Arabic to English for the digest, but preserve proper nouns (institutions, programs) in Arabic with an English gloss if known.
-                          - If a field is missing, use "Not specified".
-                          - Include 'source_attribution' with brief quotes/section labels from supporting_text for key claims.
-                          Return ONLY valid JSON. No commentary, no markdown fences.
-                          """
+system_prompts = """You are an expert technical proposal writer for English or Modern Standard Arabic. Follow only the specified sections and produce the output entirely in GitHUb Markdown format. Do not include JSON, extra prose outside Githbu Markdown, or formatting instructions.
 
-COMPANY_DIGEST_SCHEMA =r"""
-                          Produce JSON with this exact schema:
-
-                          {
-                            "company_profile": {
-                              "legal_name": "...",
-                              "brand_name": "...",
-                              "hq_location": "...",
-                              "founded_year": "...",
-                              "mission": "...",
-                              "vision": "...",
-                              "values": ["..."]
-                            },
-                            "capabilities": {
-                              "domains": ["..."],
-                              "services": ["..."],
-                              "methodologies": ["..."],
-                              "differentiators": ["..."],
-                              "partners": ["..."]
-                            },
-                            "track_record": [
-                              {
-                                "project_title": "...",
-                                "client": "...",
-                                "year_or_period": "...",
-                                "scope_summary": "...",
-                                "outcomes_kpis": ["...", "..."]
-                              }
-                            ],
-                            "sector_context": {
-                              "rationale": "...",
-                              "key_figures": ["..."]
-                            },
-                            "resources": {
-                              "team_overview": "...",
-                              "tooling_platforms": ["..."],
-                              "languages": ["Arabic","English","..."]
-                            },
-                            "compliance_and_qa": {
-                              "standards": ["..."],
-                              "qa_approach": ["..."],
-                              "data_privacy_security": ["..."]
-                            },
-                            "contact": {
-                              "website": "...",
-                              "email": "...",
-                              "phone": "...",
-                              "address": "..."
-                            },
-                            "source_attribution": [
-                              {"claim":"...", "evidence":"<short quote or section label>"},
-                              {"claim":"...", "evidence":"<short quote or section label>"}
-                            ]
-                          }
-                          """
-
-def build_company_digest_instructions() -> str:
-    return "Analyze SUPPORTING_FILE and produce one JSON object matching schema above, using only the file."
-
-system_prompts = """You are an expert technical proposal writer for English or Modern Standard Arabic. Follow only the specified sections and produce one valid JSON that matches the schema exactly. No extra keys, no prose outside JSON, no markdown.
                     Rules:
-                    1) Scope: Mirror ONLY Sections 6–8 of the RFP as implied by the index; ignore other sections. Do not mention section numbers explicitly.  
-                    2) Sources: Use only the provided RFP/BRD, Supporting File, CompanyDigest, and User Configuration. Do not invent partners, facts, certifications, or clients.  
-                    3) Company mapping: Map CompanyDigest into Company Introduction, Relevant Experience, and Why [Company]; replace placeholders (e.g., [Your Company], founded year) with digest values where available.  
-                    4) User Configuration: Apply timelines and directives to Work Plan/Timeline and relevant sections.  
-                    5) Language: Output entirely in the target language; for Arabic, use Modern Standard Arabic and avoid unnecessary English. Proper nouns may remain in Arabic with an English gloss where appropriate. RTL alignment is handled by the renderer; do not include layout instructions. Try to keep every thing (eg. headings, content) in the same target language. 
-                    6) Style: Prefer rich paragraphs in “content”; use “points” and “table” only when necessary.  
-                    7) Length bounds: Keep each section concise and informative within tight limits appropriate for fast generation.  
-                    8) Output: Return exactly one JSON object matching the schema below. Stop as soon as the root object is complete.
+
+                    1. Scope: Mirror ONLY Sections 6–8 of the RFP as implied by the index; ignore other sections. Do not mention section numbers explicitly.
+                    2. Sources: Use only the provided RFP/BRD, Supporting File, CompanyDigest, and User Configuration. Do not invent partners, facts, certifications, or clients.
+                    3. Company mapping: Map CompanyDigest into Company Introduction, Relevant Experience, and Why [Company]; replace placeholders (e.g., [Your Company], founded year) with digest values where available.
+                    4. User Configuration: Apply timelines and directives to Work Plan/Timeline and relevant sections.
+                    5. Language: Output entirely in the target language; for Arabic, use Modern Standard Arabic and avoid unnecessary English. Proper nouns may remain in Arabic with an English gloss where appropriate. RTL alignment is handled by the renderer; do not include layout instructions. Try to keep every thing (eg. headings, content) in the same target language (Arabic or English).
+                    6. Style: Prefer rich paragraphs in content; use points and tables only when necessary.
+                    7. Length bounds: Keep each section concise and informative within tight limits appropriate for fast generation.
+                    8. Output: Return a proper "GitHub Markdown formatted text" suitable for direct rendering. Give headings, sub-headings, bullet points, and tables in correct Github Markdown syntax.
 
                     Proposal Title Instructions:
+
                     - Create a concise, professional title reflecting the RFP and solution.
                     - Include the client or project name if specified.
                     - Avoid generic terms.
                     - Keep it formal and professional.
                     - Add “Prepared by [Your Company]”.
 
-                    JSON schema (strict):
-                    {
-                      "title": "string",
-                      "sections": [
-                        {
-                          "heading": "string",
-                          "content": "string",
-                          "points": ["string"],
-                          "table": {
-                            "headers": ["string"],
-                            "rows": [["string"]]
-                          }
-                        }
-                      ]
-                    }
+                    Proposal template headings (follow exactly; do not add/remove; keep based on the target language):
 
-                    Proposal template headings (follow exactly; do not add/remove; Keep that based on the target language):
                     - Executive Summary
                     - Company Introduction
                     - Understanding of the RFP and Objectives
                     - Technical Approach and Methodology
+
                       - Framework Overview
                       - Phased Methodology
                       - Methodological Pillars
                     - Project Architecture
+
                       - System Components
                       - Data Flow & Integration
                       - Technology Stack
@@ -131,17 +52,15 @@ system_prompts = """You are an expert technical proposal writer for English or M
                     - Why [Your Company]
                     """
 
+
 def build_task_instructions_with_config(
     language: str,
     user_config_json: str,
     rfp_label: str,
     supporting_label: str,
-    company_digest_json: Optional[str] = None,
     user_config_notes: Optional[str] = None,
 ) -> str:
-    
-    company_digest_block = f"\nCompanyDigest:\n{company_digest_json}\n" if company_digest_json else "\nCompanyDigest: null\n"
-    
+
     notes_block = f'\nUserNotes: "{(user_config_notes or "").strip()}"\n'
     
     arabic_addendum = ""
@@ -161,10 +80,9 @@ def build_task_instructions_with_config(
             f"- Target language: {language}\n"
             f"RFP_FILE:\n{rfp_label}\n"
             f"SUPPORTING_FILE:\n{supporting_label}\n"
-            f"{company_digest_block}"
             f"UserConfig:\n{user_config_json or 'null'}\n"
             f"{notes_block}\n"
             "Based on the User Configuration, update the entire proposal if provided.\n"
-            "- Do not invent or add external facts.\n"
+            "Do not invent or add external facts.\n"
             f"{arabic_addendum}"
             )

@@ -75,7 +75,13 @@ default_CONFIG = {
 }
 
 def _repair_genpy_cache():
+    """
+    Clear and regenerate win32com cache to fix corruption issues.
+    More aggressive approach that handles multiple failure modes.
+    """
     import shutil
+    import sys
+
     gen_path = getattr(win32com, "__gen_path__", None)
     if gen_path and os.path.isdir(gen_path):
         try:
@@ -83,33 +89,68 @@ def _repair_genpy_cache():
             logger.warning(f"Cleared win32com gen_py cache: {gen_path}")
         except Exception as e:
             logger.warning(f"Failed to clear gen_py cache: {e}")
+    try:
+        temp_gen = os.path.join(os.environ.get("TEMP", ""), f"gen_py\\{sys.version_info.major}.{sys.version_info.minor}")
+        if os.path.isdir(temp_gen):
+            shutil.rmtree(temp_gen, ignore_errors=True)
+            logger.warning(f"Cleared temp gen_py cache: {temp_gen}")
+    except Exception:
+        pass
+
     for spec in (
         "Microsoft Word 16.0 Object Library",
         "Microsoft Word 15.0 Object Library",
         "Microsoft Word 14.0 Object Library",
-        "Microsoft Word 12.0 Object Library",
     ):
         try:
             makepy.GenerateFromTypeLibSpec(spec)
             logger.info(f"Generated makepy wrappers: {spec}")
-            break
-        except Exception:
-            pass
+            return True  
+        except Exception as e:
+            logger.debug(f"Could not generate for {spec}: {e}")
+            continue
+    
+    return False  
 
 def _get_word_app(visible: bool = False):
+    """
+    Get Word Application COM object with robust cache repair.
+    Falls back to late binding (Dispatch) if early binding fails.
+    """
     pythoncom.CoInitialize()
+
     try:
         app = gencache.EnsureDispatch("Word.Application")
+        app.Visible = bool(visible)
+        app.DisplayAlerts = 0
+        return app
+    except AttributeError as e:
+        logger.warning(f"EnsureDispatch failed with cache corruption: {e}")
     except Exception as e:
-        logger.warning(f"EnsureDispatch failed: {e}; repairing cache…")
-        _repair_genpy_cache()
+        logger.warning(f"EnsureDispatch failed: {e}")
+
+    logger.info("Attempting cache repair...")
+    if _repair_genpy_cache():
         try:
             app = gencache.EnsureDispatch("Word.Application")
-        except Exception:
-            app = Dispatch("Word.Application")
-    app.Visible = bool(visible)
-    app.DisplayAlerts = 0
-    return app
+            app.Visible = bool(visible)
+            app.DisplayAlerts = 0
+            logger.info("Cache repair successful, Word COM initialized")
+            return app
+        except Exception as e:
+            logger.warning(f"EnsureDispatch failed after repair: {e}")
+    
+    logger.info("Falling back to late binding Dispatch")
+    try:
+        from win32com.client import Dispatch as DirectDispatch, constants
+        app = DirectDispatch("Word.Application")
+        app.Visible = bool(visible)
+        app.DisplayAlerts = 0
+        logger.info("Late binding Dispatch successful")
+        return app
+    except Exception as e:
+        logger.error(f"Late binding Dispatch also failed: {e}")
+        raise RuntimeError(f"Could not initialize Word COM object: {e}")
 
 def _para_format(paragraph, align, rtl: bool):
     pf = paragraph.Format
