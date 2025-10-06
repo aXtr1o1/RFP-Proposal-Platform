@@ -56,31 +56,45 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       </div>
 
       {/* Download buttons on top of markdown */}
-      {markdownContent && (wordLink || pdfLink) && !isRegenerating && (
+      {markdownContent && (wordLink || pdfLink) && (
         <div className="border-b border-gray-100 p-4 bg-gray-50">
           <div className="flex items-center justify-center gap-3">
             {wordLink && (
               <button
-                className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors duration-200 flex items-center gap-2 ${
+                  isRegenerating 
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
                 onClick={() => {
-                  const t = Date.now();
-                  const url = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.docx&t=${t}`;
-                  window.open(url, "_blank");
+                  if (!isRegenerating) {
+                    const t = Date.now();
+                    const url = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.docx&t=${t}`;
+                    window.open(url, "_blank");
+                  }
                 }}
-                title="Download Word document"
+                disabled={isRegenerating}
+                title={isRegenerating ? "Regenerating document..." : "Download Word document"}
               >
                 <Download size={16} /> Word
               </button>
             )}
             {pdfLink && (
               <button
-                className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors duration-200 flex items-center gap-2 ${
+                  isRegenerating 
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
                 onClick={() => {
-                  const t = Date.now();
-                  const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.pdf&t=${t}`;
-                  window.open(url, "_blank");
+                  if (!isRegenerating) {
+                    const t = Date.now();
+                    const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.pdf&t=${t}`;
+                    window.open(url, "_blank");
+                  }
                 }}
-                title="Download PDF document"
+                disabled={isRegenerating}
+                title={isRegenerating ? "Regenerating document..." : "Download PDF document"}
               >
                 <Download size={16} /> PDF
               </button>
@@ -865,18 +879,27 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
                 setGeneratedDocument('Regenerated_Proposal.docx');
                 setIsRegenerationComplete(true);
                 setIsRegenerating(false);
+                setIsUploading(false);
               } catch (e) {
                 console.warn("Failed to parse regenerate done data:", data);
+                // Still mark regeneration as complete even if parsing fails
+                setIsRegenerationComplete(true);
+                setIsRegenerating(false);
+                setIsUploading(false);
               }
             } else if (eventType === 'error') {
               try {
                 const errorData = JSON.parse(data);
                 console.error("Regenerate stream error:", errorData.message);
                 alert(`Regenerate failed: ${errorData.message}`);
+                setIsRegenerating(false);
+                setIsUploading(false);
                 return;
               } catch (e) {
                 console.error("Regenerate stream error:", data);
                 alert(`Regenerate failed: ${data}`);
+                setIsRegenerating(false);
+                setIsUploading(false);
                 return;
               }
             }
@@ -886,6 +909,8 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
         } catch (error) {
           console.error('Regenerate stream error:', error);
           alert('Regenerate failed. Please try again.');
+          setIsRegenerating(false);
+          setIsUploading(false);
         }
       };
 
@@ -893,6 +918,8 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
     } catch (error) {
       console.error('Regenerate failed:', error);
       alert('Regenerate failed. Please try again.');
+      setIsRegenerating(false);
+      setIsUploading(false);
     } finally {
       setTimeout(() => {
         setIsUploading(false);
