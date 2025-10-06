@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List,Optional
 
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -28,9 +28,10 @@ class MarkdownModifier:
         instructions = "You must modify ONLY the following specific content pieces in the markdown:\n\n"
         
         for i, item in enumerate(items, 1):
+            logger.info(f'Content, Comments: {item}')
             instructions += f"{i}. FIND THIS EXACT TEXT:\n"
-            instructions += f'"{item["selected_content"]}"\n\n'
-            instructions += f"MODIFICATION INSTRUCTION: {item['comment']}\n\n"
+            instructions += f"{item.get('comment1')}"
+            instructions += f"\n\nMODIFICATION INSTRUCTION: {item.get('comment2')}\n\n"
             instructions += "---\n\n"
         
         instructions += """
@@ -113,8 +114,11 @@ class MarkdownModifier:
 def get_comments_for_uuid(uuid: str) -> List[Dict[str, str]]:
     try:
         logger.info(f"Fetching comments for uuid={uuid}")
-        res = supabase.table("Comments").select("selected_content, comment").eq("uuid", uuid).execute()
-        items = res.data if res.data else []
+        res = supabase.table("proposal_comments").select("comments").eq("uuid", uuid).execute()
+        print("List:", res.data)
+        items = res.data[0].get('comments') if res.data else []
+        
+
         
         logger.info(f"Found {len(items)} comments for uuid={uuid}")
         return items
@@ -125,7 +129,8 @@ def get_comments_for_uuid(uuid: str) -> List[Dict[str, str]]:
 
 def regenerate_markdown_with_comments(
     uuid: str,
-    language: str = "english"
+    language: str = "english",
+    
 ) -> Dict[str, Any]:
     try:
         logger.info(f"Fetching existing markdown for uuid={uuid}")
@@ -136,6 +141,7 @@ def regenerate_markdown_with_comments(
         logger.info(f"Original markdown length: {len(original_markdown)} chars")
         
         comments = get_comments_for_uuid(uuid)
+        logger.info(f"Comments from supabase:{comments}")
         if not comments:
             logger.warning(f"No comments found for uuid={uuid}, returning original markdown")
             return {
