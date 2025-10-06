@@ -686,33 +686,10 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
 
       await updateDatabaseRecord(uuid, rfpFileData, supportingFileData);
 
+      const rspPostUuidConfig = await postUuidConfig(uuid, config);
+
       setProcessingStage('Sending to AI processing engine...');
-      /*
-      @router.post("/download/{uuid}")
-def download_proposal(
-    uuid: str = Path(..., description="UUID for this proposal"),
-    request: DownloadRequest = Body(...)
-):
-*/
 
-
-      const getPostUuidConfig = await postUuidConfig(uuid, config);
-      const getLink = await fetch(`http://127.0.0.1:8000/download/${uuid}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uuid: uuid,
-        }),
-      });
-
-
-      const respGetLink = await getLink.json();
-
-      setWordLink(respGetLink.proposal_word_url);
-      setPdfLink(respGetLink.proposal_pdf_url);
-
-      setWordLink(respGetLink.proposal_word_url);
-      setPdfLink(respGetLink.proposal_pdf_url);
       setMarkdownContent(markdownContent || null);
       setGeneratedDocument('Generated_Proposal.docx'); 
       setIsGenerated(true);
@@ -1320,17 +1297,9 @@ def download_proposal(
 
           {/* Center Panel - Loading/Output Display */}
           <div className="flex-1 p-6 min-w-0">
-            {isUploading ? (
+            {isUploading && !markdownContent ? (
               <LoadingDisplay />
-            ) : markdownContent ? (
-              <OutputDocumentDisplay
-                generatedDocument={generatedDocument}
-                markdownContent={markdownContent}
-                wordLink={wordLink}
-                pdfLink={pdfLink}
-                jobUuid={jobUuid}
-              />
-            ) : (
+            ) : !isUploading && !markdownContent ? (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
                 <div className="text-center">
                   <FileText className="mx-auto mb-4 text-gray-300" size={64} />
@@ -1340,6 +1309,14 @@ def download_proposal(
                   </p>
                 </div>
               </div>
+            ) : (
+              <OutputDocumentDisplay
+                generatedDocument={generatedDocument}
+                markdownContent={markdownContent}
+                wordLink={wordLink}
+                pdfLink={pdfLink}
+                jobUuid={jobUuid}
+              />
             )}
           </div>
           
