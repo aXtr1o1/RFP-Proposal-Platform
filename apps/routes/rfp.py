@@ -98,35 +98,6 @@ def regeneration_process(
         logger.exception(f"regenerate failed for uuid={uuid}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/chat-stream/{uuid}")
-def chat_stream(uuid: str = Path(..., description="UUID for this proposal"),
-                language: Optional[str] = "english"):
-    try:
-        urls = get_pdf_urls_by_uuid(uuid)
-        if not urls or not urls.get("rfp_url") or not urls.get("supporting_url"):
-            raise HTTPException(status_code=404, detail="RFP/Supporting URLs not found for UUID")
-        
-        logger.info(f"chat-stream: uuid={uuid} lang={language}")
-
-        def gen():
-            for chunk in wordgen_api.iter_initialgen_stream(
-                uuid=uuid,
-                rfp_url=urls["rfp_url"],
-                supporting_url=urls["supporting_url"],
-                language=(language or "english").lower(),
-            ):
-                yield chunk
-
-        return StreamingResponse(gen(), media_type="text/event-stream")
-
-    except HTTPException:
-        logger.exception("chat_stream HTTP error")
-        raise
-    except Exception as e:
-        logger.exception("chat_stream failed")
-        raise HTTPException(status_code=500, detail=str(e))
-
 class DownloadRequest(BaseModel):
     docConfig: Optional[Dict[str, Any]] = None
     language: Optional[str] = "english"
