@@ -1,136 +1,28 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, Palette, AlignLeft, Table, Layout, Type, Eye, Download, Globe, Maximize2, Clock, CheckCircle2, AlertCircle, Loader, Database } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js'
-import dynamic from "next/dynamic";
-const PdfAnnotator = dynamic(() => import("@/app/components/PdfAnnotator"), { ssr: false });
-
-let pdfjsLoaded = false;
-
-type IHighlight = {
-  id: string;
-  selectedText: string;
-  comment: string;
-  page?: number;
-  timestamp: number;
-};
-
-function loadPdfJsOnce(): Promise<void> {
-  if (pdfjsLoaded) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-    script.async = true;
-    script.onload = () => {
-      pdfjsLoaded = true;
-      resolve();
-    };
-    script.onerror = () => reject(new Error("Failed to load PDF.js"));
-    document.head.appendChild(script);
-  });
-}
-
-type PdfViewerProps = { pdfUrl: string };
-
-const PdfViewerBase: React.FC<PdfViewerProps> = ({ pdfUrl }) => {
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    let alive = true;
-    loadPdfJsOnce()
-      .then(() => alive && setIsLoading(false))
-      .catch((e) => {
-        if (alive) {
-          setError(e.message || "Failed to load PDF viewer");
-          setIsLoading(false);
-        }
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <AlertCircle className="mx-auto mb-4 text-red-500" size={48} />
-          <h4 className="text-lg font-medium text-gray-800 mb-2">PDF Viewer Error</h4>
-          <p className="text-sm text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={() => window.open(pdfUrl)}
-            className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700"
-          >
-            Open in New Tab
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <Loader className="animate-spin mx-auto mb-4 text-gray-600" size={48} />
-          <h4 className="text-lg font-medium text-gray-800 mb-2">Loading PDF Viewer</h4>
-          <p className="text-sm text-gray-600">Please wait...</p>
-        </div>
-      </div>
-    );
-  }
-  const cacheBustParam = `&cachebust=${Date.now()}`;   //changes here
-  // const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
-
-  const viewerUrl = `https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
-
-  return (
-    <div className="h-full">
-      <iframe
-        key={pdfUrl}
-        src={viewerUrl}
-        className="w-full h-full border-none"
-        title="PDF Document Viewer"
-        onError={() => setError("Failed to load PDF document")}
-      />
-    </div>
-  );
-};
-
-export const PdfViewer = React.memo(
-  PdfViewerBase,
-  (prev, next) => prev.pdfUrl === next.pdfUrl
-);
+import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+import MarkdownRenderer from './MarkdownRenderer.tsx';
+import { saveAllComments } from "./utils";
 
 type OutputProps = {
   generatedDocument: string | null;
-  pdfUrl: string;
+  markdownContent: string | null;
   wordLink: string | null;
   pdfLink: string | null;
   jobUuid: string | null;
-  onCommentsUpdate?: (comments: IHighlight[]) => void;
 };
+
 
 const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   generatedDocument,
-  pdfUrl,
+  markdownContent,
   wordLink,
   pdfLink,
   jobUuid,
-  onCommentsUpdate,
 }) => {
-  const [currentComments, setCurrentComments] = useState<IHighlight[]>([]);
-
-  const handleSaveComments = async (highlights: IHighlight[]) => {
-    setCurrentComments(highlights);
-    onCommentsUpdate?.(highlights);
-    
-    // Don't save to Supabase here, just update the local state
-    console.log(`Updated comments for UUID ${jobUuid}:`, highlights.length);
-  };
-
+  
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
       {/* Header with actions */}
@@ -141,12 +33,6 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
           {generatedDocument && (
             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
               {generatedDocument}
-            </span>
-          )}
-          {currentComments.length > 0 && (
-            <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded flex items-center gap-1">
-              <Database size={12} />
-              {currentComments.length} comments
             </span>
           )}
         </div>
@@ -180,46 +66,39 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
         </div>
       </div>
 
-      {/* Body / Preview */}
-      <div className="flex-1 overflow-hidden">
-        {pdfUrl ? (
-          <div className="h-full">
-            <PdfAnnotator
-              url={pdfUrl}
-              onSave={handleSaveComments}
-            />
+      {/* Body / Markdown Preview */}
+      <div className="flex-1 overflow-auto  p-6 bg-gray-50">
+        {markdownContent ? (
+          <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8" style={{ overflow: "scroll" }}>
+          <MarkdownRenderer markdownContent={markdownContent} />
+          
           </div>
-        ) : (
-          <div className="h-full flex items-center justify-center bg-gray-50">
+          
+          ) : (
+          <div className="h-full flex items-center justify-center">
             <div className="text-center max-w-md">
               <FileText className="mx-auto mb-4 text-green-500" size={64} />
               <h4 className="text-lg font-medium text-gray-800 mb-2">Document Ready</h4>
               <p className="text-sm text-gray-600 mb-4">
                 Your proposal document has been generated successfully.
               </p>
-              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-                <div className="space-y-2">
-                  <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
-                  <p className="text-xs text-gray-500">Status: Generated Successfully</p>
-                  {generatedDocument && (
-                    <p className="text-xs text-gray-500">File: {generatedDocument}</p>
-                  )}
-                </div>
-              </div>
-              {wordLink && (
-                <button
-                  onClick={() => window.open(wordLink)}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center gap-2 mx-auto"
-                >
-                  <Eye size={16} />
-                  View Document
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+            
+                      <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+                        <div className="space-y-2">
+                          <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
+                          <p className="text-xs text-gray-500">Status: Generated Successfully</p>
+                          {generatedDocument && (
+                            <p className="text-xs text-gray-500">File: {generatedDocument}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )},
+
+                
     </div>
+            </div>
   );
 };
 
@@ -227,7 +106,7 @@ export const OutputDocumentDisplay = React.memo(
   OutputDocumentDisplayBase,
   (prev, next) =>
     prev.generatedDocument === next.generatedDocument &&
-    prev.pdfUrl === next.pdfUrl &&
+    prev.markdownContent === next.markdownContent &&
     prev.wordLink === next.wordLink &&
     prev.pdfLink === next.pdfLink &&
     prev.jobUuid === next.jobUuid
@@ -248,16 +127,23 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [generatedDocument, setGeneratedDocument] = useState<string | null>(null);
   const [wordLink, setWordLink] = useState<string | null>(null);
   const [pdfLink, setPdfLink] = useState<string | null>(null);
-  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [markdownContent, setMarkdownContent] = useState<string | null>(null);
   const [isGenerated, setIsGenerated] = useState(false);
   const [jobUuid, setJobUuid] = useState<string | null>(null);
-  const [currentComments, setCurrentComments] = useState<IHighlight[]>([]);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   const supabase = createClient(supabaseUrl, supabaseAnonKey)
+  const [currentCommentContent, setCurrentCommentContent] = useState('');
+  const [currentCommentText, setCurrentCommentText] = useState('');
   
   // Document configuration state
+  type CommentItem = {
+  comment1: string; // selected content
+  comment2: string; // comment text
+};
+
+const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
   const [docConfig, setDocConfig] = useState({
     // Layout
     page_orientation: 'portrait',
@@ -297,7 +183,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     footer_left: '',
     footer_center: '',
     footer_right: '',
-    show_page_numbers: true
+    show_page_numbers: true,
+
+    
   });
 
   const [expandedSections, setExpandedSections] = useState({
@@ -317,13 +205,65 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }));
   };
 
-  const updateConfig = (key: string, value: string | boolean) => {
+  const uploadFileToSupabase = async (
+        file: File,
+        bucket: string,
+        uuid: string,
+        index: number
+      ): Promise<{ name: string; url: string; size: number }> => {
+        try {
+          // Create unique file path
+          const timestamp = Date.now();
+          const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const filePath = `${uuid}/${timestamp}_${index}_${sanitizedFileName}`;
+
+          console.log(`Uploading ${file.name} to bucket: ${bucket}, path: ${filePath}`);
+
+          // Upload to Supabase storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, file, {
+              contentType: file.type || "application/octet-stream",
+              upsert: true,
+            });
+
+          if (uploadError) {
+            console.error(`Upload error for ${file.name}:`, uploadError);
+            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
+          }
+
+          console.log(`Successfully uploaded ${file.name}:`, uploadData);
+
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(filePath);
+
+          if (!urlData.publicUrl) {
+            throw new Error(`Failed to get public URL for ${file.name}`);
+          }
+
+          return { 
+            name: file.name, 
+            url: urlData.publicUrl,
+            size: file.size
+          };
+
+        } catch (error) {
+          console.error(`Error processing file ${file.name}:`, error);
+          throw error;
+        }
+      };
+ const updateConfig = (key: string, value: string | boolean) => {
     setDocConfig(prev => ({
       ...prev,
       [key]: value
     }));
   };
 
+  const updateComment = (key: 'comment1' | 'comment2', value: string | boolean) => {
+     setCommentConfigList(prev => [...prev, { comment1: '', comment2: '', [key]: value }]);
+  };
   // Check Supabase connection
   const checkSupabaseConnection = async () => {
     try {
@@ -345,39 +285,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     } catch (err) {
       console.error("Supabase check failed", err);
       setSupabaseConnected(false);
-      return false;
-    }
-  };
-
-  // Save comments to Supabase
-  const saveCommentsToSupabase = async (comments: IHighlight[]) => {
-    if (!jobUuid || !previewPdfUrl || comments.length === 0) {
-      console.log("Missing data for Supabase save:", { jobUuid, previewPdfUrl, commentsCount: comments.length });
-      return false;
-    }
-
-    try {
-      const res = await fetch("/nextapi/supabase-comments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uuid: jobUuid,
-          pdfUrl: previewPdfUrl,
-          comments: comments,
-        }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error("Failed to save comments to Supabase:", errorData);
-        return false;
-      }
-
-      const data = await res.json();
-      console.log("✅ Comments saved to Supabase:", data.message);
-      return true;
-    } catch (error) {
-      console.error("Error saving comments to Supabase:", error);
       return false;
     }
   };
@@ -441,13 +348,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     });
   };
 
-
-
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`https://develop.axtr.in/api/initialgen/${uuid}`, {
-    
-
-    //const res = await fetch(`http://localhost:8000/initialgen/${uuid}`, {
+    const res = await fetch(`http://127.0.0.1:8000/api/initialgen/${uuid}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -466,20 +368,13 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     const result = await res.json().catch(() => ({}));
     const docxShareUrl = result.proposal_word_url;
     const pdfShareUrl = result.proposal_pdf_url;
+    const proposalContent = result.proposal_content;
     
-    setPreviewPdfUrl(null);
-    const timestamp = Date.now();
-    const cacheBustedPdfUrl = pdfShareUrl ? `${pdfShareUrl}${pdfShareUrl.includes('?') ? '&' : '?'}t=${timestamp}` : null;
-    setTimeout(() => {
-      setPreviewPdfUrl(cacheBustedPdfUrl);
-    }, 200);
-    
-
-
     console.log("Word download link:", docxShareUrl);
     console.log("PDF download link:", pdfShareUrl);
+    console.log("Proposal content received:", proposalContent ? "Yes" : "No");
     
-    return { docxShareUrl, pdfShareUrl };
+    return { docxShareUrl, pdfShareUrl, proposalContent };
   };
 
   const simulateProgress = () => {
@@ -538,92 +433,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       const uuid = generateUUID();
       setJobUuid(uuid);
       
-      // Check both connections
-      const [ supabaseConnected] = await Promise.all([
-        checkSupabaseConnection()
-      ]);
-      
-
+      // Check Supabase connection
+      const supabaseConnected = await checkSupabaseConnection();
 
       if (!supabaseConnected) {
         alert("Supabase connection failed. Comments will not be saved.");
       }
       
-      // const form = new FormData();
-      // form.append("uuid", uuid);
-      // form.append("config", config);
-      // form.append("docConfig", JSON.stringify(docConfig));
-      // form.append("language", language);
+     
 
-      // rfpFiles.forEach((f) => form.append("rfpFiles", f, f.name));
-      // supportingFiles.forEach((f) => form.append("supportingFiles", f, f.name));
 
-      // const res = await fetch("/nextapi/upload", {
-      //   method: "POST",
-      //   body: form,
-      // });
-
-      // const data = await res.json();
-
-      // if (!res.ok) {
-      //   console.error("Upload failed:", data);
-      //   alert(`Upload failed: ${data?.error || res.status}`);
-      //   return;
-      // }
-
-      // console.log("✅ Uploaded:", data);
-
-      const uploadFileToSupabase = async (
-        file: File,
-        bucket: string,
-        uuid: string,
-        index: number
-      ): Promise<{ name: string; url: string; size: number }> => {
-        try {
-          // Create unique file path
-          const timestamp = Date.now();
-          const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const filePath = `${uuid}/${timestamp}_${index}_${sanitizedFileName}`;
-
-          console.log(`Uploading ${file.name} to bucket: ${bucket}, path: ${filePath}`);
-
-          // Upload to Supabase storage
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from(bucket)
-            .upload(filePath, file, {
-              contentType: file.type || "application/octet-stream",
-              upsert: true,
-            });
-
-          if (uploadError) {
-            console.error(`Upload error for ${file.name}:`, uploadError);
-            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
-          }
-
-          console.log(`Successfully uploaded ${file.name}:`, uploadData);
-
-          // Get public URL
-          const { data: urlData } = supabase.storage
-            .from(bucket)
-            .getPublicUrl(filePath);
-
-          if (!urlData.publicUrl) {
-            throw new Error(`Failed to get public URL for ${file.name}`);
-          }
-
-          return { 
-            name: file.name, 
-            url: urlData.publicUrl,
-            size: file.size
-          };
-
-        } catch (error) {
-          console.error(`Error processing file ${file.name}:`, error);
-          throw error;
-        }
-      };
-
-      const updateDatabaseRecord = async (
+       const updateDatabaseRecord = async (
         uuid: string,
         rfpFileData: string | null,
         supportingFileData: string | null
@@ -671,92 +491,86 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           throw error;
         }
       };
+      
 
       const MAX_FILE_SIZE = 50 * 1024 * 1024;
-          const allFiles = [...rfpFiles, ...supportingFiles];
-          
-          for (const file of allFiles) {
-            if (file.size > MAX_FILE_SIZE) {
-              throw new Error(`File ${file.name} exceeds 50MB size limit`);
-            }
-            
-            if (file.size === 0) {
-              throw new Error(`File ${file.name} is empty`);
-            }
+      const allFiles = [...rfpFiles, ...supportingFiles];
+    
+      for (const file of allFiles) {
+        if (file.size > MAX_FILE_SIZE) {
+          throw new Error(`File ${file.name} exceeds 50MB size limit`);
+        }
+        
+        if (file.size === 0) {
+          throw new Error(`File ${file.name} is empty`);
+        }
+      }
+
+      setProcessingStage('Uploading files to cloud storage...');
+      
+      console.log('Starting RFP file uploads...');
+      const rfpResults = await Promise.allSettled(
+        rfpFiles.map((file, index) => uploadFileToSupabase(file, "rfp", uuid, index))
+      );
+
+      console.log('Starting supporting file uploads...');
+      const supportingResults = await Promise.allSettled(
+        supportingFiles.map((file, index) => uploadFileToSupabase(file, "supporting", uuid, index))
+      );
+
+      const failedRfpUploads = rfpResults.filter(result => result.status === 'rejected');
+      const failedSupportingUploads = supportingResults.filter(result => result.status === 'rejected');
+
+      if (failedRfpUploads.length > 0 || failedSupportingUploads.length > 0) {
+        console.error('Some uploads failed:');
+        failedRfpUploads.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.error(`RFP file ${index}:`, result.reason);
           }
-
-          setProcessingStage('Uploading files to cloud storage...');
-          
-          // Upload RFP files directly to Supabase
-          console.log('Starting RFP file uploads...');
-          const rfpResults = await Promise.allSettled(
-            rfpFiles.map((file, index) => uploadFileToSupabase(file, "rfp", uuid, index))
-          );
-
-          // Upload supporting files directly to Supabase
-          console.log('Starting supporting file uploads...');
-          const supportingResults = await Promise.allSettled(
-            supportingFiles.map((file, index) => uploadFileToSupabase(file, "supporting", uuid, index))
-          );
-
-          // Check for upload failures
-          const failedRfpUploads = rfpResults.filter(result => result.status === 'rejected');
-          const failedSupportingUploads = supportingResults.filter(result => result.status === 'rejected');
-
-          if (failedRfpUploads.length > 0 || failedSupportingUploads.length > 0) {
-            console.error('Some uploads failed:');
-            failedRfpUploads.forEach((result, index) => {
-              if (result.status === 'rejected') {
-                console.error(`RFP file ${index}:`, result.reason);
-              }
-            });
-            failedSupportingUploads.forEach((result, index) => {
-              if (result.status === 'rejected') {
-                console.error(`Supporting file ${index}:`, result.reason);
-              }
-            });
-            
-            // Continue with successful uploads, but warn user
-            const totalFailed = failedRfpUploads.length + failedSupportingUploads.length;
-            console.warn(`${totalFailed} files failed to upload, continuing with successful uploads`);
+        });
+        failedSupportingUploads.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.error(`Supporting file ${index}:`, result.reason);
           }
+        });
+        
+        const totalFailed = failedRfpUploads.length + failedSupportingUploads.length;
+        console.warn(`${totalFailed} files failed to upload, continuing with successful uploads`);
+      }
 
-          // Extract successful uploads
-          const successfulRfpUploads = rfpResults
-            .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
-              result.status === 'fulfilled'
-            )
-            .map(result => result.value);
+      const successfulRfpUploads = rfpResults
+        .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
+          result.status === 'fulfilled'
+        )
+        .map(result => result.value);
 
-          const successfulSupportingUploads = supportingResults
-            .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
-              result.status === 'fulfilled'
-            )
-            .map(result => result.value);
+      const successfulSupportingUploads = supportingResults
+        .filter((result): result is PromiseFulfilledResult<{ name: string; url: string; size: number }> => 
+          result.status === 'fulfilled'
+        )
+        .map(result => result.value);
 
-          console.log('Successful RFP uploads:', successfulRfpUploads.length);
-          console.log('Successful supporting uploads:', successfulSupportingUploads.length);
+      console.log('Successful RFP uploads:', successfulRfpUploads.length);
+      console.log('Successful supporting uploads:', successfulSupportingUploads.length);
 
-          // Check if we have at least one successful RFP upload
-          if (successfulRfpUploads.length === 0) {
-            throw new Error("No RFP files were successfully uploaded. Cannot proceed.");
-          }
+      if (successfulRfpUploads.length === 0) {
+        throw new Error("No RFP files were successfully uploaded. Cannot proceed.");
+      }
 
-          setProcessingStage('Updating database records...');
-          
-          // Prepare data for database update
-          const rfpFileData = successfulRfpUploads.length > 0 ? successfulRfpUploads[0].url : null;
-          const supportingFileData = successfulSupportingUploads.length > 0 ? successfulSupportingUploads[0].url : null;
+      setProcessingStage('Updating database records...');
+      
+      const rfpFileData = successfulRfpUploads.length > 0 ? successfulRfpUploads[0].url : null;
+      const supportingFileData = successfulSupportingUploads.length > 0 ? successfulSupportingUploads[0].url : null;
 
-          // Update database record
-          await updateDatabaseRecord(uuid, rfpFileData, supportingFileData);
+      await updateDatabaseRecord(uuid, rfpFileData, supportingFileData);
 
-          setProcessingStage('Sending to AI processing engine...');
+      setProcessingStage('Sending to AI processing engine...');
 
-      const { docxShareUrl, pdfShareUrl } = await postUuidConfig(uuid, config);
+      const { docxShareUrl, pdfShareUrl, proposalContent } = await postUuidConfig(uuid, config);
 
       setWordLink(docxShareUrl);
       setPdfLink(pdfShareUrl);
+      setMarkdownContent(proposalContent || null);
       setGeneratedDocument('Generated_Proposal.docx'); 
       setIsGenerated(true);
       
@@ -782,22 +596,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     try {
       setIsUploading(true);
       setUploadProgress(0);
-      setProcessingStage('Saving comments to database...');
-
-      // Save comments to Supabase first
-      if (currentComments.length > 0) {
-        const supabaseSaved = await saveCommentsToSupabase(currentComments);
-        if (supabaseSaved) {
-          console.log("✅ Comments saved to Supabase before regeneration");
-        } else {
-          console.log("⚠️ Failed to save comments to Supabase");
-        }
-      }
-
       setProcessingStage('Regenerating document...');
-      const res = await fetch(`https://develop.axtr.in/api/regenerate/${jobUuid}`, {
-        
-      //const res = await fetch(`http://localhost:8000/regenerate/${jobUuid}`, {
+      console.log('Regenerating with commentConfig', commentConfigList);
+      saveAllComments(supabase,jobUuid, commentConfigList);
+      
+      setCommentConfigList([]);
+      const res = await fetch(`http://127.0.0.1:8000/api/regenerate/${jobUuid}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -816,17 +620,15 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       const result = await res.json().catch(() => ({}));
       const docxShareUrl = result.word_url;
       const pdfShareUrl = result.pdf_url;
-
-      setPreviewPdfUrl(null);
-      const timestamp = Date.now();
-      const cacheBustedPdfUrl = pdfShareUrl ? `${pdfShareUrl}${pdfShareUrl.includes('?') ? '&' : '?'}t=${timestamp}` : null;
-      setTimeout(() => {
-        setPreviewPdfUrl(cacheBustedPdfUrl);
-      }, 200);
-
+      const contents = result.updated_markdown;
+      
+      console.log("Updated markdown content received:", contents? "Yes" : "No");
+      console.log("Regenerated Content:", contents);
+      
 
       setWordLink(docxShareUrl);
       setPdfLink(pdfShareUrl);
+      setMarkdownContent(contents || null);
       setGeneratedDocument('Regenerated_Proposal.docx');
     } catch (error) {
       console.error('Regenerate failed:', error);
@@ -836,10 +638,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setUploadProgress(0);
       setProcessingStage('');
     }
-  };
-
-  const handleCommentsUpdate = (comments: IHighlight[]) => {
-    setCurrentComments(comments);
   };
 
   const FileUploadZone = ({ 
@@ -948,7 +746,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   }) => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
       <button
-        onClick={onToggle}
+        onClick={
+          onToggle}
         className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors duration-200"
       >
         <div className="flex items-center gap-2">
@@ -972,7 +771,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     onChange, 
     type = 'text', 
     placeholder = '', 
-    options = [] 
+    options = [],
+    isTextarea = false,
+    rows = 4
   }: {
     label: string;
     value: string | boolean;
@@ -980,6 +781,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     type?: 'text' | 'number' | 'select' | 'checkbox' | 'color';
     placeholder?: string;
     options?: { value: string; label: string }[];
+     isTextarea?: boolean;
+  rows?: number; // Number of rows for the textarea
   }) => {
     const [localValue, setLocalValue] = React.useState(value);
     const [isFocused, setIsFocused] = React.useState(false);
@@ -1010,7 +813,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     return (
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-        {type === 'select' ? (
+       {isTextarea ? (
+        <textarea
+          value={localValue as string}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            placeholder={placeholder}
+          rows={rows}
+          className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900 resize-none"
+        />
+      ) : type === 'select' ? (
           <select
             value={localValue as string}
             onChange={(e) => handleChange(e.target.value)}
@@ -1058,35 +871,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             style={{ width: `${uploadProgress}%` }}
           ></div>
         </div>
-        {/* {processingStage && (
-          <p className="text-sm text-gray-600">{processingStage}</p>
-        )} */}
       </div>
     </div>
   );
-
-  // const ConnectionStatus = () => (
-  //   <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-3">
-  //     <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
-  //       <Database className="text-gray-500" size={14} />
-  //       Connection Status
-  //     </h3>
-  //     <div className="space-y-2 text-xs">
-  //       <div className="flex items-center justify-between">
-  //         <span className="text-gray-600">Supabase Database:</span>
-  //         <span className={`px-2 py-1 rounded-full ${
-  //           supabaseConnected === true 
-  //             ? 'bg-green-100 text-green-700' 
-  //             : supabaseConnected === false 
-  //             ? 'bg-red-100 text-red-700'
-  //             : 'bg-gray-100 text-gray-600'
-  //         }`}>
-  //           {supabaseConnected === true ? 'Connected' : supabaseConnected === false ? 'Disconnected' : 'Checking...'}
-  //         </span>
-  //       </div>
-  //     </div>
-  //   </div>
-  // );
 
   const GeneratedDocumentSection = () => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -1099,15 +886,15 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     </div>
   );
 
-  // Check Supabase connection on component mount
   React.useEffect(() => {
     checkSupabaseConnection();
   }, []);
+ 
 
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
-      
+
       <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
         <div className="flex">
           {/* Left Panel - Upload Form */}
@@ -1122,8 +909,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             </div>
 
             <div className="space-y-1">
-              {/* Connection Status */}
-              
               {/* Language Selection */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
                 <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
@@ -1241,13 +1026,14 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                       </>
                     ) : (
                       <>
-                        <Database size={16} />
-                        Regenerate & Save Comments
+                        <Send size={16} />
+                        Regenerate Document
                       </>
                     )}
                   </button>
                 )}
               </div>
+              
             </div>
           </div>
 
@@ -1258,11 +1044,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             ) : generatedDocument ? (
               <OutputDocumentDisplay
                 generatedDocument={generatedDocument}
-                pdfUrl={previewPdfUrl ?? pdfLink ?? ''}
+                markdownContent={markdownContent}
                 wordLink={wordLink}
                 pdfLink={pdfLink}
                 jobUuid={jobUuid}
-                onCommentsUpdate={handleCommentsUpdate}
               />
             ) : (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
@@ -1276,9 +1061,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               </div>
             )}
           </div>
+          
 
           {/* Right Panel - Document Configuration */}
-          <div className="w-96 p-6 overflow-y-auto border-l border-gray-200 bg-white">
+          <div className="w-96 p-6  border-l border-gray-200 bg-white">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-2">
                 Document Formatting
@@ -1287,14 +1073,15 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 Customize the appearance and layout of your generated proposal
               </p>
             </div>
-
+            
+            
             {/* Page Layout */}
-            <ConfigSection
+             { !markdownContent &&(<ConfigSection
               title="Page Layout"
               icon={AlignLeft}
               isExpanded={expandedSections.layout}
               onToggle={() => toggleSection('layout')}
-            >
+              >
               <div className="grid grid-cols-2 gap-4">
                 <InputField
                   label="Page Orientation"
@@ -1346,10 +1133,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   type="number"
                 />
               </div>
-            </ConfigSection>
+            </ConfigSection>)}
 
             {/* Typography */}
-            <ConfigSection
+            { !markdownContent &&( <ConfigSection
               title="Typography & Colors"
               icon={Type}
               isExpanded={expandedSections.typography}
@@ -1396,10 +1183,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   type="color"
                 />
               </div>
-            </ConfigSection>
+            </ConfigSection>)}
 
             {/* Table Styling */}
-            <ConfigSection
+             { !markdownContent &&(<ConfigSection
               title="Table Styling"
               icon={Table}
               isExpanded={expandedSections.tables}
@@ -1449,10 +1236,78 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   type="color"
                 />
               </div>
-            </ConfigSection>
+            </ConfigSection>)}
+            {/* Comments ConfigSection */}
+            {markdownContent && (<ConfigSection
+              title="Comments"
+              icon={Text}
+              isExpanded={true}
+              onToggle={() => {}}
+            >
+             {commentConfigList.length > 0 && (
+  <div className="mt-4 space-y-3">
+    <h4 className="text-sm font-medium text-gray-700">Added Comments</h4>
+    {commentConfigList.map((comment, index) => (
+      <div
+        key={index}
+        className="p-3 border border-gray-200 rounded bg-gray-50 flex justify-between items-start gap-2"
+      >
+        <div className="flex-1">
+          <p className="text-xs text-gray-500 mb-1">
+            <span className="font-semibold">Content:</span> {comment.comment1}
+          </p>
+          <p className="text-xs text-gray-500">
+            <span className="font-semibold">Comment:</span> {comment.comment2}
+          </p>
+        </div>
+        
+      </div>
+    ))}
+  </div>
+)}
+            <div className="grid grid-cols-1 gap-4">
+              <InputField
+                label="Content"
+                value={currentCommentContent} // local state
+                onChange={(value) => setCurrentCommentContent(value as string)}
+                placeholder="Enter the Content"
+                isTextarea={true}
+                rows={6}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              <InputField
+                label="Comment"
+                value={currentCommentText} // local state
+                onChange={(value) => setCurrentCommentText(value as string)}
+                placeholder="Enter the Comment"
+                isTextarea={true}
+                rows={6}
+              />
+            </div>
+            <div className="mt-2">
+              <button
+                type="button"
+                className="px-4 py-2 bg-blue-600 text-white rounded text-sm"
+                onClick={() => {
+                  // Append new comment to the list
+                  setCommentConfigList(prev => [
+                    ...prev,
+                    { comment1: currentCommentContent, comment2: currentCommentText }
+                  ]);
+                  // Clear local inputs
+                  setCurrentCommentContent('');
+                  setCurrentCommentText('');
+                }}
+              >
+                Add Comment
+              </button>
+            </div>
+                        </ConfigSection>)}
 
             {/* Header & Footer */}
-            <ConfigSection
+            { !markdownContent &&(
+              <ConfigSection
               title="Branding & Headers"
               icon={Layout}
               isExpanded={expandedSections.branding}
@@ -1515,7 +1370,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 onChange={(value) => updateConfig('show_page_numbers', value)}
                 type="checkbox"
               />
-            </ConfigSection>
+            </ConfigSection>)}
           </div>
         </div>
 
@@ -1535,6 +1390,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           className="hidden"
         />
       </div>
+      
     </>
   );
 };

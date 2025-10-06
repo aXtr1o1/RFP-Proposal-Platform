@@ -178,6 +178,7 @@ class WordGenAPI:
                 line_buffer = ""
 
             full_markdown = "".join(buffer_chunks)  
+            print(full_markdown, flush=True)
             yield _sse_event_json("stage", {"stage": "saving_generated_text"})
 
 

@@ -24,7 +24,8 @@ class InitialGenRequest(BaseModel):
     config: Optional[str] = None
     docConfig: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
-    language: Optional[str] = "english"
+    language: Optional[str] = "english" 
+    commentConfig: Optional[Dict[str, Any]] = None
 
 
 @router.post("/initialgen/{uuid}")
@@ -82,13 +83,15 @@ def regeneration_process(
     try:
         logger.info(f"Starting markdown regeneration for uuid={uuid}")
         logger.info(f"Language: {request.language}")
-    
+       
         result = regenerate_markdown_with_comments(
             uuid=uuid,
-            language=request.language or "english"
+            language=request.language or "english",
+            
         )
         
         logger.info(f"Markdown regeneration completed for uuid={uuid}")
+        logger.info(f"Regen Markdown{result}")
         return JSONResponse(result)
     
     except HTTPException:
