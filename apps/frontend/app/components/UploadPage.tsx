@@ -28,8 +28,14 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       {/* Header with actions */}
       <div className="border-b border-gray-100 p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="text-green-500" size={16} />
-          <h3 className="text-sm font-medium text-gray-800">Generated Proposal</h3>
+          {generatedDocument ? (
+            <CheckCircle2 className="text-green-500" size={16} />
+          ) : (
+            <Loader className="animate-spin text-blue-500" size={16} />
+          )}
+          <h3 className="text-sm font-medium text-gray-800">
+            {generatedDocument ? 'Generated Proposal' : 'Generating Proposal...'}
+          </h3>
           {generatedDocument && (
             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
               {generatedDocument}
@@ -67,14 +73,12 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       </div>
 
       {/* Body / Markdown Preview */}
-      <div className="flex-1 overflow-auto  p-6 bg-gray-50">
+      <div className="flex-1 overflow-auto p-6 bg-gray-50">
         {markdownContent ? (
           <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8" style={{ overflow: "scroll" }}>
-          <MarkdownRenderer markdownContent={markdownContent} />
-          
+            <MarkdownRenderer markdownContent={markdownContent} />
           </div>
-          
-          ) : (
+        ) : (
           <div className="h-full flex items-center justify-center">
             <div className="text-center max-w-md">
               <FileText className="mx-auto mb-4 text-green-500" size={64} />
@@ -82,23 +86,20 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
               <p className="text-sm text-gray-600 mb-4">
                 Your proposal document has been generated successfully.
               </p>
-            
-                      <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-                        <div className="space-y-2">
-                          <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
-                          <p className="text-xs text-gray-500">Status: Generated Successfully</p>
-                          {generatedDocument && (
-                            <p className="text-xs text-gray-500">File: {generatedDocument}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )},
-
-                
-    </div>
+              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
+                  <p className="text-xs text-gray-500">Status: Generated Successfully</p>
+                  {generatedDocument && (
+                    <p className="text-xs text-gray-500">File: {generatedDocument}</p>
+                  )}
+                </div>
+              </div>
             </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -350,32 +351,171 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const res = await fetch(`http://127.0.0.1:8000/api/initialgen/${uuid}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        config: config,
-        docConfig: docConfig,
-        timestamp: new Date().toISOString(),
-        language: language
-      }),
-    });
-    
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`Backend /upload failed: ${res.status} ${txt}`);
-    }
+    return new Promise<{ docxShareUrl: string | null; pdfShareUrl: string | null; proposalContent: string }>((resolve, reject) => {
+      fetch(`http://127.0.0.1:8000/api/initialgen/${uuid}`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream"
+        },
+        body: JSON.stringify({
+          config: config,
+          docConfig: docConfig,
+          timestamp: new Date().toISOString(),
+          language: language
+        }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          reject(new Error(`Backend /initialgen failed: ${res.status} ${txt}`));
+          return;
+        }
 
-    const result = await res.json().catch(() => ({}));
-    const docxShareUrl = result.wordLink;
-    const pdfShareUrl = result.pdfLink;
-    const proposalContent = result.proposal_content;
-    
-    console.log("Word download link:", docxShareUrl);
-    console.log("PDF download link:", pdfShareUrl);
-    console.log("Proposal content received:", proposalContent ? "Yes" : "No");
-    
-    return { docxShareUrl, pdfShareUrl, proposalContent };
+        if (!res.body) {
+          reject(new Error("No response body"));
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let accumulatedMarkdown = "";
+        let isSaved = false;
+
+        const processChunk = async () => {
+          try {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              // Stream ended - now generate the Word and PDF documents
+              console.log("Stream completed, generating documents...");
+              
+              try {
+                // Generate Word and PDF documents using the /download endpoint
+                const docRes = await fetch(`http://127.0.0.1:8000/api/download/${uuid}`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    docConfig: docConfig,
+                    language: language
+                  }),
+                });
+
+                if (!docRes.ok) {
+                  console.error("Failed to generate documents");
+                  resolve({ 
+                    docxShareUrl: null, 
+                    pdfShareUrl: null, 
+                    proposalContent: accumulatedMarkdown 
+                  });
+                  return;
+                }
+
+                const docResult = await docRes.json();
+                resolve({ 
+                  docxShareUrl: docResult.proposal_word_url || null, 
+                  pdfShareUrl: docResult.proposal_pdf_url || null, 
+                  proposalContent: accumulatedMarkdown 
+                });
+              } catch (error) {
+                console.error("Error generating documents:", error);
+                resolve({ 
+                  docxShareUrl: null, 
+                  pdfShareUrl: null, 
+                  proposalContent: accumulatedMarkdown 
+                });
+              }
+              return;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Split by double newlines to separate SSE events
+            const events = buffer.split('\n\n');
+            // Keep the last incomplete event in the buffer
+            buffer = events.pop() || "";
+
+            for (const eventBlock of events) {
+              if (!eventBlock.trim()) continue;
+              
+              const lines = eventBlock.split('\n');
+              let eventType = '';
+              let dataLines: string[] = [];
+              
+              for (const line of lines) {
+                if (line.startsWith('event:')) {
+                  eventType = line.substring(6).trim();
+                } else if (line.startsWith('data:')) {
+                  // Don't trim data content - preserve whitespace in markdown
+                  const dataContent = line.substring(5);
+                  // Only remove the single leading space that SSE spec adds after 'data:'
+                  dataLines.push(dataContent.startsWith(' ') ? dataContent.substring(1) : dataContent);
+                }
+              }
+              
+              if (!eventType || dataLines.length === 0) continue;
+              
+              // Join multi-line data with newlines to preserve markdown formatting
+              const data = dataLines.join('\n');
+              
+              if (eventType === 'chunk') {
+                // Chunk data is JSON-encoded to preserve newlines and special chars
+                try {
+                  const decodedChunk = JSON.parse(data);
+                  accumulatedMarkdown += decodedChunk;
+                  console.log(`Chunk received: ${decodedChunk.length} chars, Total: ${accumulatedMarkdown.length}`);
+                  setMarkdownContent(accumulatedMarkdown);
+                } catch (e) {
+                  console.error("Failed to parse chunk data:", e, data);
+                  // Fallback: use data as-is
+                  accumulatedMarkdown += data;
+                  setMarkdownContent(accumulatedMarkdown);
+                }
+              } else if (eventType === 'stage') {
+                try {
+                  const stageData = JSON.parse(data);
+                  console.log("Stage:", stageData.stage);
+                  const stageMessages: Record<string, string> = {
+                    'starting': 'Starting...',
+                    'downloading_and_uploading_pdfs': 'Uploading PDFs to AI...',
+                    'prompting_model': 'Generating proposal...',
+                    'saving_generated_text': 'Saving content...'
+                  };
+                  setProcessingStage(stageMessages[stageData.stage] || stageData.stage || 'Processing...');
+                } catch (e) {
+                  console.warn("Failed to parse stage data:", data);
+                }
+              } else if (eventType === 'done') {
+                try {
+                  const doneData = JSON.parse(data);
+                  console.log("Done:", doneData);
+                  isSaved = doneData.status === "saved";
+                } catch (e) {
+                  console.warn("Failed to parse done data:", data);
+                }
+              } else if (eventType === 'error') {
+                try {
+                  const errorData = JSON.parse(data);
+                  console.error("Stream error:", errorData.message);
+                  reject(new Error(errorData.message));
+                  return;
+                } catch (e) {
+                  console.error("Stream error:", data);
+                  reject(new Error(data));
+                  return;
+                }
+              }
+            }
+
+            processChunk();
+          } catch (error) {
+            reject(error);
+          }
+        };
+
+        processChunk();
+      }).catch(reject);
+    });
   };
 
   const simulateProgress = () => {
@@ -566,12 +706,33 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
       await updateDatabaseRecord(uuid, rfpFileData, supportingFileData);
 
       setProcessingStage('Sending to AI processing engine...');
+      /*
+      @router.post("/download/{uuid}")
+def download_proposal(
+    uuid: str = Path(..., description="UUID for this proposal"),
+    request: DownloadRequest = Body(...)
+):
+*/
 
-      const { docxShareUrl, pdfShareUrl, proposalContent } = await postUuidConfig(uuid, config);
 
-      setWordLink(docxShareUrl);
-      setPdfLink(pdfShareUrl);
-      setMarkdownContent(proposalContent || null);
+      const getPostUuidConfig = await postUuidConfig(uuid, config);
+      const getLink = await fetch(`http://127.0.0.1:8000/download/${uuid}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uuid: uuid,
+        }),
+      });
+
+
+      const respGetLink = await getLink.json();
+
+      setWordLink(respGetLink.proposal_word_url);
+      setPdfLink(respGetLink.proposal_pdf_url);
+
+      setWordLink(respGetLink.proposal_word_url);
+      setPdfLink(respGetLink.proposal_pdf_url);
+      setMarkdownContent(markdownContent || null);
       setGeneratedDocument('Generated_Proposal.docx'); 
       setIsGenerated(true);
       
@@ -1062,9 +1223,9 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
 
           {/* Center Panel - Loading/Output Display */}
           <div className="flex-1 p-6 min-w-0">
-            {isUploading && !markdownContent ? (
+            {!markdownContent ? (
               <LoadingDisplay />
-            ) : generatedDocument ? (
+            ) : (
               <OutputDocumentDisplay
                 generatedDocument={generatedDocument}
                 markdownContent={markdownContent}
@@ -1072,16 +1233,6 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
                 pdfLink={pdfLink}
                 jobUuid={jobUuid}
               />
-            ) : (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
-                <div className="text-center">
-                  <FileText className="mx-auto mb-4 text-gray-300" size={64} />
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">Ready to Process</h3>
-                  <p className="text-sm text-gray-500">
-                    Upload your RFP documents and click "Upload & Process" to begin
-                  </p>
-                </div>
-              </div>
             )}
           </div>
           
