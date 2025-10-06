@@ -13,7 +13,7 @@ from apps.api.services.supabase_service import (
 )
 
 
-from apps.regen_services.regen_prompt import regenerate_markdown_with_comments
+from apps.regen_services.regen_prompt import regenerate_markdown_with_comments, regenerate_markdown_with_comments_streaming
 
 from apps.wordgenAgent.app.document import generate_word_and_pdf_from_markdown
 
@@ -78,19 +78,18 @@ def regeneration_process(
 ):
 
     try:
-        logger.info(f"Starting markdown regeneration for uuid={uuid}")
+        logger.info(f"Starting streaming markdown regeneration for uuid={uuid}")
         logger.info(f"Language: {request.language}")
        
-        result = regenerate_markdown_with_comments(
-            uuid=uuid,
-            language=request.language or "english",
-            docConfig=request.docConfig,
-            
-        )
+        def stream_generator():
+            for chunk in regenerate_markdown_with_comments_streaming(
+                uuid=uuid,
+                language=request.language or "english",
+                docConfig=request.docConfig or {},
+            ):
+                yield chunk
         
-        logger.info(f"Markdown regeneration completed for uuid={uuid}")
-        logger.info(f"Regen Markdown{result}")
-        return JSONResponse(result)
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
     
     except HTTPException:
         logger.exception(f"regenerate HTTP error for uuid={uuid}")
