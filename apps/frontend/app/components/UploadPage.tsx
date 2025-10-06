@@ -74,30 +74,11 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
 
       {/* Body / Markdown Preview */}
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
-        {markdownContent ? (
+        {markdownContent && (
           <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8" style={{ overflow: "scroll" }}>
             <MarkdownRenderer markdownContent={markdownContent} />
           </div>
-        ) : (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center max-w-md">
-              <FileText className="mx-auto mb-4 text-green-500" size={64} />
-              <h4 className="text-lg font-medium text-gray-800 mb-2">Document Ready</h4>
-              <p className="text-sm text-gray-600 mb-4">
-                Your proposal document has been generated successfully.
-              </p>
-              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-                <div className="space-y-2">
-                  <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
-                  <p className="text-xs text-gray-500">Status: Generated Successfully</p>
-                  {generatedDocument && (
-                    <p className="text-xs text-gray-500">File: {generatedDocument}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        ) }
       </div>
     </div>
   );
@@ -1339,9 +1320,9 @@ def download_proposal(
 
           {/* Center Panel - Loading/Output Display */}
           <div className="flex-1 p-6 min-w-0">
-            {!markdownContent ? (
+            {isUploading ? (
               <LoadingDisplay />
-            ) : (
+            ) : markdownContent ? (
               <OutputDocumentDisplay
                 generatedDocument={generatedDocument}
                 markdownContent={markdownContent}
@@ -1349,6 +1330,16 @@ def download_proposal(
                 pdfLink={pdfLink}
                 jobUuid={jobUuid}
               />
+            ) : (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
+                <div className="text-center">
+                  <FileText className="mx-auto mb-4 text-gray-300" size={64} />
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">Ready to Process</h3>
+                  <p className="text-sm text-gray-500">
+                    Upload your RFP documents and click "Upload & Process" to begin
+                  </p>
+                </div>
+              </div>
             )}
           </div>
           
