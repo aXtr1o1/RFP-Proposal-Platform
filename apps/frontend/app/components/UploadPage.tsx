@@ -693,8 +693,6 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
 
       await updateDatabaseRecord(uuid, rfpFileData, supportingFileData);
 
-      const rspPostUuidConfig = await postUuidConfig(uuid, config);
-
       setProcessingStage('Generating proposal...');
       const { docxShareUrl, pdfShareUrl } = await postUuidConfig(uuid, config);
 
