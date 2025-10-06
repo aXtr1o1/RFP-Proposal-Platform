@@ -12,6 +12,8 @@ type OutputProps = {
   wordLink: string | null;
   pdfLink: string | null;
   jobUuid: string | null;
+  isRegenerating: boolean;
+  isRegenerationComplete: boolean;
 };
 
 
@@ -21,6 +23,8 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   wordLink,
   pdfLink,
   jobUuid,
+  isRegenerating,
+  isRegenerationComplete,
 }) => {
   
   return (
@@ -28,15 +32,22 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       {/* Header with actions */}
       <div className="border-b border-gray-100 p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {generatedDocument ? (
+          {isRegenerating ? (
+            <Loader className="animate-spin text-blue-500" size={16} />
+          ) : generatedDocument ? (
             <CheckCircle2 className="text-green-500" size={16} />
           ) : (
             <Loader className="animate-spin text-blue-500" size={16} />
           )}
           <h3 className="text-sm font-medium text-gray-800">
-            {generatedDocument ? 'Generated Proposal' : 'Generating Proposal...'}
+            {isRegenerating 
+              ? 'Regenerating Proposal...' 
+              : generatedDocument 
+                ? (isRegenerationComplete ? 'Regenerated Proposal' : 'Generated Proposal')
+                : 'Generating Proposal...'
+            }
           </h3>
-          {generatedDocument && (
+          {generatedDocument && !isRegenerating && (
             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
               {generatedDocument}
             </span>
@@ -45,7 +56,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       </div>
 
       {/* Download buttons on top of markdown */}
-      {markdownContent && (wordLink || pdfLink) && (
+      {markdownContent && (wordLink || pdfLink) && !isRegenerating && (
         <div className="border-b border-gray-100 p-4 bg-gray-50">
           <div className="flex items-center justify-center gap-3">
             {wordLink && (
@@ -97,7 +108,9 @@ export const OutputDocumentDisplay = React.memo(
     prev.markdownContent === next.markdownContent &&
     prev.wordLink === next.wordLink &&
     prev.pdfLink === next.pdfLink &&
-    prev.jobUuid === next.jobUuid
+    prev.jobUuid === next.jobUuid &&
+    prev.isRegenerating === next.isRegenerating &&
+    prev.isRegenerationComplete === next.isRegenerationComplete
 );
 
 interface UploadPageProps {}
@@ -117,6 +130,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [pdfLink, setPdfLink] = useState<string | null>(null);
   const [markdownContent, setMarkdownContent] = useState<string | null>(null);
   const [isGenerated, setIsGenerated] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isRegenerationComplete, setIsRegenerationComplete] = useState(false);
   const [jobUuid, setJobUuid] = useState<string | null>(null);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -722,6 +737,8 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
 
     try {
       setIsUploading(true);
+      setIsRegenerating(true);
+      setIsRegenerationComplete(false);
       setUploadProgress(0);
       setProcessingStage('Regenerating document...');
       console.log('Regenerating with commentConfig', commentConfigList);
@@ -846,6 +863,8 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
                   setMarkdownContent(doneData.updated_markdown);
                 }
                 setGeneratedDocument('Regenerated_Proposal.docx');
+                setIsRegenerationComplete(true);
+                setIsRegenerating(false);
               } catch (e) {
                 console.warn("Failed to parse regenerate done data:", data);
               }
@@ -879,6 +898,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
         setIsUploading(false);
         setUploadProgress(0);
         setProcessingStage('');
+        setIsRegenerating(false);
       }, 2000);
     }
   };
@@ -1324,6 +1344,8 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
                 wordLink={wordLink}
                 pdfLink={pdfLink}
                 jobUuid={jobUuid}
+                isRegenerating={isRegenerating}
+                isRegenerationComplete={isRegenerationComplete}
               />
             )}
           </div>
