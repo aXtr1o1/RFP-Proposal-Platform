@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const { error } = await supabaseAdmin
       .from('proposal_comments')
-      .select('id', { count: 'exact', head: true })
+      .select('uuid', { count: 'exact', head: true })
       .limit(1)
 
     if (error) {

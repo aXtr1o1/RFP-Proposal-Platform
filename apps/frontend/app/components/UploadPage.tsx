@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, AlignLeft, Text, Table, Layout, Type, Download, Globe, Loader, CheckCircle2 } from 'lucide-react';
+import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import MarkdownRenderer from './MarkdownRenderer';
+import MarkdownRenderer from './MarkdownRenderer.tsx';
+import { saveAllComments } from "./utils";
 
 type OutputProps = {
   generatedDocument: string | null;
@@ -69,9 +70,11 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       <div className="flex-1 overflow-auto  p-6 bg-gray-50">
         {markdownContent ? (
           <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8" style={{ overflow: "scroll" }}>
-            <MarkdownRenderer markdownContent={markdownContent} />
+          <MarkdownRenderer markdownContent={markdownContent} />
+          
           </div>
-        ) : (
+          
+          ) : (
           <div className="h-full flex items-center justify-center">
             <div className="text-center max-w-md">
               <FileText className="mx-auto mb-4 text-green-500" size={64} />
@@ -79,20 +82,23 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
               <p className="text-sm text-gray-600 mb-4">
                 Your proposal document has been generated successfully.
               </p>
-              <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
-                <div className="space-y-2">
-                  <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
-                  <p className="text-xs text-gray-500">Status: Generated Successfully</p>
-                  {generatedDocument && (
-                    <p className="text-xs text-gray-500">File: {generatedDocument}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+            
+                      <div className="bg-white p-4 rounded-lg shadow-sm border mb-6">
+                        <div className="space-y-2">
+                          <p className="text-xs text-gray-500">Format: Microsoft Word (.docx)</p>
+                          <p className="text-xs text-gray-500">Status: Generated Successfully</p>
+                          {generatedDocument && (
+                            <p className="text-xs text-gray-500">File: {generatedDocument}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )},
+
+                
     </div>
+            </div>
   );
 };
 
@@ -128,8 +134,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   const supabase = createClient(supabaseUrl, supabaseAnonKey)
+  const [currentCommentContent, setCurrentCommentContent] = useState('');
+  const [currentCommentText, setCurrentCommentText] = useState('');
   
   // Document configuration state
+  type CommentItem = {
+  comment1: string; // selected content
+  comment2: string; // comment text
+};
+
+const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
   const [docConfig, setDocConfig] = useState({
     // Layout
     page_orientation: 'portrait',
@@ -169,7 +183,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     footer_left: '',
     footer_center: '',
     footer_right: '',
-    show_page_numbers: true
+    show_page_numbers: true,
+
+    
   });
 
   const [expandedSections, setExpandedSections] = useState({
@@ -190,13 +206,65 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }));
   };
 
-  const updateConfig = (key: string, value: string | boolean) => {
+  const uploadFileToSupabase = async (
+        file: File,
+        bucket: string,
+        uuid: string,
+        index: number
+      ): Promise<{ name: string; url: string; size: number }> => {
+        try {
+          // Create unique file path
+          const timestamp = Date.now();
+          const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const filePath = `${uuid}/${timestamp}_${index}_${sanitizedFileName}`;
+
+          console.log(`Uploading ${file.name} to bucket: ${bucket}, path: ${filePath}`);
+
+          // Upload to Supabase storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from(bucket)
+            .upload(filePath, file, {
+              contentType: file.type || "application/octet-stream",
+              upsert: true,
+            });
+
+          if (uploadError) {
+            console.error(`Upload error for ${file.name}:`, uploadError);
+            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
+          }
+
+          console.log(`Successfully uploaded ${file.name}:`, uploadData);
+
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from(bucket)
+            .getPublicUrl(filePath);
+
+          if (!urlData.publicUrl) {
+            throw new Error(`Failed to get public URL for ${file.name}`);
+          }
+
+          return { 
+            name: file.name, 
+            url: urlData.publicUrl,
+            size: file.size
+          };
+
+        } catch (error) {
+          console.error(`Error processing file ${file.name}:`, error);
+          throw error;
+        }
+      };
+ const updateConfig = (key: string, value: string | boolean) => {
     setDocConfig(prev => ({
       ...prev,
       [key]: value
     }));
   };
 
+  const updateComment = (key: 'comment1' | 'comment2', value: string | boolean) => {
+     setCommentConfigList(prev => [...prev, { comment1: '', comment2: '', [key]: value }]);
+  };
   // Check Supabase connection
   const checkSupabaseConnection = async () => {
     try {
@@ -282,171 +350,32 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    return new Promise<{ docxShareUrl: string | null; pdfShareUrl: string | null; proposalContent: string }>((resolve, reject) => {
-      fetch(`http://127.0.0.1:8000/api/initialgen/${uuid}`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "text/event-stream"
-        },
-        body: JSON.stringify({
-          config: config,
-          docConfig: docConfig,
-          timestamp: new Date().toISOString(),
-          language: language
-        }),
-      }).then(async (res) => {
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          reject(new Error(`Backend /initialgen failed: ${res.status} ${txt}`));
-          return;
-        }
-
-        if (!res.body) {
-          reject(new Error("No response body"));
-          return;
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let accumulatedMarkdown = "";
-        let isSaved = false;
-
-        const processChunk = async () => {
-          try {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-              // Stream ended - now generate the Word and PDF documents
-              console.log("Stream completed, generating documents...");
-              
-              try {
-                // Generate Word and PDF documents using the /download endpoint
-                const docRes = await fetch(`http://127.0.0.1:8000/api/download/${uuid}`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    docConfig: docConfig,
-                    language: language
-                  }),
-                });
-
-                if (!docRes.ok) {
-                  console.error("Failed to generate documents");
-                  resolve({ 
-                    docxShareUrl: null, 
-                    pdfShareUrl: null, 
-                    proposalContent: accumulatedMarkdown 
-                  });
-                  return;
-                }
-
-                const docResult = await docRes.json();
-                resolve({ 
-                  docxShareUrl: docResult.proposal_word_url || null, 
-                  pdfShareUrl: docResult.proposal_pdf_url || null, 
-                  proposalContent: accumulatedMarkdown 
-                });
-              } catch (error) {
-                console.error("Error generating documents:", error);
-                resolve({ 
-                  docxShareUrl: null, 
-                  pdfShareUrl: null, 
-                  proposalContent: accumulatedMarkdown 
-                });
-              }
-              return;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-            
-            // Split by double newlines to separate SSE events
-            const events = buffer.split('\n\n');
-            // Keep the last incomplete event in the buffer
-            buffer = events.pop() || "";
-
-            for (const eventBlock of events) {
-              if (!eventBlock.trim()) continue;
-              
-              const lines = eventBlock.split('\n');
-              let eventType = '';
-              let dataLines: string[] = [];
-              
-              for (const line of lines) {
-                if (line.startsWith('event:')) {
-                  eventType = line.substring(6).trim();
-                } else if (line.startsWith('data:')) {
-                  // Don't trim data content - preserve whitespace in markdown
-                  const dataContent = line.substring(5);
-                  // Only remove the single leading space that SSE spec adds after 'data:'
-                  dataLines.push(dataContent.startsWith(' ') ? dataContent.substring(1) : dataContent);
-                }
-              }
-              
-              if (!eventType || dataLines.length === 0) continue;
-              
-              // Join multi-line data with newlines to preserve markdown formatting
-              const data = dataLines.join('\n');
-              
-              if (eventType === 'chunk') {
-                // Chunk data is JSON-encoded to preserve newlines and special chars
-                try {
-                  const decodedChunk = JSON.parse(data);
-                  accumulatedMarkdown += decodedChunk;
-                  console.log(`Chunk received: ${decodedChunk.length} chars, Total: ${accumulatedMarkdown.length}`);
-                  setMarkdownContent(accumulatedMarkdown);
-                } catch (e) {
-                  console.error("Failed to parse chunk data:", e, data);
-                  // Fallback: use data as-is
-                  accumulatedMarkdown += data;
-                  setMarkdownContent(accumulatedMarkdown);
-                }
-              } else if (eventType === 'stage') {
-                try {
-                  const stageData = JSON.parse(data);
-                  console.log("Stage:", stageData.stage);
-                  const stageMessages: Record<string, string> = {
-                    'starting': 'Starting...',
-                    'downloading_and_uploading_pdfs': 'Uploading PDFs to AI...',
-                    'prompting_model': 'Generating proposal...',
-                    'saving_generated_text': 'Saving content...'
-                  };
-                  setProcessingStage(stageMessages[stageData.stage] || stageData.stage || 'Processing...');
-                } catch (e) {
-                  console.warn("Failed to parse stage data:", data);
-                }
-              } else if (eventType === 'done') {
-                try {
-                  const doneData = JSON.parse(data);
-                  console.log("Done:", doneData);
-                  isSaved = doneData.status === "saved";
-                } catch (e) {
-                  console.warn("Failed to parse done data:", data);
-                }
-              } else if (eventType === 'error') {
-                try {
-                  const errorData = JSON.parse(data);
-                  console.error("Stream error:", errorData.message);
-                  reject(new Error(errorData.message));
-                  return;
-                } catch (e) {
-                  console.error("Stream error:", data);
-                  reject(new Error(data));
-                  return;
-                }
-              }
-            }
-
-            processChunk();
-          } catch (error) {
-            reject(error);
-          }
-        };
-
-        processChunk();
-      }).catch(reject);
+    const res = await fetch(`http://127.0.0.1:8000/api/initialgen/${uuid}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config: config,
+        docConfig: docConfig,
+        timestamp: new Date().toISOString(),
+        language: language
+      }),
     });
+    
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`Backend /upload failed: ${res.status} ${txt}`);
+    }
+
+    const result = await res.json().catch(() => ({}));
+    const docxShareUrl = result.wordLink;
+    const pdfShareUrl = result.pdfLink;
+    const proposalContent = result.proposal_content;
+    
+    console.log("Word download link:", docxShareUrl);
+    console.log("PDF download link:", pdfShareUrl);
+    console.log("Proposal content received:", proposalContent ? "Yes" : "No");
+    
+    return { docxShareUrl, pdfShareUrl, proposalContent };
   };
 
   const simulateProgress = () => {
@@ -513,55 +442,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       if (!supabaseConnected) {
         alert("Supabase connection failed. Comments will not be saved.");
       }
+      
+     
 
-      const uploadFileToSupabase = async (
-        file: File,
-        bucket: string,
-        uuid: string,
-        index: number
-      ): Promise<{ name: string; url: string; size: number }> => {
-        try {
-          const timestamp = Date.now();
-          const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const filePath = `${uuid}/${timestamp}_${index}_${sanitizedFileName}`;
 
-          console.log(`Uploading ${file.name} to bucket: ${bucket}, path: ${filePath}`);
-
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from(bucket)
-            .upload(filePath, file, {
-              contentType: file.type || "application/octet-stream",
-              upsert: true,
-            });
-
-          if (uploadError) {
-            console.error(`Upload error for ${file.name}:`, uploadError);
-            throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
-          }
-
-          console.log(`Successfully uploaded ${file.name}:`, uploadData);
-
-          const { data: urlData } = supabase.storage
-            .from(bucket)
-            .getPublicUrl(filePath);
-
-          if (!urlData.publicUrl) {
-            throw new Error(`Failed to get public URL for ${file.name}`);
-          }
-
-          return { 
-            name: file.name, 
-            url: urlData.publicUrl,
-            size: file.size
-          };
-
-        } catch (error) {
-          console.error(`Error processing file ${file.name}:`, error);
-          throw error;
-        }
-      };
-
-      const updateDatabaseRecord = async (
+       const updateDatabaseRecord = async (
         uuid: string,
         rfpFileData: string | null,
         supportingFileData: string | null
@@ -607,10 +492,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           throw error;
         }
       };
+      
 
       const MAX_FILE_SIZE = 50 * 1024 * 1024;
       const allFiles = [...rfpFiles, ...supportingFiles];
-      
+    
       for (const file of allFiles) {
         if (file.size > MAX_FILE_SIZE) {
           throw new Error(`File ${file.name} exceeds 50MB size limit`);
@@ -712,7 +598,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setIsUploading(true);
       setUploadProgress(0);
       setProcessingStage('Regenerating document...');
+      console.log('Regenerating with commentConfig', commentConfigList);
+      saveAllComments(supabase,jobUuid, commentConfigList);
       
+      setCommentConfigList([]);
       const res = await fetch(`http://127.0.0.1:8000/api/regenerate/${jobUuid}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -730,13 +619,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       }
 
       const result = await res.json().catch(() => ({}));
-      const docxShareUrl = result.word_url;
-      const pdfShareUrl = result.pdf_url;
-      const proposalContent = result.proposal_content;
+      const docxShareUrl = result.wordLink;
+      const pdfShareUrl = result.pdfLink;
+      const contents = result.updated_markdown;
+      
+      console.log("Updated markdown content received:", contents? "Yes" : "No");
+      console.log("Regenerated Content:", contents);
+      
 
       setWordLink(docxShareUrl);
       setPdfLink(pdfShareUrl);
-      setMarkdownContent(proposalContent || null);
+      setMarkdownContent(contents || null);
       setGeneratedDocument('Regenerated_Proposal.docx');
     } catch (error) {
       console.error('Regenerate failed:', error);
@@ -924,14 +817,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
        {isTextarea ? (
         <textarea
           value={localValue as string}
-          onChange={(e) => {
-            const newValue = e.target.value;
-            setLocalValue(newValue);
-            onChange(newValue); // Update the value
-          }}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          placeholder={placeholder}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            placeholder={placeholder}
           rows={rows}
           className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-gray-400 focus:border-gray-400 text-gray-900 resize-none"
         />
@@ -1001,6 +890,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   React.useEffect(() => {
     checkSupabaseConnection();
   }, []);
+ 
 
   // Auto-scroll to bottom when markdown content updates during streaming
   React.useEffect(() => {
@@ -1174,93 +1064,14 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           <div className="flex-1 p-6 min-w-0">
             {isUploading && !markdownContent ? (
               <LoadingDisplay />
-            ) : (isUploading && markdownContent) || generatedDocument ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
-                {/* Header with streaming status */}
-                <div className="border-b border-gray-100 p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {isUploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                        <h3 className="text-sm font-medium text-gray-800">Generating Proposal...</h3>
-                        <span className="text-xs text-gray-500 bg-blue-50 px-2 py-1 rounded">
-                          {processingStage}
-                        </span>
-                        {markdownContent && (
-                          <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
-                            {markdownContent.length.toLocaleString()} characters streamed
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="text-green-500" size={16} />
-                        <h3 className="text-sm font-medium text-gray-800">Generated Proposal</h3>
-                        {generatedDocument && (
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                            {generatedDocument}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!isUploading && wordLink && (
-                      <button
-                        className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
-                        onClick={() => {
-                          const t = Date.now();
-                          const url = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.docx&t=${t}`;
-                          window.open(url, "_blank");
-                        }}
-                        title="Download Word document"
-                      >
-                        <Download size={16} /> Word
-                      </button>
-                    )}
-                    {!isUploading && pdfLink && (
-                      <button
-                        className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
-                        onClick={() => {
-                          const t = Date.now();
-                          const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.pdf&t=${t}`;
-                          window.open(url, "_blank");
-                        }}
-                        title="Download PDF document"
-                      >
-                        <Download size={16} /> PDF
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Body / Markdown Preview with streaming */}
-                <div className="flex-1 overflow-auto p-6 bg-gray-50" ref={markdownContainerRef}>
-                  {markdownContent ? (
-                    <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8" style={{ overflow: "scroll" }}>
-                      <MarkdownRenderer markdownContent={markdownContent} />
-                      {isUploading && (
-                        <div className="flex items-center gap-2 text-blue-600 mt-4 animate-pulse">
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                          <span className="text-sm ml-2">Streaming content...</span>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="text-center max-w-md">
-                        <FileText className="mx-auto mb-4 text-green-500" size={64} />
-                        <h4 className="text-lg font-medium text-gray-800 mb-2">Document Ready</h4>
-                        <p className="text-sm text-gray-600 mb-4">
-                          Your proposal document has been generated successfully.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+            ) : generatedDocument ? (
+              <OutputDocumentDisplay
+                generatedDocument={generatedDocument}
+                markdownContent={markdownContent}
+                wordLink={wordLink}
+                pdfLink={pdfLink}
+                jobUuid={jobUuid}
+              />
             ) : (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
                 <div className="text-center">
@@ -1450,34 +1261,72 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               </div>
             </ConfigSection>)}
             {/* Comments ConfigSection */}
-            {markdownContent &&(<ConfigSection
+            {markdownContent && (<ConfigSection
               title="Comments"
               icon={Text}
               isExpanded={true}
               onToggle={() => {}}
             >
-              <div className="grid grid-cols-1 gap-4">
-                <InputField
-                  label="Content"
-                  value={comment1}
-                  onChange={handleCommentChange1}
-                  placeholder="Enter the Content"
-                  isTextarea={true}
-                  rows={6}
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4">
-                <InputField
-                  label="Comment"
-                  value={comment2}
-                  onChange={handleCommentChange2}
-                  placeholder="Enter the Comment"
-                  isTextarea={true}
-                  rows={6}
-
-                />
-              </div>
-            </ConfigSection>)}
+             {commentConfigList.length > 0 && (
+  <div className="mt-4 space-y-3">
+    <h4 className="text-sm font-medium text-gray-700">Added Comments</h4>
+    {commentConfigList.map((comment, index) => (
+      <div
+        key={index}
+        className="p-3 border border-gray-200 rounded bg-gray-50 flex justify-between items-start gap-2"
+      >
+        <div className="flex-1">
+          <p className="text-xs text-gray-500 mb-1">
+            <span className="font-semibold">Content:</span> {comment.comment1}
+          </p>
+          <p className="text-xs text-gray-500">
+            <span className="font-semibold">Comment:</span> {comment.comment2}
+          </p>
+        </div>
+        
+      </div>
+    ))}
+  </div>
+)}
+            <div className="grid grid-cols-1 gap-4">
+              <InputField
+                label="Content"
+                value={currentCommentContent} // local state
+                onChange={(value) => setCurrentCommentContent(value as string)}
+                placeholder="Enter the Content"
+                isTextarea={true}
+                rows={6}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              <InputField
+                label="Comment"
+                value={currentCommentText} // local state
+                onChange={(value) => setCurrentCommentText(value as string)}
+                placeholder="Enter the Comment"
+                isTextarea={true}
+                rows={6}
+              />
+            </div>
+            <div className="mt-2">
+              <button
+                type="button"
+                className="px-4 py-2 bg-blue-600 text-white rounded text-sm"
+                onClick={() => {
+                  // Append new comment to the list
+                  setCommentConfigList(prev => [
+                    ...prev,
+                    { comment1: currentCommentContent, comment2: currentCommentText }
+                  ]);
+                  // Clear local inputs
+                  setCurrentCommentContent('');
+                  setCurrentCommentText('');
+                }}
+              >
+                Add Comment
+              </button>
+            </div>
+                        </ConfigSection>)}
 
             {/* Header & Footer */}
             { !markdownContent &&(
