@@ -366,8 +366,8 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
     }
 
     const result = await res.json().catch(() => ({}));
-    const docxShareUrl = result.proposal_word_url;
-    const pdfShareUrl = result.proposal_pdf_url;
+    const docxShareUrl = result.wordLink;
+    const pdfShareUrl = result.pdfLink;
     const proposalContent = result.proposal_content;
     
     console.log("Word download link:", docxShareUrl);
@@ -618,8 +618,8 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
       }
 
       const result = await res.json().catch(() => ({}));
-      const docxShareUrl = result.word_url;
-      const pdfShareUrl = result.pdf_url;
+      const docxShareUrl = result.wordLink;
+      const pdfShareUrl = result.pdfLink;
       const contents = result.updated_markdown;
       
       console.log("Updated markdown content received:", contents? "Yes" : "No");
