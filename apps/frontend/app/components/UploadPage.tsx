@@ -763,9 +763,16 @@ def download_proposal(
       saveAllComments(supabase,jobUuid, commentConfigList);
       
       setCommentConfigList([]);
+      
+      // Reset markdown content for new regeneration
+      setMarkdownContent(null);
+      
       const res = await fetch(`http://127.0.0.1:8000/api/regenerate/${jobUuid}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream"
+        },
         body: JSON.stringify({
           config: config,
           docConfig: docConfig,
@@ -779,26 +786,135 @@ def download_proposal(
         throw new Error(`Backend /regenerate failed: ${res.status} ${txt}`);
       }
 
-      const result = await res.json().catch(() => ({}));
-      const docxShareUrl = result.wordLink;
-      const pdfShareUrl = result.pdfLink;
-      const contents = result.updated_markdown;
-      
-      console.log("Updated markdown content received:", contents? "Yes" : "No");
-      console.log("Regenerated Content:", contents);
-      
+      if (!res.body) {
+        throw new Error("No response body");
+      }
 
-      setWordLink(docxShareUrl);
-      setPdfLink(pdfShareUrl);
-      setMarkdownContent(contents || null);
-      setGeneratedDocument('Regenerated_Proposal.docx');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulatedMarkdown = "";
+      let isSaved = false;
+
+      const processChunk = async () => {
+        try {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            console.log("Regenerate stream completed");
+            setGeneratedDocument('Regenerated_Proposal.docx');
+            return;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Split by double newlines to separate SSE events
+          const events = buffer.split('\n\n');
+          // Keep the last incomplete event in the buffer
+          buffer = events.pop() || "";
+
+          for (const eventBlock of events) {
+            if (!eventBlock.trim()) continue;
+            
+            const lines = eventBlock.split('\n');
+            let eventType = '';
+            let dataLines: string[] = [];
+            
+            for (const line of lines) {
+              if (line.startsWith('event:')) {
+                eventType = line.substring(6).trim();
+              } else if (line.startsWith('data:')) {
+                // Don't trim data content - preserve whitespace in markdown
+                const dataContent = line.substring(5);
+                // Only remove the single leading space that SSE spec adds after 'data:'
+                dataLines.push(dataContent.startsWith(' ') ? dataContent.substring(1) : dataContent);
+              }
+            }
+            
+            if (!eventType || dataLines.length === 0) continue;
+            
+            // Join multi-line data with newlines to preserve markdown formatting
+            const data = dataLines.join('\n');
+            
+            if (eventType === 'chunk') {
+              // Chunk data is JSON-encoded to preserve newlines and special chars
+              try {
+                const decodedChunk = JSON.parse(data);
+                accumulatedMarkdown += decodedChunk;
+                console.log(`Regenerate chunk received: ${decodedChunk.length} chars, Total: ${accumulatedMarkdown.length}`);
+                setMarkdownContent(accumulatedMarkdown);
+              } catch (e) {
+                console.error("Failed to parse regenerate chunk data:", e, data);
+                // Fallback: use data as-is
+                accumulatedMarkdown += data;
+                setMarkdownContent(accumulatedMarkdown);
+              }
+            } else if (eventType === 'stage') {
+              try {
+                const stageData = JSON.parse(data);
+                console.log("Regenerate stage:", stageData.stage);
+                const stageMessages: Record<string, string> = {
+                  'fetching_original_markdown': 'Fetching original document...',
+                  'fetching_comments': 'Loading comments...',
+                  'processing_with_ai': 'Regenerating with AI...',
+                  'saving_generated_text': 'Saving content...',
+                  'generating_documents': 'Generating documents...',
+                  'no_modifications_needed': 'No modifications needed'
+                };
+                setProcessingStage(stageMessages[stageData.stage] || stageData.stage || 'Processing...');
+              } catch (e) {
+                console.warn("Failed to parse regenerate stage data:", data);
+              }
+            } else if (eventType === 'done') {
+              try {
+                const doneData = JSON.parse(data);
+                console.log("Regenerate done:", doneData);
+                isSaved = doneData.status === "completed";
+                
+                if (doneData.wordLink) {
+                  setWordLink(doneData.wordLink);
+                }
+                if (doneData.pdfLink) {
+                  setPdfLink(doneData.pdfLink);
+                }
+                if (doneData.updated_markdown) {
+                  setMarkdownContent(doneData.updated_markdown);
+                }
+                setGeneratedDocument('Regenerated_Proposal.docx');
+              } catch (e) {
+                console.warn("Failed to parse regenerate done data:", data);
+              }
+            } else if (eventType === 'error') {
+              try {
+                const errorData = JSON.parse(data);
+                console.error("Regenerate stream error:", errorData.message);
+                alert(`Regenerate failed: ${errorData.message}`);
+                return;
+              } catch (e) {
+                console.error("Regenerate stream error:", data);
+                alert(`Regenerate failed: ${data}`);
+                return;
+              }
+            }
+          }
+
+          processChunk();
+        } catch (error) {
+          console.error('Regenerate stream error:', error);
+          alert('Regenerate failed. Please try again.');
+        }
+      };
+
+      processChunk();
     } catch (error) {
       console.error('Regenerate failed:', error);
       alert('Regenerate failed. Please try again.');
     } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-      setProcessingStage('');
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+        setProcessingStage('');
+      }, 2000);
     }
   };
 
