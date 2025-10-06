@@ -47,23 +47,19 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
         if request.docConfig and isinstance(request.docConfig, dict):
             outline = request.docConfig.get("outline")
         
-        generator = wordgen_api.generate_complete_proposal(
-            uuid=uuid,
-            rfp_url=urls["rfp_url"],
-            supporting_url=urls["supporting_url"],
-            user_config=request.config or "",
-            doc_config=request.docConfig or {},
-            language=(request.language or "english").lower(),
-            outline=outline,
-        )
+        def stream_generator():
+            for chunk in wordgen_api.generate_complete_proposal(
+                uuid=uuid,
+                rfp_url=urls["rfp_url"],
+                supporting_url=urls["supporting_url"],
+                user_config=request.config or "",
+                doc_config=request.docConfig or {},
+                language=(request.language or "english").lower(),
+                outline=outline,
+            ):
+                yield chunk
         
-        for _ in generator:
-            pass  
-        final_markdown = get_generated_markdown(uuid)
-        if not final_markdown:
-            raise HTTPException(status_code=500, detail="Proposal generation succeeded but markdown not saved")
-
-        return {"status": "success", "uuid": uuid, "proposal_content": final_markdown}
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
     except HTTPException:
         logger.exception("initialgen HTTP error")

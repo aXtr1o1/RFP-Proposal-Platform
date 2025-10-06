@@ -7,6 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 from openai import OpenAI
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 from apps.api.services.supabase_service import (
     save_generated_markdown,   
 )
@@ -31,16 +34,15 @@ def _lang_flag(language: str) -> str:
 
 def _sse_event_raw(event: str, data: str) -> bytes:
     """
-    Format an SSE frame preserving data EXACTLY as provided.
+    Format an SSE frame with JSON-encoded data to preserve ALL characters exactly.
+    This ensures newlines, spaces, and special characters are preserved.
     """
     if data is None:
         data = ""
-    lines = data.splitlines()
-    if not lines:
-        payload = "data: \n"
-    else:
-        payload = "".join(f"data: {line}\n" for line in lines)
-    return f"event: {event}\n{payload}\n".encode("utf-8")
+    
+    # JSON-encode the data to preserve all special characters including newlines
+    encoded_data = json.dumps(data, ensure_ascii=False)
+    return f"event: {event}\ndata: {encoded_data}\n\n".encode("utf-8")
 
 
 def _sse_event_json(event: str, obj: Dict[str, Any]) -> bytes:
