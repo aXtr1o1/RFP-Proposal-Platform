@@ -12,6 +12,7 @@ from apps.api.services.supabase_service import (
     get_generated_markdown
 )
 
+
 from apps.regen_services.regen_prompt import regenerate_markdown_with_comments
 
 from apps.wordgenAgent.app.document import generate_word_and_pdf_from_markdown
@@ -24,7 +25,8 @@ class InitialGenRequest(BaseModel):
     config: Optional[str] = None
     docConfig: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
-    language: Optional[str] = "english"
+    language: Optional[str] = "english" 
+    commentConfig: Optional[Dict[str, Any]] = None
 
 
 @router.post("/initialgen/{uuid}")
@@ -59,7 +61,24 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
             ):
                 yield chunk
         
+<<<<<<< HEAD
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
+=======
+        for _ in generator:
+            pass  
+        final_markdown = get_generated_markdown(uuid)
+        if not final_markdown:
+            raise HTTPException(status_code=500, detail="Proposal generation succeeded but markdown not saved")
+        urls = generate_word_and_pdf_from_markdown(
+            uuid=uuid,
+            markdown=final_markdown,
+            doc_config=request.docConfig,
+            language=(request.language or "english").lower()
+        )
+        
+
+        return {"status": "success", "uuid": uuid, "proposal_content": final_markdown,"wordLink":urls['proposal_word_url'],"pdfLink":urls['proposal_pdf_url']}
+>>>>>>> 69ec34ec73b5f20ac7f617a62faaf59ab39634ba
 
     except HTTPException:
         logger.exception("initialgen HTTP error")
@@ -78,13 +97,16 @@ def regeneration_process(
     try:
         logger.info(f"Starting markdown regeneration for uuid={uuid}")
         logger.info(f"Language: {request.language}")
-    
+       
         result = regenerate_markdown_with_comments(
             uuid=uuid,
-            language=request.language or "english"
+            language=request.language or "english",
+            docConfig=request.docConfig,
+            
         )
         
         logger.info(f"Markdown regeneration completed for uuid={uuid}")
+        logger.info(f"Regen Markdown{result}")
         return JSONResponse(result)
     
     except HTTPException:

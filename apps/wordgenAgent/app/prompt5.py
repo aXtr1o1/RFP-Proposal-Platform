@@ -65,14 +65,14 @@ def build_task_instructions_with_config(
     
     arabic_addendum = ""
     if (language or "").lower() == "arabic":
-        arabic_addendum = f"""
+        arabic_addendum = """
                           ARABIC Instructions:
                           - Output the entire proposal in Arabic (Modern Standard Arabic)
                           - Ensure the Arabic content is correct, coherent, and of high quality, strictly based on the RFP files, Supporting files (Company Digest), and User Configuration.
                           - The proposal must be entirely in Arabic include titles, headings, sub-headings and content, with no English words unless absolutely necessary.
                           - Tables and bullet points must be right-to-left (RTL) aligned.
                           - Try to use this Proposal template while generating the proposal
-                          - Return ONLY one JSON object, with no wrappers or extra text.
+                          - Return ONLY one MarkDown object, with no wrappers or extra text. Example "'# Title\nContent\n## Heading\nMore content...', Donot provide in json such as {"title": "Title", "content": "Content", "heading": "Heading", "more_content": "More content..."}"
                           """
 
 

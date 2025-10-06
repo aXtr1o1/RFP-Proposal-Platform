@@ -19,9 +19,7 @@ export async function POST(req: Request) {
 
     const rows = comments.map((c: any) => ({
       uuid,
-      proposal_url: pdfUrl,
       comments: c.comment,
-      selected_content: c.selectedText,
     }))
 
     const { data, error } = await supabaseAdmin
