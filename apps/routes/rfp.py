@@ -61,24 +61,7 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
             ):
                 yield chunk
         
-<<<<<<< HEAD
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
-=======
-        for _ in generator:
-            pass  
-        final_markdown = get_generated_markdown(uuid)
-        if not final_markdown:
-            raise HTTPException(status_code=500, detail="Proposal generation succeeded but markdown not saved")
-        urls = generate_word_and_pdf_from_markdown(
-            uuid=uuid,
-            markdown=final_markdown,
-            doc_config=request.docConfig,
-            language=(request.language or "english").lower()
-        )
-        
-
-        return {"status": "success", "uuid": uuid, "proposal_content": final_markdown,"wordLink":urls['proposal_word_url'],"pdfLink":urls['proposal_pdf_url']}
->>>>>>> 69ec34ec73b5f20ac7f617a62faaf59ab39634ba
 
     except HTTPException:
         logger.exception("initialgen HTTP error")
