@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 
 from apps.api.services.supabase_service import (
     supabase,
-    get_generated_markdown,
     save_generated_markdown
 )
 
@@ -28,9 +27,17 @@ class MarkdownModifier:
         instructions = "You must modify ONLY the following specific content pieces in the markdown:\n\n"
         
         for i, item in enumerate(items, 1):
+            selected = item.get("selected_content", "")
+            comment = item.get("comment", "")
+    
+            if not selected or selected.lower() == "none":
+                continue
+            if not comment or comment.lower() == "none":
+                continue
+            
             instructions += f"{i}. FIND THIS EXACT TEXT:\n"
-            instructions += f'"{item["selected_content"]}"\n\n'
-            instructions += f"MODIFICATION INSTRUCTION: {item['comment']}\n\n"
+            instructions += f'"{selected}"\n\n'
+            instructions += f"MODIFICATION INSTRUCTION: {comment}\n\n"
             instructions += "---\n\n"
         
         instructions += """
@@ -54,6 +61,7 @@ class MarkdownModifier:
 
         modification_instructions = self.create_modification_instructions(items)
         
+        # System prompt
         system_prompt = f"""You are an expert in technical and development proposal writing.
 
                         You will receive:
@@ -68,10 +76,11 @@ class MarkdownModifier:
                         5. Maintain all markdown formatting (headers, lists, tables, bold, etc.)
                         6. Generate output only in this language: {language}
                         7. Maintain correct spacing between words
-                        8. Return ONLY the complete updated Github markdown — no JSON, no explanations, no wrappers
+                        8. Return ONLY the complete updated markdown — no JSON, no explanations, no wrappers
 
                         CRITICAL: Your output must be pure GitHub-flavored markdown that can be rendered directly."""
-
+        
+        # user prompt
         user_prompt = f"""
                         ORIGINAL MARKDOWN:
                         {markdown}
@@ -96,11 +105,6 @@ class MarkdownModifier:
             content = response.choices[0].message.content
             if not content:
                 raise ValueError("Empty response from OpenAI")
-            content = content.strip()
-            if content.startswith("```"):
-                content = content[3:].strip()
-            if content.endswith("```"):
-                content = content[:-3].strip()
             
             logger.info(f"Markdown regenerated successfully, length: {len(content)} chars")
             return content
@@ -110,18 +114,60 @@ class MarkdownModifier:
             raise Exception(f"Error processing with OpenAI: {str(e)}")
 
 
+def get_generated_markdown_from_data_table(uuid: str) -> str:
+    try:
+        logger.info(f"Fetching Generated_Markdown from Data_Table for uuid={uuid}")
+        
+        res = supabase.table("Data_Table").select("Generated_Markdown").eq("uuid", uuid).maybe_single().execute()
+        
+        if not res.data:
+            raise ValueError(f"No record found in Data_Table for uuid={uuid}")
+        
+        markdown = res.data.get("Generated_Markdown", "")
+        
+        if not markdown:
+            raise ValueError(f"Generated_Markdown is empty for uuid={uuid}")
+        
+        logger.info(f"Successfully fetched markdown for uuid={uuid}, length: {len(markdown)} chars")
+        return markdown
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch Generated_Markdown for uuid={uuid}: {e}")
+        raise
+
+
 def get_comments_for_uuid(uuid: str) -> List[Dict[str, str]]:
     try:
-        logger.info(f"Fetching comments for uuid={uuid}")
-        res = supabase.table("Comments").select("selected_content, comment").eq("uuid", uuid).execute()
-        items = res.data if res.data else []
+        logger.info(f"Fetching comments from proposal_comments for uuid={uuid}")
+        resp = supabase.table("proposal_comments").select(
+            "selected_content, comments"
+        ).eq("uuid", uuid).execute()
         
-        logger.info(f"Found {len(items)} comments for uuid={uuid}")
+        rows = resp.data or []
+        logger.info(f"Found {len(rows)} rows in proposal_comments for uuid={uuid}")
+        
+        if not rows:
+            logger.info(f"No comments found for uuid={uuid}")
+            return []
+    
+        items = []
+        for r in rows:
+            selected = r.get("selected_content", "")
+            comment = r.get("comments", "")  
+        
+            if selected and selected.lower() != "none" and comment and comment.lower() != "none":
+                items.append({
+                    "selected_content": selected,
+                    "comment": comment
+                })
+        
+        logger.info(f"Returning {len(items)} valid comments for uuid={uuid}")
         return items
         
     except Exception as e:
         logger.error(f"Failed to fetch comments for uuid={uuid}: {e}")
-        raise
+        return []
+
 
 def regenerate_markdown_with_comments(
     uuid: str,
@@ -129,15 +175,13 @@ def regenerate_markdown_with_comments(
 ) -> Dict[str, Any]:
     try:
         logger.info(f"Fetching existing markdown for uuid={uuid}")
-        original_markdown = get_generated_markdown(uuid)
-        if not original_markdown:
-            raise ValueError(f"No generated markdown found for uuid={uuid}. Run /initialgen first.")
+        original_markdown = get_generated_markdown_from_data_table(uuid)
         
         logger.info(f"Original markdown length: {len(original_markdown)} chars")
-        
+    
         comments = get_comments_for_uuid(uuid)
         if not comments:
-            logger.warning(f"No comments found for uuid={uuid}, returning original markdown")
+            logger.warning(f"No valid comments found for uuid={uuid}, returning original markdown")
             return {
                 "status": "success",
                 "uuid": uuid,
@@ -146,6 +190,8 @@ def regenerate_markdown_with_comments(
                 "message": "No modifications to apply"
             }
         
+        logger.info(f"Processing {len(comments)} modifications")
+    
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("Missing OPENAI_API_KEY in environment variables")
@@ -159,7 +205,7 @@ def regenerate_markdown_with_comments(
         
         logger.info(f"Updated markdown length: {len(updated_markdown)} chars")
         
-        logger.info(f"Saving updated markdown to Supabase for uuid={uuid}")
+        logger.info(f"Saving updated markdown to Data_Table for uuid={uuid}")
         saved = save_generated_markdown(uuid, updated_markdown)
         if not saved:
             raise Exception("Failed to save updated markdown to Supabase")
