@@ -398,6 +398,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
                   pdfShareUrl: docResult.proposal_pdf_url || null, 
                   proposalContent: accumulatedMarkdown 
                 });
+                setIsUploading(false);
               } catch (error) {
                 console.error("Error generating documents:", error);
                 resolve({ 
@@ -546,7 +547,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
     }
 
     // Reset markdown content for new upload
-    setMarkdownContent(null);
+    // setMarkdownContent(null);
     setIsUploading(true);
     setUploadProgress(0);
     setProcessingStage('Checking connections...');
@@ -689,6 +690,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
       const rspPostUuidConfig = await postUuidConfig(uuid, config);
 
       setProcessingStage('Sending to AI processing engine...');
+      const { docxShareUrl, pdfShareUrl } = await postUuidConfig(uuid, config);
 
       setMarkdownContent(markdownContent || null);
       setGeneratedDocument('Generated_Proposal.docx'); 
@@ -1309,6 +1311,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
                   </p>
                 </div>
               </div>
+              
             ) : (
               <OutputDocumentDisplay
                 generatedDocument={generatedDocument}
