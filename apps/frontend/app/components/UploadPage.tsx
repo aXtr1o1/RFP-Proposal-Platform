@@ -42,35 +42,41 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {wordLink && (
-            <button
-              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
-              onClick={() => {
-                const t = Date.now();
-                const url = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.docx&t=${t}`;
-                window.open(url, "_blank");
-              }}
-              title="Download Word document"
-            >
-              <Download size={16} /> Word
-            </button>
-          )}
-          {pdfLink && (
-            <button
-              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
-              onClick={() => {
-                const t = Date.now();
-                const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.pdf&t=${t}`;
-                window.open(url, "_blank");
-              }}
-              title="Download PDF document"
-            >
-              <Download size={16} /> PDF
-            </button>
-          )}
-        </div>
       </div>
+
+      {/* Download buttons on top of markdown */}
+      {markdownContent && (wordLink || pdfLink) && (
+        <div className="border-b border-gray-100 p-4 bg-gray-50">
+          <div className="flex items-center justify-center gap-3">
+            {wordLink && (
+              <button
+                className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
+                onClick={() => {
+                  const t = Date.now();
+                  const url = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.docx&t=${t}`;
+                  window.open(url, "_blank");
+                }}
+                title="Download Word document"
+              >
+                <Download size={16} /> Word
+              </button>
+            )}
+            {pdfLink && (
+              <button
+                className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
+                onClick={() => {
+                  const t = Date.now();
+                  const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.pdf&t=${t}`;
+                  window.open(url, "_blank");
+                }}
+                title="Download PDF document"
+              >
+                <Download size={16} /> PDF
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Body / Markdown Preview */}
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
@@ -547,10 +553,10 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
     }
 
     // Reset markdown content for new upload
-    // setMarkdownContent(null);
+    setMarkdownContent(null);
     setIsUploading(true);
     setUploadProgress(0);
-    setProcessingStage('Checking connections...');
+    setProcessingStage('Starting generation...');
     
     const progressInterval = simulateProgress();
     
@@ -689,10 +695,11 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
 
       const rspPostUuidConfig = await postUuidConfig(uuid, config);
 
-      setProcessingStage('Sending to AI processing engine...');
+      setProcessingStage('Generating proposal...');
       const { docxShareUrl, pdfShareUrl } = await postUuidConfig(uuid, config);
 
-      setMarkdownContent(markdownContent || null);
+      setWordLink(docxShareUrl);
+      setPdfLink(pdfShareUrl);
       setGeneratedDocument('Generated_Proposal.docx'); 
       setIsGenerated(true);
       
