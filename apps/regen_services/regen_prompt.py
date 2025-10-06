@@ -102,7 +102,7 @@ class MarkdownModifier:
             logger.info(f"Markdown regenerated successfully, length: {len(content)} chars")
             return content
             
-        except Exception as e:
+        except Exception as e: 
             logger.exception("Error processing with OpenAI")
             raise Exception(f"Error processing with OpenAI: {str(e)}")
 
