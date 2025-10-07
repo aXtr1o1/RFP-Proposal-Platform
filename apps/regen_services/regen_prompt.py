@@ -220,7 +220,7 @@ def get_comments_for_uuid(uuid: str) -> List[Dict[str, str]]:
     try:
         logger.info(f"Fetching comments for uuid={uuid}")
         res = supabase.table("proposal_comments").select("comments").eq("uuid", uuid).execute()
-        print("List:", res.data)
+        logger.info("List:", res.data)
         items = res.data[0].get('comments') if res.data else []
     
         
