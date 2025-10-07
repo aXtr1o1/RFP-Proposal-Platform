@@ -193,7 +193,15 @@ def _add_table(doc, headers, rows, cfg, rtl: bool):
     try:
         table.Rows.LeftIndent = 0
         page_width = doc.PageSetup.PageWidth - doc.PageSetup.LeftMargin - doc.PageSetup.RightMargin
-        table.PreferredWidth = page_width
+        
+        # Apply table width from config
+        table_width_percent = cfg.get("table_preferred_width", 100)
+        if table_width_percent and table_width_percent > 0:
+            # Convert percentage to actual width
+            actual_width = (page_width * table_width_percent) / 100
+            table.PreferredWidth = actual_width
+        else:
+            table.PreferredWidth = page_width
         table.PreferredWidthType = 1
 
         try:
@@ -227,6 +235,11 @@ def _add_table(doc, headers, rows, cfg, rtl: bool):
                     cell.Range.Bold = True
                     cell.Range.Font.Size = cfg["table_font_size"]
                     cell.Range.Font.Color = int(cfg.get("table_font_color", 0))
+                    
+                    # Apply header background color
+                    header_bg_color = cfg.get("table_header_shading_color")
+                    if header_bg_color is not None:
+                        cell.Shading.BackgroundPatternColor = int(header_bg_color)
                 except Exception:
                     pass
         row_i += 1
@@ -241,12 +254,21 @@ def _add_table(doc, headers, rows, cfg, rtl: bool):
                     cell.Range.ParagraphFormat.Alignment = 1
                     cell.Range.Font.Size = cfg["table_font_size"]
                     cell.Range.Font.Color = int(cfg.get("table_font_color", 0))
+                    
+                    # Apply body background color
+                    body_bg_color = cfg.get("table_body_shading_color")
+                    if body_bg_color is not None:
+                        cell.Shading.BackgroundPatternColor = int(body_bg_color)
                 except Exception:
                     pass
             row_i += 1
 
     try:
-        table.AutoFitBehavior(2)
+        # Apply auto-fit behavior based on config
+        if cfg.get("table_autofit", True):
+            table.AutoFitBehavior(2)  # AutoFit to window
+        else:
+            table.AutoFitBehavior(0)  # Fixed column width
     except Exception:
         pass
 
