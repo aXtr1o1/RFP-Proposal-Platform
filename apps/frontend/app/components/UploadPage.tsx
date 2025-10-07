@@ -14,6 +14,7 @@ type OutputProps = {
   jobUuid: string | null;
   isRegenerating: boolean;
   isRegenerationComplete: boolean;
+  docConfig?: any;
 };
 
 
@@ -25,6 +26,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   jobUuid,
   isRegenerating,
   isRegenerationComplete,
+  docConfig,
 }) => {
   
   return (
@@ -93,7 +95,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
         {markdownContent && (
           <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8" style={{ overflow: "scroll" }}>
-            <MarkdownRenderer markdownContent={markdownContent} />
+            <MarkdownRenderer markdownContent={markdownContent} docConfig={docConfig} />
           </div>
         ) }
       </div>
@@ -110,7 +112,8 @@ export const OutputDocumentDisplay = React.memo(
     prev.pdfLink === next.pdfLink &&
     prev.jobUuid === next.jobUuid &&
     prev.isRegenerating === next.isRegenerating &&
-    prev.isRegenerationComplete === next.isRegenerationComplete
+    prev.isRegenerationComplete === next.isRegenerationComplete &&
+    JSON.stringify(prev.docConfig) === JSON.stringify(next.docConfig)
 );
 
 interface UploadPageProps {}
@@ -1358,6 +1361,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
                 jobUuid={jobUuid}
                 isRegenerating={isRegenerating}
                 isRegenerationComplete={isRegenerationComplete}
+                docConfig={docConfig}
               />
             )}
           </div>
