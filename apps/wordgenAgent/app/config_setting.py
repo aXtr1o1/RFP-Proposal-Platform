@@ -76,13 +76,6 @@ def build_updated_config(default_config: dict, input_config: dict) -> dict:
             elif key == "show_table_borders":
                 updated_config["table_border_visible"] = bool(val)
             
-            elif key == "border_style":
-                styles = {"single": 1, "double": 2, "dotted": 4, "dashed": 3}
-                updated_config["table_border_line_style"] = styles.get(str(val).lower(), 1)
-            
-            elif key == "border_preset":
-                updated_config["table_border_preset"] = val
-            
             elif key == "include_header":
                 updated_config["enable_header"] = bool(val)
             
@@ -109,6 +102,27 @@ def build_updated_config(default_config: dict, input_config: dict) -> dict:
             
             elif key == "show_page_numbers":
                 updated_config["footer_show_page_numbers"] = bool(val)
+            
+            # Additional mappings for missing properties
+            elif key == "table_font_color":
+                # This should map to table_font_color in the config
+                updated_config["table_font_color"] = hex_to_bgr_int(str(val)) if val else 0
+            
+            elif key == "border_style":
+                # Map border style to line style
+                styles = {"single": 1, "double": 2, "dotted": 4, "dashed": 3}
+                updated_config["table_border_line_style"] = styles.get(str(val).lower(), 1)
+            
+            elif key == "border_preset":
+                updated_config["table_border_preset"] = str(val)
+            
+            elif key == "table_background":
+                # Map table background to body shading color
+                updated_config["table_body_shading_color"] = hex_to_bgr_int(str(val)) if val else None
+            
+            elif key == "header_background":
+                # Map header background to header shading color
+                updated_config["table_header_shading_color"] = hex_to_bgr_int(str(val)) if val else None
         
         except (ValueError, TypeError, KeyError) as e:
             import logging
