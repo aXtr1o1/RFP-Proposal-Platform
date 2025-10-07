@@ -745,7 +745,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
       setUploadProgress(0);
       setProcessingStage('Regenerating document...');
       console.log('Regenerating with commentConfig', commentConfigList);
-      saveAllComments(supabase,jobUuid, commentConfigList);
+      await saveAllComments(supabase,jobUuid, commentConfigList);
       
       setCommentConfigList([]);
       
