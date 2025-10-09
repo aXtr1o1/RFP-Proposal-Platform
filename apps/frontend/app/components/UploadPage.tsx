@@ -94,7 +94,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       {/* Body / Markdown Preview */}
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
         {markdownContent && (
-          <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8" style={{ overflow: "scroll" }}>
+          <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area" style={{ overflow: "scroll", backgroundColor: '#ffffff', color: '#000000' }}>
             <MarkdownRenderer markdownContent={markdownContent} docConfig={docConfig} />
           </div>
         ) }

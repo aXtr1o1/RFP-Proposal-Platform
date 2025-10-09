@@ -70,10 +70,12 @@ const MarkdownRenderer = ({
     <div className="flex-1 overflow-auto p-6 bg-gray-50">
       {processedContent ? (
         <div 
-          className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8"
+          className="max-w-4xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area markdown-content"
           style={{
             textAlign: (docConfig?.text_alignment as any) || 'left',
-            direction: (docConfig?.reading_direction as any) || 'ltr'
+            direction: (docConfig?.reading_direction as any) || 'ltr',
+            backgroundColor: '#ffffff',
+            color: '#000000'
           }}
         >
           <ReactMarkdown
@@ -227,7 +229,7 @@ const MarkdownRenderer = ({
               thead: ({ node, ...props }) => (
                 <thead 
                   style={{
-                    backgroundColor: docConfig?.header_background || '#000000'
+                    backgroundColor: docConfig?.header_background || '#f8f9fa'
                   }}
                   {...props} 
                 />

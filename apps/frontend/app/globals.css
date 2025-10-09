@@ -24,3 +24,23 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Override dark mode for content display areas */
+.content-display-area {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+.content-display-area * {
+  color: inherit !important;
+}
+
+/* Ensure markdown content areas are always light */
+.markdown-content {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+.markdown-content * {
+  color: inherit !important;
+}
