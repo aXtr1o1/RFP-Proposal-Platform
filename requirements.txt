@@ -1,0 +1,29 @@
+# --- Web framework & server ---
+fastapi==0.110
+uvicorn[standard]==0.30
+starlette==0.37
+
+# --- HTTP / streaming / retries ---
+httpx>=0.27,<0.28
+tenacity==9.0
+
+# --- Data models & config ---
+pydantic==2.8
+pydantic-settings==2.3
+python-dotenv==1.0
+
+# --- Files, async IO, utils ---
+aiofiles==23.2
+
+# --- PPT generation & imaging ---
+python-pptx==0.6.23
+Pillow==10.3              
+
+# --- OpenAI ---
+openai==1.109.0
+
+# --- Supabase ---
+supabase==2.4
+
+# --- Logging ---
+loguru==0.7

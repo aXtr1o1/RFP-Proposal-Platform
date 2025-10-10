@@ -5,7 +5,7 @@ __pycache__/
 *$py.class
 
 # .env file
-.env
+# .env
 
 # C extensions
 *.so
@@ -90,7 +90,7 @@ logs/
 Thumbs.db
 
 # Windows environment variables
-.env
+# .env
 
 # FastAPI / temporary files
 *.sqlite3
