@@ -147,6 +147,9 @@ class WordGenAPI:
                         {"type": "input_text", "text": task_instructions},
                     ],
                 }],
+                reasoning= {
+                    "effort": "minimal"
+                },
                 stream=True,
             )
 
