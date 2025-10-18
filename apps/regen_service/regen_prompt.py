@@ -13,7 +13,7 @@ from apps.api.services.supabase_service import (
     save_generated_markdown
 )
 
-load_dotenv()
+load_dotenv(override=True)
 logger = logging.getLogger("regen_prompt")
 
 
