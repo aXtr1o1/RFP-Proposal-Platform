@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "rfp-api",
-      cwd: "C:\\Users\\Administrator\\RFP-Proposal-Platform",
+      cwd: "C:\\Services\\RFP-Proposal-Platform",
       script: "C:\\Windows\\system32\\.venv\\Scripts\\python.exe",
       interpreter: "none",
       args: [
