@@ -357,7 +357,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
 
   const postUuidConfig = async (uuid: string, config: string) => {
     return new Promise<{ docxShareUrl: string | null; pdfShareUrl: string | null; proposalContent: string }>((resolve, reject) => {
-      fetch(`https://develop.axtr.in/api/initialgen/${uuid}`, {
+      fetch(`http://20.28.58.235:8000/initialgen/${uuid}`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -397,7 +397,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
               
               try {
                 // Generate Word and PDF documents using the /download endpoint
-                const docRes = await fetch(`https://develop.axtr.in/api/download/${uuid}`, {
+                const docRes = await fetch(`http://20.28.58.235:8000/download/${uuid}`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -752,7 +752,7 @@ const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
       // Reset markdown content for new regeneration
       setMarkdownContent(null);
       
-      const res = await fetch(`https://develop.axtr.in/api/regenerate/${jobUuid}`, {
+      const res = await fetch(`http://20.28.58.235:8000/regenerate/${jobUuid}`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
