@@ -8,7 +8,7 @@ import requests
 from openai import OpenAI
 
 from dotenv import load_dotenv
-load_dotenv(encoding="utf-8-sig", override=True)
+load_dotenv(override=True)
 
 from apps.api.services.supabase_service import (
     save_generated_markdown,   
