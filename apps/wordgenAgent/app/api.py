@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import logging
 from typing import Dict, Any, Tuple, Optional, List, Iterator
@@ -9,6 +10,21 @@ from openai import OpenAI
 
 from dotenv import load_dotenv
 load_dotenv(override=True)
+
+def _emit_stdout(text: str) -> None:
+    """Write UTF-8 output safely even on non-UTF-8 consoles (e.g., Windows cp1252)."""
+    data = (text + "\n").encode("utf-8", errors="replace")
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is not None:
+        try:
+            buffer.write(data)
+            buffer.flush()
+            return
+        except Exception:
+            pass
+
+    safe_text = (text + "\n").encode("ascii", errors="replace").decode("ascii")
+    print(safe_text, end="", flush=True)
 
 from apps.api.services.supabase_service import (
     save_generated_markdown,   
@@ -168,7 +184,7 @@ class WordGenAPI:
                     line_buffer += delta
                     while "\n" in line_buffer:
                         line, line_buffer = line_buffer.split("\n", 1)
-                        print(line, flush=True)
+                        _emit_stdout(line)
 
                 elif et == "response.error":
                     err_msg = getattr(event, "error", "stream error")
@@ -179,11 +195,11 @@ class WordGenAPI:
                 elif et == "response.completed":
                     break
             if line_buffer:
-                print(line_buffer, flush=True)
+                _emit_stdout(line_buffer)
                 line_buffer = ""
 
             full_markdown = "".join(buffer_chunks)  
-            print(full_markdown, flush=True)
+            _emit_stdout(full_markdown)
             yield _sse_event_json("stage", {"stage": "saving_generated_text"})
 
 
