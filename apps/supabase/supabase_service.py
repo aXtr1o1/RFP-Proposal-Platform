@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from supabase import create_client
 import dotenv
-dotenv.load_dotenv()
+dotenv.load_dotenv(override=True)
 import logging
 import httpx
 
