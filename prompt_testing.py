@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wordgen-agent")
 
 
-load_dotenv(override=True)
+load_dotenv(encoding="utf-8-sig", override=True)
 
 
 def _normalize_sections(data: dict[str, any]) -> dict[str, any]:
