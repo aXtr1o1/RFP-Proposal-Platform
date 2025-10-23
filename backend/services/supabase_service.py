@@ -7,6 +7,7 @@ logger = get_logger("supabase")
 class SupabaseService:
     def __init__(self):
         self.client: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        logger.info("supabase client ready")
 
     def get_templates(self):
         files = self.client.storage.from_(settings.PPT_TEMPLATE_BUCKET).list()
@@ -25,7 +26,8 @@ class SupabaseService:
 
     def fetch_record_by_uuid(self, uuid: str):
         res = self.client.table(settings.TABLE_NAME).select("*").eq("uuid", uuid).execute()
-        return res.data[0] if res.data else None
+        rec = res.data[0] if res.data else None
+        return rec
 
     def fetch_record(self, uuid: str, gen_id: str):
         res = self.client.table(settings.TABLE_NAME).select("*").eq("uuid", uuid).eq("gen_id", gen_id).execute()

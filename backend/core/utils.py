@@ -1,31 +1,31 @@
-import json, re, io, uuid, os
-from core.logger import get_logger
-logger = get_logger("utils")
+import re
+import json
+import uuid
 
-def extract_json_array(text: str):
-    """Extract the first JSON array from a text response."""
+def extract_json_array(text: str) -> list[dict]:
     s = text.strip()
-    s = re.sub(r"^```(json)?", "", s)
-    s = re.sub(r"```$", "", s)
-    s = s.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*", "", s, flags=re.IGNORECASE)
+    if s.endswith("```"):
+        s = re.sub(r"\s*```$", "", s)
+
     start, end = s.find("["), s.rfind("]")
-    if start == -1 or end == -1:
-        raise ValueError("No JSON array found in model output")
-    return json.loads(s[start:end+1])
+    if start == -1 or end == -1 or end < start:
+        m = re.search(r"(\[.*\])", s, flags=re.DOTALL)
+        if not m:
+            raise ValueError("No JSON array found in model output")
+        s = m.group(1)
+    else:
+        s = s[start : end + 1]
 
-def uuid_like(prefix: str = "gen") -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+    data = json.loads(s)
+    if not isinstance(data, list):
+        raise ValueError("Parsed JSON is not an array")
+    return data
 
-def bytesio_of(path: str):
-    with open(path, "rb") as f:
-        return io.BytesIO(f.read())
+def short_kb(n: int) -> int:
+    return int(round(n / 1024))
 
-def save_bytes(path: str, data: bytes):
-    with open(path, "wb") as f:
-        f.write(data)
-
-def safe_unlink(path: str):
-    try:
-        os.remove(path)
-    except Exception:
-        pass
+def uuid_like(prefix: str = "") -> str:
+    token = uuid.uuid4().hex[:8]
+    return f"{prefix}_{token}" if prefix else token

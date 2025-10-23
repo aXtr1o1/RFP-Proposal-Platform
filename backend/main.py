@@ -11,7 +11,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="RFP PPT Proposal Generation API",
         version="1.0.0",
-        description="AI-driven RFP → Proposal deck generator (OpenAI + Supabase)",
+        description="AI-driven RFP → Proposal deck generator",
         docs_url="/docs",
         redoc_url="/redoc",
     )
