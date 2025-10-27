@@ -8,8 +8,8 @@ class Settings:
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY")
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", 18000))
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+    MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", 15000))
 
     RFP_BUCKET = "rfp"
     SUPPORTING_BUCKET = "supporting"

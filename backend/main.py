@@ -28,14 +28,12 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup_event():
-        logger.info("=" * 80)
-        logger.info("🚀 Starting RFP Proposal API")
-        logger.info(f"🤖 Model: {settings.OPENAI_MODEL}")
-        logger.info("=" * 80)
+        logger.info("Starting RFP Proposal API")
+        logger.info(f"Model: {settings.OPENAI_MODEL}")
 
     @app.on_event("shutdown")
     async def shutdown_event():
-        logger.info("⚠️  Shutting down API...")
+        logger.info("Shutting down API...")
 
     return app
 

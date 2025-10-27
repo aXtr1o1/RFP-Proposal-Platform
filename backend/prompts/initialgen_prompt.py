@@ -2,7 +2,7 @@ from typing import Optional, Dict, Tuple, List
 
 def build_language_block(language: str) -> str:
     """
-    Returns a compact language directive block consumed as the first content part.
+    Compact language directive block consumed as the first content part.
     """
     lang = (language or "english").strip().lower()
     if lang == "arabic":
@@ -17,25 +17,27 @@ def build_language_block(language: str) -> str:
     )
 
 
-def summarize_available_layouts(layout_details: Dict[int, Dict]) -> Tuple[str, List[Tuple[str, int, str]]]:
+def summarize_available_layouts(layout_details: Dict[int, Dict]) -> Tuple[str, List[Tuple[str, int, str, int]]]:
     """
-    Build a one-line per layout description string and a typed list of available layout triples.
+    Build a one-line-per-layout description string and a typed list of available layout tuples:
     """
     if not layout_details:
         default = [
-            ("TITLE_ONLY", 0, "Title Slide"),
-            ("SINGLE_CONTENT", 1, "Title and Content"),
-            ("TWO_CONTENT", 3, "Two Content"),
+            ("TITLE_ONLY",     0, "Title Slide",         0),
+            ("SINGLE_CONTENT", 1, "Title and Content",   1),
+            ("TWO_CONTENT",    2, "Two Content",         2),
+            ("MULTI_CONTENT",  3, "Multi Content",       3),
         ]
-        text = "\n".join([f"- idx {idx}: {name} (type={lt})" for lt, idx, name in default])
+        text = "\n".join([f"- idx {idx}: {name} (type={lt}, content_slots={slots})" for lt, idx, name, slots in default])
         return text, default
 
-    avail: List[Tuple[str, int, str]] = []
+    avail: List[Tuple[str, int, str, int]] = []
     lines: List[str] = []
     for idx, det in layout_details.items():
         has_title = det.get("title_idx") is not None
         n = len(det.get("content_indices", []))
         name = det.get("name", f"Layout {idx}")
+        lt: Optional[str] = None
         if has_title and n == 0:
             lt = "TITLE_ONLY"
         elif has_title and n == 1:
@@ -44,99 +46,102 @@ def summarize_available_layouts(layout_details: Dict[int, Dict]) -> Tuple[str, L
             lt = "TWO_CONTENT"
         elif has_title and n >= 3:
             lt = "MULTI_CONTENT"
-        else:
+
+        if lt is None:
             continue
-        avail.append((lt, idx, name))
+
+        avail.append((lt, idx, name, n))
         lines.append(f"- idx {idx}: {name} (type={lt}, content_slots={n})")
+
     return "\n".join(lines), avail
 
 
-def preferred_layout_index(available_layouts: List[Tuple[str, int, str]], want_type: str, default_idx: int) -> int:
+def preferred_layout_index(available_layouts: List[Tuple[str, int, str, int]], want_type: str, default_idx: int) -> int:
     """
-    From the list of (type, idx, name) pick the first matching layout index of 'want_type'.
-    If not found, return default_idx.
+    From the list of (type, idx, name, slots) pick the first matching layout index of 'want_type'.
     """
-    for lt, idx, _ in available_layouts:
+    want_type = (want_type or "").upper()
+    for lt, idx, _, _ in available_layouts:
         if lt == want_type:
             return idx
     return default_idx
 
-system_prompts = """You are an expert technical proposal slide writer with data visualization skills for PowerPoint.
-Your output must be a STRICT JSON array of slide objects (no prose, no Markdown fences).
+def build_system_prompt(*, language: str, template_analysis_text: str, layout_details: Dict[int, Dict]) -> str:
+    """
+    Builds a strict system prompt that:
+      - Enforces “content arrays per layout” contract
+      - Defines CHART schema consistently (optional single caption array allowed)
+      - Ties layout_index to actual template indices
+    """
+    lang_block = build_language_block(language)
+    layout_text, available_layouts = summarize_available_layouts(layout_details)
 
-Rules:
+    title_idx  = preferred_layout_index(available_layouts, "TITLE_ONLY", 0)
+    single_idx = preferred_layout_index(available_layouts, "SINGLE_CONTENT", 1)
+    two_idx    = preferred_layout_index(available_layouts, "TWO_CONTENT", 2)
+    multi_idx  = preferred_layout_index(available_layouts, "MULTI_CONTENT", 3)
+
+    return f"""{lang_block}
+
+You are an expert technical proposal slide writer with data visualization skills for PowerPoint.
+Your output MUST be a STRICT JSON array of slide objects (no prose, no Markdown fences).
+
+SCOPE & RULES:
 1) Scope: Build a complete presentation deck aligned with the RFP and the Supporting (Company) document.
 2) Sources: Use only the provided RFP and Supporting files. Do NOT invent clients, partners, or certifications.
-3) Language: Follow the language directive provided separately (LANGUAGE_MODE block). Do not mix languages.
-4) Style: Slides must be concise and executive-friendly. Use short bullets (<= 15 words each).
-5) Data: Extract real numeric values (budgets, dates, KPIs, team sizes) from the files when available.
+3) Language: Follow the LANGUAGE_MODE above. Do not mix languages.
+4) Style: Slides must be concise and executive-friendly. Use short bullets (≤ 15 words each).
+5) Data: Extract real numeric values (budgets, dates, KPIs, team sizes) when available; otherwise infer realistic figures grounded in the documents.
 6) Charts: Place 2–3 chart slides in the middle of the deck using actual numbers from the documents.
 7) Output Format: Return ONLY valid JSON (array of slide objects). No extra text before or after the array.
 
-Slide JSON Schema (STRICT):
+TEMPLATE LAYOUTS (type + index + slots):
+{layout_text}
+
+CONTENT ARRAYS PER LAYOUT (CRITICAL CONTRACT):
+- "TITLE_ONLY": content MUST be [] (exactly zero arrays).
+- "SINGLE_CONTENT": content MUST be a SINGLE array of bullets, e.g. ["bullet 1","bullet 2"]. DO NOT return multiple arrays.
+- "TWO_CONTENT": content MUST be TWO arrays, e.g. [ ["left bullet 1",...], ["right bullet 1",...] ].
+- "MULTI_CONTENT": content MUST have EXACTLY the same number of arrays as the layout’s content placeholders in THIS template.
+- "CHART": you MAY include a single optional caption array in "content" (e.g., ["Key message 1","Key message 2"]); otherwise set "content": [].
+
+SLIDE JSON SCHEMA (STRICT):
 [
-  {
+  {{
     "layout_type": "TITLE_ONLY" | "SINGLE_CONTENT" | "TWO_CONTENT" | "MULTI_CONTENT" | "CHART",
-    "layout_index": <integer>,      // must match the provided template layout indices
+    "layout_index": <integer>,      // must match the template's indices above
     "title": "<string>",
-    "content": [                    // OMIT this field entirely for CHART slides
-      ["bullet 1", "bullet 2", "bullet 3"],   // slot 1 (string array)
-      ["bullet 1", "bullet 2"]                // slot 2 (if slide has another content placeholder)
-    ],
-    "chart": {                      // REQUIRED only for CHART slides
+    "content": [ <array(s) of bullet strings per content placeholder> ],
+    "chart": {{                      // REQUIRED only for CHART slides
       "chart_type": "bar" | "column" | "line" | "pie" | "scatter",
       "title": "<string>",
-      "data": {                     // EITHER single-series or multi-series (see examples below)
-        "labels": ["A", "B", "C"],
-        "values": [100, 200, 150]
-        // or
-        // "series": [{"name":"2023","values":[...]}, {"name":"2024","values":[...]}]
-      },
+      "data": {{
+        // EITHER single-series:
+        "labels": ["A","B","C"], "values": [100,200,150]
+        // OR multi-series:
+        // "labels": ["Q1","Q2","Q3","Q4"],
+        // "series": [{{"name":"2024","values":[...] }}, {{"name":"2025","values":[...] }}]
+      }},
       "x_label": "<string optional>",
       "y_label": "<string optional>"
-    }
-  },
+    }}
+  }},
   ...
 ]
 
-Chart Examples (STRICT):
-1) Single-series BAR:
-{
-  "chart_type": "bar",
-  "title": "Budget Allocation",
-  "data": {"labels": ["Personnel","Equipment","Travel"], "values": [450000, 120000, 30000]},
-  "x_label": "Category",
-  "y_label": "Amount (USD)"
-}
-
-2) Multi-series COLUMN:
-{
-  "chart_type": "column",
-  "title": "YoY Comparison",
-  "data": {
-    "labels": ["Q1","Q2","Q3","Q4"],
-    "series": [{"name":"2024","values":[100,140,170,210]},{"name":"2025","values":[120,160,190,230]}]
-  },
-  "x_label": "Quarter",
-  "y_label": "Revenue (k USD)"
-}
-
-3) LINE (Timeline):
-{
-  "chart_type": "line",
-  "title": "Project Timeline",
-  "data": {"labels": ["M1","M2","M3","M4","M5","M6"], "values": [10,25,45,65,85,100]},
-  "x_label": "Month",
-  "y_label": "Completion (%)"
-}
-
-Strict JSON Rules:
-- Output ONLY a JSON array: [ {...}, {...}, ... ]
+STRICT JSON RULES:
+- Output ONLY a JSON array: [ {{...}}, {{...}} ].
 - NO trailing commas, NO comments, NO code fences.
-- All string keys and values in double quotes.
-- All numeric values must be numbers (not strings).
-- "content" is required for non-CHART slides and must match the number of content placeholders in that layout.
-- "chart" must be present only for CHART slides and omitted for others.
+- All keys/strings in double quotes; numeric values as numbers (not strings).
+- "content" is REQUIRED for non-CHART slides and MUST match the target placeholder count (per layout_type and layout_index).
+- "chart" MUST be present ONLY for CHART slides and omitted for others.
+
+GUIDANCE FOR LAYOUT INDEX CHOICES:
+- Prefer: TITLE_ONLY → idx {title_idx}; SINGLE_CONTENT → idx {single_idx}; TWO_CONTENT → idx {two_idx}; MULTI_CONTENT → idx {multi_idx}.
+- If a recommended index does not exist, use the closest valid index of that layout_type from the list above.
+
+TEMPLATE ANALYSIS CONTEXT:
+{template_analysis_text}
 """
 
 def build_task_instructions_with_config(
@@ -145,55 +150,55 @@ def build_task_instructions_with_config(
     user_config_json: str,
     template_analysis_text: str,
     layout_details: Dict[int, Dict],
+    template_overview_for_order: Optional[List[Dict]] = None,
     user_config_notes: Optional[str] = None,
 ) -> str:
     """
-    Produces the task-instructions string tailored for our PPT JSON deck generation.
-    This is meant to be used in the 'task_instructions' slot of the OpenAI call.
-
-    Parameters:
-      - language: "english" or "arabic" (affects guidance text elsewhere via LANGUAGE_MODE)
-      - user_config_json: serialized JSON of user preferences / directives (string)
-      - template_analysis_text: human-readable analysis of the PPT template (from analyzer)
-      - layout_details: dict of layout info from analyzer (indices, title/content placeholders)
-      - user_config_notes: free-form notes string (optional)
+    Builds the task prompt
     """
     layout_text, available_layouts = summarize_available_layouts(layout_details)
-
     title_idx   = preferred_layout_index(available_layouts, "TITLE_ONLY", 0)
     single_idx  = preferred_layout_index(available_layouts, "SINGLE_CONTENT", 1)
-    two_idx     = preferred_layout_index(available_layouts, "TWO_CONTENT", 3)
-    multi_idx   = preferred_layout_index(available_layouts, "MULTI_CONTENT", 4)
+    two_idx     = preferred_layout_index(available_layouts, "TWO_CONTENT", 2)
+    multi_idx   = preferred_layout_index(available_layouts, "MULTI_CONTENT", 3)
+
+    order_block = ""
+    if template_overview_for_order:
+        order_lines = []
+        for d in template_overview_for_order:
+            hints = ", ".join(d.get("hints", [])[:2])
+            order_lines.append(f"- Slide {d.get('slide_index')}: {hints}")
+        order_block = "TEMPLATE HINTS (ordered):\n" + "\n".join(order_lines) + "\n"
 
     slide_plan = (
-        f"- Slide 1: TITLE_ONLY (layout_index={title_idx}) for the deck title\n"
-        f"- Slides 2–4: SINGLE_CONTENT or TWO_CONTENT (idx={single_idx}/{two_idx}) for intro, objectives, approach\n"
-        f"- Slides 5–7: 2–3 CHART slides (use SINGLE_CONTENT idx={single_idx} as base) with REAL numeric data\n"
+        f"- Slide 1: TITLE_ONLY (layout_index={title_idx}) → deck title\n"
+        f"- Slides 2–4: SINGLE_CONTENT or TWO_CONTENT (idx={single_idx}/{two_idx}) → intro, objectives, approach\n"
+        f"- Slides 5–7: 2–3 CHART slides (use indices that best fit charts) with REAL numeric data\n"
         f"- Slides 8–12: SINGLE_CONTENT/TWO_CONTENT/MULTI_CONTENT (idx={single_idx}/{two_idx}/{multi_idx}) "
-        f"for methodology, team, deliverables, risks, KPIs, compliance\n"
-        f"- Final slide: SINGLE_CONTENT (idx={single_idx}) with conclusion/contact"
+        f"→ methodology, team, deliverables, risks, KPIs, compliance\n"
+        f"- Final slide: SINGLE_CONTENT (idx={single_idx}) → conclusion/contact"
     )
 
-    notes_block = f'\nUserNotes: "{(user_config_notes or "").strip()}"\n'
+    notes_block = f'UserNotes: "{(user_config_notes or "").strip()}"\n' if user_config_notes else ""
 
     return (
         f"TARGET LANGUAGE: {language}\n"
-        f"\nTEMPLATE ANALYSIS (for your awareness):\n{template_analysis_text}\n"
-        f"\nAVAILABLE LAYOUTS (type + index):\n{layout_text}\n"
+        f"\n{order_block}"
+        f"AVAILABLE LAYOUTS (type + index):\n{layout_text}\n"
         f"\nUSER CONFIGURATION (JSON):\n{user_config_json or 'null'}\n"
         f"{notes_block}"
+        f"{template_analysis_text}"
         "\nOBJECTIVE:\n"
         "- Generate a complete presentation as a STRICT JSON array of slide objects (see System Prompt schema).\n"
-        "- Use ONLY information/figures derivable from the RFP and Supporting files.\n"
-        "- If an exact number is not available, infer a realistic figure from context; never output placeholders.\n"
-        "\nSLIDE PLAN (use appropriate layout_index values):\n"
+        "- Use ONLY information/figures derivable from the RFP and Supporting files. If an exact number is not available, infer a realistic figure from context (no placeholders).\n"
+        "\nSLIDE PLAN (choose appropriate layout_index values):\n"
         f"{slide_plan}\n"
         "\nCHART REQUIREMENTS:\n"
-        "- Include 2–3 chart slides in the middle of the deck (budget breakdown, timeline, resource mix, KPIs, or comparisons).\n"
-        "- Use 'bar'/'column' for comparisons and budgets; 'line' for timelines; 'pie' for distributions.\n"
-        "- Ensure all labels are strings and all values are numbers.\n"
-        "- Omit 'content' field on CHART slides (only 'chart' object is allowed).\n"
+        "- Include 2–3 chart slides in the middle of the deck (budget breakdown, timeline, resource mix, KPIs, comparisons).\n"
+        "- Use 'bar'/'column' for comparisons and budgets; 'line' for timelines; 'pie' for distributions; 'scatter' for correlations.\n"
+        "- Ensure labels are strings and values are numbers. If multi-series, include 'series'.\n"
+        "- For CHART slides, you MAY include a single optional caption array in 'content'; otherwise set it to [].\n"
         "\nSTRICT OUTPUT:\n"
         "- Return ONLY a JSON array of slides. No prose, no Markdown, no commentary.\n"
-        "- Respect the exact schema and JSON rules from the System Prompt.\n"
+        "- Obey the CONTENT ARRAYS PER LAYOUT contract (SINGLE_CONTENT → exactly ONE array; TWO_CONTENT → exactly TWO arrays; etc.).\n"
     )
