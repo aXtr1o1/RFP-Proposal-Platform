@@ -2,15 +2,13 @@ import os
 import json
 import logging
 from typing import Dict, Any, List, Optional, Iterator
-
 from openai import OpenAI
 from dotenv import load_dotenv
-
 from apps.api.services.supabase_service import (
     supabase,
-    save_generated_markdown
+    save_generated_markdown,
 )
-from apps.wordgenAgent.app.document import generate_word_and_pdf_from_markdown
+from apps.wordgenAgent.app.document import generate_word_from_markdown
 load_dotenv(override=True)
 logger = logging.getLogger("regen_prompt")
 
@@ -18,389 +16,262 @@ logger = logging.getLogger("regen_prompt")
 def _sse_event_raw(event: str, data: str) -> bytes:
     """
     Format an SSE frame with JSON-encoded data to preserve ALL characters exactly.
-    This ensures newlines, spaces, and special characters are preserved.
     """
     if data is None:
         data = ""
-    
-    # JSON-encode the data to preserve all special characters including newlines
     encoded_data = json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {encoded_data}\n\n".encode("utf-8")
 
 
 def _sse_event_json(event: str, obj: Dict[str, Any]) -> bytes:
-    """
-    SSE event for small JSON status/stage messages.
-    """
+    """SSE event for JSON messages."""
     return f"event: {event}\ndata: {json.dumps(obj, ensure_ascii=False)}\n\n".encode("utf-8")
 
+def _get_latest_markdown_excluding(uuid: str, exclude_gen_id: Optional[str]) -> str:
+    """
+    Get the most recent markdown for uuid, excluding the row with exclude_gen_id (the new regen row).
+    Falls back to latest if exclusion yields nothing.
+    """
+    try:
+        q = (
+            supabase.table("word_gen")
+            .select("generated_markdown, gen_id, created_at")
+            .eq("uuid", uuid)
+            .order("created_at", desc=True)
+        )
+        res = q.execute()
+        if not res.data:
+            raise ValueError("No rows for this uuid")
+
+        for row in res.data:
+            if exclude_gen_id and row.get("gen_id") == exclude_gen_id:
+                continue
+            md = (row.get("generated_markdown") or "").strip()
+            if md:
+                return md
+        return (res.data[0].get("generated_markdown") or "")
+    except Exception as e:
+        logger.exception(f"_get_latest_markdown_excluding failed for uuid={uuid}")
+        raise
+
+
+def _get_comments_for_uuid(uuid: str) -> List[Dict[str, str]]:
+    try:
+        res = supabase.table("proposal_comments").select("comments").eq("uuid", uuid).limit(1).execute()
+        if not res.data:
+            return []
+        items = res.data[0].get("comments") or []
+        valid = []
+        for it in items:
+            if isinstance(it, dict) and ("comment1" in it or "comment2" in it):
+                valid.append({"comment1": it.get("comment1", ""), "comment2": it.get("comment2", "")})
+        return valid
+    except Exception:
+        logger.exception("fetch comments failed")
+        return []
 
 class MarkdownModifier:
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)
-    
+
     def create_modification_instructions(self, items: List[Dict[str, str]]) -> str:
-        """Create clear instructions for content modifications"""
         if not items:
             return "No modifications requested."
-        
         instructions = "You must modify ONLY the following specific content pieces in the markdown:\n\n"
-        
         for i, item in enumerate(items, 1):
-            logger.info(f'Content, Comments: {item}')
             instructions += f"{i}. FIND THIS EXACT TEXT:\n"
-            instructions += f"{item.get('comment1')}"
-            instructions += f"\n\nMODIFICATION INSTRUCTION: {item.get('comment2')}\n\n"
-            instructions += "---\n\n"
-        
-        instructions += """
-                        IMPORTANT RULES:
-                        1. Locate each `selected_content` in the markdown **exactly as provided**.
-                        2. Apply **only** the modifications specified in the corresponding comment.
-                        3. Keep all other content in the markdown **unchanged**.
-                        4. Maintain the original **markdown structure** (headers, lists, tables, formatting).
-                        5. Ensure the modified content integrates **seamlessly** into the original context.
-                        6. Do **not** add any new information, context, or assumptions.
-                        7. Do **not** paraphrase or reword untouched sections; keep them **identical**.
-                        8. Modify text **only** where an explicit instruction is provided.
-                        9. Preserve markdown formatting: `#`, `##`, `###`, `**bold**`, lists (`-`, `1.`), tables (`|`).
-                        10. Return ONLY the complete updated markdown — no JSON, no commentary, no extra text.
-                        11. Maintain proper spacing and line breaks between sections.
-                        """
+            instructions += f"{item.get('comment1','')}"
+            instructions += f"\n\nMODIFICATION INSTRUCTION: {item.get('comment2','')}\n\n---\n\n"
+        instructions += (
+            "IMPORTANT RULES:\n"
+            "1. Modify only the specified spots.\n"
+            "2. Keep all other content unchanged.\n"
+            "3. Preserve markdown structure and formatting.\n"
+            "4. Return ONLY the full updated markdown (no JSON, no commentary).\n"
+        )
         return instructions
-    
+
     def process_markdown(self, markdown: str, items: List[Dict[str, str]], language: str) -> str:
         logger.info("Starting OpenAI markdown regeneration")
-
         modification_instructions = self.create_modification_instructions(items)
-        
-        # System prompt
-        system_prompt = f"""You are an expert in technical and development proposal writing.
 
-                        You will receive:
-                        1. The full markdown content of a proposal
-                        2. Specific content pieces that need modification with their modification instructions
+        system_prompt = (
+            "You are an expert in proposal writing and precise markdown editing.\n"
+            f"Generate output only in this language: {language}.\n"
+            "Return ONLY the updated markdown — no JSON or explanations."
+        )
 
-                        Your task:
-                        1. Analyze and understand the entire markdown content
-                        2. Find each specified content piece in the markdown
-                        3. Apply ONLY the requested modifications to those specific pieces
-                        4. Keep everything else exactly the same
-                        5. Maintain all markdown formatting (headers, lists, tables, bold, etc.)
-                        6. Generate output only in this language: {language}
-                        7. Maintain correct spacing between words
-                        8. Return ONLY the complete updated markdown — no JSON, no explanations, no wrappers
+        user_prompt = (
+            f"ORIGINAL MARKDOWN:\n{markdown}\n\n"
+            f"MODIFICATION INSTRUCTIONS:\n{modification_instructions}\n\n"
+            "Process and return the full updated markdown."
+        )
 
-                        CRITICAL: Your output must be pure GitHub-flavored markdown that can be rendered directly."""
-        
-        # user prompt
-        user_prompt = f"""
-                        ORIGINAL MARKDOWN:
-                        {markdown}
+        response = self.client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+        )
+        content = response.choices[0].message.content or ""
+        if not content.strip():
+            raise ValueError("Empty response from OpenAI")
+        return content
 
-                        MODIFICATION INSTRUCTIONS:
-                        {modification_instructions}
-
-                        Process this markdown and return the complete updated version with only the specified modifications applied.
-                        Return ONLY the updated markdown — no JSON, no commentary, no code blocks.
-                        """
-
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3
-            )
-            
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Empty response from OpenAI")
-            
-            logger.info(f"Markdown regenerated successfully, length: {len(content)} chars")
-            return content
-            
-        except Exception as e: 
-            logger.exception("Error processing with OpenAI")
-            raise Exception(f"Error processing with OpenAI: {str(e)}")
-    
     def process_markdown_streaming(self, markdown: str, items: List[Dict[str, str]], language: str) -> Iterator[bytes]:
-        """Streaming version of process_markdown using chat completions with streaming"""
         logger.info("Starting OpenAI markdown regeneration with streaming")
-
         modification_instructions = self.create_modification_instructions(items)
-        
-        # System prompt
-        system_prompt = f"""You are an expert in technical and development proposal writing.
 
-                        You will receive:
-                        1. The full markdown content of a proposal
-                        2. Specific content pieces that need modification with their modification instructions
+        system_prompt = (
+            "You are an expert in proposal writing and precise markdown editing.\n"
+            f"Generate output only in this language: {language}.\n"
+            "Return ONLY the updated markdown — no JSON or explanations."
+        )
+        user_prompt = (
+            f"ORIGINAL MARKDOWN:\n{markdown}\n\n"
+            f"MODIFICATION INSTRUCTIONS:\n{modification_instructions}\n\n"
+            "Process and return the full updated markdown."
+        )
 
-                        Your task:
-                        1. Analyze and understand the entire markdown content
-                        2. Find each specified content piece in the markdown
-                        3. Apply ONLY the requested modifications to those specific pieces
-                        4. Keep everything else exactly the same
-                        5. Maintain all markdown formatting (headers, lists, tables, bold, etc.)
-                        6. Generate output only in this language: {language}
-                        7. Maintain correct spacing between words
-                        8. Return ONLY the complete updated markdown — no JSON, no explanations, no wrappers
+        response = self.client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            stream=True,
+        )
 
-                        CRITICAL: Your output must be pure GitHub-flavored markdown that can be rendered directly."""
-        
-        # user prompt
-        user_prompt = f"""
-                        ORIGINAL MARKDOWN:
-                        {markdown}
+        buffer_chunks: List[str] = []
+        for chunk in response:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content is not None:
+                content = chunk.choices[0].delta.content
+                buffer_chunks.append(content)
+                yield _sse_event_raw("chunk", content)
 
-                        MODIFICATION INSTRUCTIONS:
-                        {modification_instructions}
-
-                        Process this markdown and return the complete updated version with only the specified modifications applied.
-                        Return ONLY the updated markdown — no JSON, no commentary, no code blocks.
-                        """
-
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.3,
-                stream=True
-            )
-            
-            buffer_chunks: List[str] = []
-            
-            for chunk in response:
-                if chunk.choices[0].delta.content is not None:
-                    content = chunk.choices[0].delta.content
-                    buffer_chunks.append(content)
-                    yield _sse_event_raw("chunk", content)
-            
-            full_markdown = "".join(buffer_chunks)
-            logger.info(f"Markdown regenerated successfully with streaming, length: {len(full_markdown)} chars")
-            
-            # Send completion event
-            yield _sse_event_json("stage", {"stage": "saving_generated_text"})
-            
-        except Exception as e: 
-            logger.exception("Error processing with OpenAI streaming")
-            yield _sse_event_json("error", {"message": f"Error processing with OpenAI: {str(e)}"})
-            return
-
-
-def get_generated_markdown_from_data_table(uuid: str) -> str:
-    try:
-        logger.info(f"Fetching Generated_Markdown from Data_Table for uuid={uuid}")
-        
-        res = supabase.table("Data_Table").select("Generated_Markdown").eq("uuid", uuid).maybe_single().execute()
-        
-        if not res.data:
-            raise ValueError(f"No record found in Data_Table for uuid={uuid}")
-        
-        markdown = res.data.get("Generated_Markdown", "")
-        
-        if not markdown:
-            raise ValueError(f"Generated_Markdown is empty for uuid={uuid}")
-        
-        logger.info(f"Successfully fetched markdown for uuid={uuid}, length: {len(markdown)} chars")
-        return markdown
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch Generated_Markdown for uuid={uuid}: {e}")
-        raise
-
-
-def get_comments_for_uuid(uuid: str) -> List[Dict[str, str]]:
-    try:
-        logger.info(f"Fetching comments for uuid={uuid}")
-        res = supabase.table("proposal_comments").select("comments").eq("uuid", uuid).execute()
-        logger.info("List:", res.data)
-        items = res.data[0].get('comments') if res.data else []
-    
-        
-        logger.info(f"Returning {len(items)} valid comments for uuid={uuid}")
-        return items
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch comments for uuid={uuid}: {e}")
-        return []
-
+        full_markdown = "".join(buffer_chunks)
+        logger.info(f"Streaming regen completed, length: {len(full_markdown)} chars")
+        yield _sse_event_json("stage", {"stage": "saving_generated_text"})
+        yield _sse_event_json("result", {"markdown": full_markdown})
 
 def regenerate_markdown_with_comments(
     uuid: str,
-    docConfig: Dict[str,any],
+    source_markdown: str,
+    gen_id: str,
+    docConfig: Dict[str, Any],
     language: str = "english",
- 
-    
+    comments: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
+    """
+    Regenerate markdown from a given source_markdown using user comments.
+    """
     try:
-        logger.info(f"Fetching existing markdown for uuid={uuid}")
-        original_markdown = get_generated_markdown_from_data_table(uuid)
-        
-        logger.info(f"Original markdown length: {len(original_markdown)} chars")
-    
-        comments = get_comments_for_uuid(uuid)
-        logger.info(f"Comments from supabase:{comments}")
+        logger.info(f"[regen] Starting regeneration for uuid={uuid}, new_gen_id={gen_id}")
 
+        if not source_markdown:
+            raise ValueError("Empty source markdown — cannot regenerate")
+
+        comments = comments or []
         if not comments:
-            logger.warning(f"No valid comments found for uuid={uuid}, returning original markdown")
-            return {
-                "status": "success",
-                "uuid": uuid,
-                "updated_markdown": original_markdown,
-                "modifications_applied": 0,
-                "message": "No modifications to apply"
-            }
-        
-        logger.info(f"Processing {len(comments)} modifications")
-    
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("Missing OPENAI_API_KEY in environment variables")
-        
-        modifier = MarkdownModifier(api_key)
-        updated_markdown = modifier.process_markdown(
-            markdown=original_markdown,
-            items=comments,
-            language=language
-        )
-        
-        logger.info(f"Updated markdown length: {len(updated_markdown)} chars")
-        
-        logger.info(f"Saving updated markdown to Data_Table for uuid={uuid}")
-        saved = save_generated_markdown(uuid, updated_markdown)
+            logger.warning("No comments provided, reusing original markdown")
+            updated_markdown = source_markdown
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("Missing OPENAI_API_KEY")
+
+            modifier = MarkdownModifier(api_key)
+            updated_markdown = modifier.process_markdown(
+                markdown=source_markdown,
+                items=comments,
+                language=language,
+            )
+        saved = save_generated_markdown(uuid, gen_id, updated_markdown)
         if not saved:
-            raise Exception("Failed to save updated markdown to Supabase")
-        
-        logger.info(f"Successfully saved updated markdown for uuid={uuid}")
-        urls = generate_word_and_pdf_from_markdown(
+            raise RuntimeError(f"Failed to save regenerated markdown for gen_id={gen_id}")
+        urls = generate_word_from_markdown(
             uuid=uuid,
+            gen_id=gen_id,
             markdown=updated_markdown,
             doc_config=docConfig,
-            language=(language or "english").lower()
+            language=language.lower(),
         )
+
+        logger.info(f"[regen] Completed regeneration for uuid={uuid}, gen_id={gen_id}")
         return {
             "status": "success",
             "uuid": uuid,
-            "updated_markdown": updated_markdown,
-            "modifications_applied": len(comments),
+            "gen_id": gen_id,
             "language": language,
-            "wordLink":urls['proposal_word_url'],
-            "pdfLink":urls['proposal_pdf_url']
+            "wordLink": urls.get("proposal_word_url"),
         }
-    
-    except Exception as e:
-        logger.exception(f"Markdown regeneration failed for uuid={uuid}")
-        raise
 
+    except Exception as e:
+        logger.exception(f"[regen] Failed regeneration for uuid={uuid}, gen_id={gen_id}")
+        raise
 
 def regenerate_markdown_with_comments_streaming(
     uuid: str,
+    gen_id: str,
     docConfig: Dict[str, Any],
     language: str = "english",
 ) -> Iterator[bytes]:
-    """Streaming version of regenerate_markdown_with_comments"""
+    """
+    Streaming regeneration
+    """
     try:
-        logger.info(f"Starting streaming markdown regeneration for uuid={uuid}")
-        
-        # Send initial stage
         yield _sse_event_json("stage", {"stage": "fetching_original_markdown"})
-        
-        # Fetch existing markdown
-        original_markdown = get_generated_markdown_from_data_table(uuid)
-        logger.info(f"Original markdown length: {len(original_markdown)} chars")
-        
-        # Send stage for fetching comments
-        yield _sse_event_json("stage", {"stage": "fetching_comments"})
-        
-        # Get comments
-        comments = get_comments_for_uuid(uuid)
-        logger.info(f"Comments from supabase: {comments}")
+        original_markdown = _get_latest_markdown_excluding(uuid, exclude_gen_id=gen_id)
 
-        if not comments:
-            logger.warning(f"No valid comments found for uuid={uuid}, returning original markdown")
-            yield _sse_event_json("stage", {"stage": "no_modifications_needed"})
-            yield _sse_event_json("done", {
-                "status": "completed",
-                "updated_markdown": original_markdown,
-                "modifications_applied": 0,
-                "message": "No modifications to apply"
-            })
-            return
-        
-        logger.info(f"Processing {len(comments)} modifications")
-        
-        # Send stage for AI processing
-        yield _sse_event_json("stage", {"stage": "processing_with_ai"})
-        
-        # Get API key and create modifier
+        yield _sse_event_json("stage", {"stage": "fetching_comments"})
+        comments = _get_comments_for_uuid(uuid)
+
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("Missing OPENAI_API_KEY in environment variables")
-        
+            raise ValueError("Missing OPENAI_API_KEY")
         modifier = MarkdownModifier(api_key)
-        
-        # Stream the markdown processing
+
         buffer_chunks: List[str] = []
-        for chunk in modifier.process_markdown_streaming(
-            markdown=original_markdown,
-            items=comments,
-            language=language
-        ):
-            # If it's a chunk event, collect the content
+        yield _sse_event_json("stage", {"stage": "processing_with_ai"})
+        for chunk in modifier.process_markdown_streaming(original_markdown, comments, language):
             if b"event: chunk" in chunk:
-                # Extract the data part and decode it
-                chunk_str = chunk.decode("utf-8")
-                lines = chunk_str.split("\n")
-                for line in lines:
-                    if line.startswith("data: "):
-                        try:
-                            data = json.loads(line[6:])  # Remove "data: " prefix
+                try:
+                    txt = chunk.decode("utf-8")
+                    for line in txt.split("\n"):
+                        if line.startswith("data: "):
+                            data = json.loads(line[6:])
                             buffer_chunks.append(data)
-                        except json.JSONDecodeError:
-                            pass
-            
+                except Exception:
+                    pass
             yield chunk
-        
-        # Combine all chunks to get the full markdown
-        full_markdown = "".join(buffer_chunks)
-        logger.info(f"Updated markdown length: {len(full_markdown)} chars")
-        
-        # Save the updated markdown
-        logger.info(f"Saving updated markdown to Data_Table for uuid={uuid}")
-        saved = save_generated_markdown(uuid, full_markdown)
+
+        full_markdown = "".join(buffer_chunks) if buffer_chunks else original_markdown
+        yield _sse_event_json("stage", {"stage": "saving_markdown"})
+        saved = save_generated_markdown(uuid, gen_id, full_markdown)
         if not saved:
-            raise Exception("Failed to save updated markdown to Supabase")
-        
-        logger.info(f"Successfully saved updated markdown for uuid={uuid}")
-        
-        # Generate Word and PDF documents
-        yield _sse_event_json("stage", {"stage": "generating_documents"})
-        
-        urls = generate_word_and_pdf_from_markdown(
+            raise RuntimeError("Failed to save updated markdown")
+
+        yield _sse_event_json("stage", {"stage": "generating_word"})
+        word_res = generate_word_from_markdown(
             uuid=uuid,
+            gen_id=gen_id,
             markdown=full_markdown,
             doc_config=docConfig,
-            language=(language or "english").lower()
+            language=(language or "english").lower(),
         )
-        
-        # Send completion event
+
         yield _sse_event_json("done", {
             "status": "completed",
             "uuid": uuid,
+            "gen_id": gen_id,
             "updated_markdown": full_markdown,
-            "modifications_applied": len(comments),
+            "wordLink": word_res.get("proposal_word_url", ""),
             "language": language,
-            "wordLink": urls['proposal_word_url'],
-            "pdfLink": urls['proposal_pdf_url']
         })
-    
+
     except Exception as e:
-        logger.exception(f"Streaming markdown regeneration failed for uuid={uuid}")
+        logger.exception("Streaming markdown regeneration failed")
         yield _sse_event_json("error", {"message": str(e)})
