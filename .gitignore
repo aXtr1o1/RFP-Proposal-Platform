@@ -99,3 +99,6 @@ Thumbs.db
 *.sqlite3
 __pycache__/
 *.db
+.env
+.env.*
+*.env
