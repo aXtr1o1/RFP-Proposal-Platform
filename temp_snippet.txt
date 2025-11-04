@@ -1,0 +1,116 @@
+          className={`fixed top-6 left-6 z-50 flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-full border transition-all duration-200 ${
+            isHistoryOpen
+              ? 'bg-gray-900 text-white border-gray-900 shadow-lg'
+              : 'bg-white/90 text-gray-700 border-gray-200 shadow-sm hover:shadow'
+          }`}
+          disabled={supabaseEnvMissing || (historyLoading && sortedUseCases.length === 0)}
+        >
+          <Menu size={16} />
+          <span>
+            {supabaseEnvMissing
+              ? 'Configure Supabase'
+              : historyLoading
+                ? 'Loading versions...'
+                : 'Versions'}
+          </span>
+          {isHistoryOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+
+        {isHistoryOpen && (
+          <div className="fixed inset-0 z-40 flex">
+            <aside className="w-80 max-w-full bg-white border-r border-gray-200 shadow-2xl flex flex-col pointer-events-auto overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                  <Database size={16} />
+                  Version History
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="px-5 py-3 border-b border-gray-100 text-[11px] text-gray-500">
+                {historyError
+                  ? historyError
+                  : sortedUseCases.length === 0
+                    ? 'No versions found yet. Generate a proposal to start tracking history.'
+                    : 'Select a use case to view and load any saved generation or regeneration.'}
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {historyLoading && sortedUseCases.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-xs text-gray-500 gap-2">
+                    <Loader className="animate-spin" size={14} />
+                    Loading history...
+                  </div>
+                ) : (
+                  sortedUseCases.map((useCase) => {
+                    const isExpanded = expandedUseCases[useCase.uuid] ?? (selectedUseCase === useCase.uuid);
+                    return (
+                      <div key={useCase.uuid} className="border-b border-gray-100">
+                        <button
+                          type="button"
+                          onClick={() => toggleUseCaseExpansion(useCase.uuid)}
+                          className="w-full px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="pr-4">
+                            <p className="text-sm font-medium text-gray-800 truncate">
+                              {useCase.label}
+                            </p>
+                            <p className="text-[11px] text-gray-500">
+                              {useCase.items.length} version{useCase.items.length === 1 ? '' : 's'}
+                            </p>
+                          </div>
+                          {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                        </button>
+
+                        {isExpanded && (
+                          <ul className="bg-gray-50 border-t border-gray-100">
+                            {useCase.items.map((item) => {
+                              const isActive = selectedGenId === item.gen_id;
+                              const label = getGenerationLabel(item);
+                              return (
+                                <li key={item.gen_id} className="border-b border-gray-100 last:border-b-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSelectHistoryItem(item)}
+                                    className={`w-full px-5 py-3 text-left text-xs transition-colors ${
+                                      isActive
+                                        ? 'bg-white text-blue-600 border-l-2 border-blue-500 font-semibold'
+                                        : 'hover:bg-white text-gray-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="truncate">{label}</span>
+                                      <span className="flex-shrink-0 text-[10px] text-gray-400">
+                                        {new Date(item.created_at).toLocaleDateString()}
+                                      </span>
+                                    </div>
+                                    {item.regenComments.length > 0 && (
+                                      <p className="mt-1 text-[10px] text-gray-500 truncate">
+                                        {item.regenComments[0].comment2 || item.regenComments[0].comment1}
+                                      </p>
+                                    )}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </aside>
+            <div
+              className="flex-1 bg-black/30"
+              onClick={() => setIsHistoryOpen(false)}
+            />
+          </div>
+        )}
+
