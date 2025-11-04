@@ -42,7 +42,12 @@ def parse_markdown_to_json(markdown: str, language: str = "english") -> Dict[str
     if not markdown or not markdown.strip():
         default_title = "Generated Proposal" if language.lower() != "arabic" else "عرض مُنشأ"
         return {"title": default_title, "sections": []}
-
+    
+    markdown = re.sub(r'```[\w]*\n', '', markdown)
+    markdown = re.sub(r'```', '', markdown)
+    markdown = re.sub(r'``', '', markdown)
+    markdown = re.sub(r'`', '', markdown)
+    
     lines = markdown.split("\n")
     title = ""
     sections: List[Dict[str, Any]] = []
