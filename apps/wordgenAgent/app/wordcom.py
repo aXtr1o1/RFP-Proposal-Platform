@@ -148,15 +148,21 @@ def _set_table_width_pct(table, pct: int) -> None:
     """Set table width as percentage using oxml (w:tblW type='pct')."""
     pct = max(1, min(100, int(pct or 100)))
     tblPr = table._tbl.tblPr
-    tblW = tblPr.tblW if tblPr.tblW is not None else OxmlElement('w:tblW')
+    tblW = tblPr.find(qn('w:tblW'))
+    if tblW is None:
+        tblW = OxmlElement('w:tblW')
+        tblPr.append(tblW)
     tblW.set(qn('w:type'), 'pct')
-    tblW.set(qn('w:w'), str(pct * 50))  
-    tblPr.append(tblW)
+    tblW.set(qn('w:w'), str(pct * 50))
 
 def _set_table_borders(table, color_bgr: int, line_style: int, line_width: int, visible: bool) -> None:
     """Apply borders to a table via oxml."""
     tblPr = table._tbl.tblPr
-    borders = tblPr.tblBorders if tblPr.tblBorders is not None else OxmlElement('w:tblBorders')
+    borders = tblPr.find(qn('w:tblBorders'))
+    if borders is None:
+        borders = OxmlElement('w:tblBorders')
+        tblPr.append(borders)
+    
     if not visible:
         for side in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
             el = borders.find(qn(f"w:{side}"))
@@ -164,7 +170,6 @@ def _set_table_borders(table, color_bgr: int, line_style: int, line_width: int, 
                 el = OxmlElement(f"w:{side}")
                 borders.append(el)
             el.set(qn('w:val'), 'nil')
-        tblPr.append(borders)
         return
 
     color_hex = _bgr_int_to_hex(color_bgr) or "000000"
@@ -186,8 +191,6 @@ def _set_table_borders(table, color_bgr: int, line_style: int, line_width: int, 
         el.set(qn('w:sz'), size)
         el.set(qn('w:space'), "0")
         el.set(qn('w:color'), color_hex)
-
-    tblPr.append(borders)
 
 def _shade_cell(cell, fill_hex: Optional[str]) -> None:
     if not fill_hex:

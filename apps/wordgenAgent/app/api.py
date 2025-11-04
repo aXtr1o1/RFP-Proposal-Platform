@@ -72,30 +72,37 @@ class WordGenAPI:
 
     def _download_pdf(self, url: str) -> bytes:
         cleaned_url = self._clean_url(url)
-        logger.info(f"Downloading file: {cleaned_url}")
+        logger.info(f"Starting download of PDF: {cleaned_url}")
         response = requests.get(cleaned_url, timeout=60)
         response.raise_for_status()
+        logger.info(f"Finished download of PDF: {cleaned_url} ({len(response.content)} bytes)")
         return response.content
 
     def _download_two_pdfs(self, rfp_url: str, supporting_url: str) -> Tuple[bytes, bytes]:
+        logger.info("Beginning parallel download of two PDFs")
         with ThreadPoolExecutor() as executor:
             future_rfp = executor.submit(self._download_pdf, rfp_url)
             future_sup = executor.submit(self._download_pdf, supporting_url)
             rfp_bytes = future_rfp.result()
             sup_bytes = future_sup.result()
+        logger.info("Completed parallel download of two PDFs")
         return rfp_bytes, sup_bytes
 
     def _upload_pdf_bytes_to_openai(self, pdf_bytes: bytes, filename: str) -> str:
+        logger.info(f"Uploading {filename} to OpenAI")
         file_obj = self.client.files.create(file=(filename, pdf_bytes, "application/pdf"), purpose="user_data")
+        logger.info(f"Uploaded {filename} as file ID: {file_obj.id}")
         return file_obj.id
 
     def _upload_pdf_urls_to_openai(self, rfp_url: str, supporting_url: str) -> Tuple[str, str]:
         rfp_bytes, sup_bytes = self._download_two_pdfs(rfp_url, supporting_url)
+        logger.info("Beginning parallel upload of two PDFs to OpenAI")
         with ThreadPoolExecutor() as executor:
             future_rfp = executor.submit(self._upload_pdf_bytes_to_openai, rfp_bytes, "RFP.pdf")
             future_sup = executor.submit(self._upload_pdf_bytes_to_openai, sup_bytes, "Supporting.pdf")
             rfpf_id = future_rfp.result()
             supf_id = future_sup.result()
+        logger.info(f"Completed parallel upload of PDFs with IDs: rfp={rfpf_id}, supporting={supf_id}")
         return rfpf_id, supf_id
 
     def generate_complete_proposal(
@@ -130,6 +137,7 @@ class WordGenAPI:
             task_instructions = f"\nIMPORTANT: The proposal must follow this structure:\n{additive_block}"
             yield _sse_event_json("stage", {"stage": "prompting_model"})
 
+            logger.info("Calling OpenAI Responses API…")
             response = self.client.responses.create(
                 model=P.MODEL,
                 max_output_tokens=18000,
