@@ -9,11 +9,13 @@ pillow==10.4.0
 pytesseract==0.3.13
 openai==1.109.1
 tenacity==8.4.2
-pywin32==306
-docx2pdf==0.1.8
-PyPDF2==3.0.1
+
 typing-extensions==4.12.2
 colorlog==6.8.2
 pytest==8.3.3
 supabase==1.0.3
-httpx==0.24.1
+httpx==0.23.3
+
+# --- Added for python-docx implementation ---
+python-docx==1.1.2
+lxml==5.2.1
