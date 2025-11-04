@@ -297,7 +297,7 @@ def _apply_header_footer(doc: Document, cfg: dict, rtl: bool) -> None:
     if cfg.get("enable_header"):
         header = section.header
         header.is_linked_to_previous = False
-        tbl = header.add_table(rows=1, cols=2)
+        tbl = header.add_table(rows=1, cols=2, width=section.page_width)
         tbl.autofit = True
 
         logo_path = (cfg.get("header_logo_path") or "").strip()
@@ -325,10 +325,11 @@ def _apply_header_footer(doc: Document, cfg: dict, rtl: bool) -> None:
             r2.font.size = Pt(cfg.get("font_size", 11))
         p.alignment = _map_align(cfg.get("default_alignment", 0))
         _set_paragraph_bidi(p, rtl)
+        
     if cfg.get("enable_footer"):
         footer = section.footer
         footer.is_linked_to_previous = False
-        tbl = footer.add_table(rows=1, cols=3)
+        tbl = footer.add_table(rows=1, cols=3, width=section.page_width)
         tbl.autofit = True
 
         left = (cfg.get("footer_left_text") or "").strip()
@@ -351,7 +352,6 @@ def _apply_header_footer(doc: Document, cfg: dict, rtl: bool) -> None:
             p.add_run(right)
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         _set_paragraph_bidi(p, rtl)
-
 
 def build_word_from_proposal(proposal_dict, user_config, output_path, language, visible=False):
     """
