@@ -1,41 +1,40 @@
 name: Deploy Frontend (Next.js)
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [ master ]
-    paths:
-      - 'apps/frontend/**'
+workflow_dispatch:
+push:
+branches: [ master ]
+paths:
+- 'apps/frontend/**'
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
+build-and-deploy:
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+steps:
+  - name: Checkout code
+    uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+  - name: Setup Node
+    uses: actions/setup-node@v4
+    with:
+      node-version: '22'
 
-      - name: Install dependencies
-        working-directory: apps/frontend
-        run: npm ci
+  - name: Install dependencies
+    working-directory: apps/frontend
+    run: npm ci
 
-      - name: Build Next.js app
-        working-directory: apps/frontend
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npm run build
+  - name: Build Next.js app
+    working-directory: apps/frontend
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    run: npm run build
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'rfp-proposal-frontend'
-          publish-profile: ${{ secrets.AZURE_FRONTEND_PUBLISH_PROFILE }}
-          package: './out'
-
+  - name: Deploy to Azure Web App
+    uses: azure/webapps-deploy@v3
+    with:
+      app-name: 'rfp-proposal-frontend'
+      publish-profile: ${{ secrets.AZURE_FRONTEND_PUBLISH_PROFILE }}
+      package: './out'
