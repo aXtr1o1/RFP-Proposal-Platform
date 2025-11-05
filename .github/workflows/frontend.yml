@@ -43,26 +43,26 @@ jobs:
         run: |
           set -euo pipefail
           RG_NAME=$(python - <<'PY'
-import os
-import xml.etree.ElementTree as ET
+          import os
+          import xml.etree.ElementTree as ET
 
-xml_data = os.environ["PUBLISH_PROFILE"]
-root = ET.fromstring(xml_data)
-for profile in root.findall(".//publishProfile"):
-    if profile.attrib.get("publishMethod") == "MSDeploy":
-        print(profile.attrib["resourceGroup"])
-        break
-else:
-    raise SystemExit("Resource group not found in publish profile")
-PY
-          )
-          echo "Configuring app service in resource group: $RG_NAME"
-          az webapp config appsettings set --resource-group "$RG_NAME" --name "rfp-proposal-frontend" --settings WEBSITE_NODE_DEFAULT_VERSION=22
-        shell: bash
+          xml_data = os.environ["PUBLISH_PROFILE"]
+          root = ET.fromstring(xml_data)
+          for profile in root.findall(".//publishProfile"):
+              if profile.attrib.get("publishMethod") == "MSDeploy":
+                  print(profile.attrib["resourceGroup"])
+                  break
+          else:
+              raise SystemExit("Resource group not found in publish profile")
+          PY
+                    )
+                    echo "Configuring app service in resource group: $RG_NAME"
+                    az webapp config appsettings set --resource-group "$RG_NAME" --name "rfp-proposal-frontend" --settings WEBSITE_NODE_DEFAULT_VERSION=22
+                  shell: bash
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'rfp-proposal-frontend'
-          publish-profile: ${{ secrets.AZURE_FRONTEND_PUBLISH_PROFILE }}
-          package: './out'
+                - name: Deploy to Azure Web App
+                  uses: azure/webapps-deploy@v3
+                  with:
+                    app-name: 'rfp-proposal-frontend'
+                    publish-profile: ${{ secrets.AZURE_FRONTEND_PUBLISH_PROFILE }}
+                    package: './out'
