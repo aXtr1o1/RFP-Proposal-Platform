@@ -69,7 +69,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: apps/frontend
-        run: npm ci
+        run: npm ci --include=optional
+
+      - name: Rebuild native bindings
+        working-directory: apps/frontend
+        run: npm rebuild @tailwindcss/oxide lightningcss --force || true
 
       - name: Build frontend
         working-directory: apps/frontend
