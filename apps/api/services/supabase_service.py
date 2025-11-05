@@ -1,6 +1,7 @@
 import os
+import json
 import logging
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 from supabase import create_client, Client
 from dotenv import load_dotenv, find_dotenv
 import uuid as uuid_lib
@@ -274,7 +275,9 @@ def upload_word_and_update_table(
     word_content: bytes,
     filename: str,
     generated_markdown: Optional[str] = None,
-    general_preference: Optional[str] = None
+    general_preference: Optional[str] = None,
+    doc_config: Optional[Dict[str, Any]] = None,
+    language: Optional[str] = None,
 ) -> Optional[Dict[str, str]]:
     """
     Upload Word to storage and update word_gen row
@@ -297,7 +300,13 @@ def upload_word_and_update_table(
         )
         logger.info(f"Uploaded Word: {word_url}")
 
-        payload = {"proposal": word_url}
+        proposal_payload: Dict[str, Any] = {"wordLink": word_url}
+        if language:
+            proposal_payload["language"] = language
+        if doc_config:
+            proposal_payload["docConfig"] = doc_config
+
+        payload = {"proposal": json.dumps(proposal_payload, ensure_ascii=False)}
         if generated_markdown is not None:
             payload["generated_markdown"] = generated_markdown
         if general_preference is not None:

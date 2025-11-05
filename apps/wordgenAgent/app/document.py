@@ -193,6 +193,8 @@ def generate_word_from_markdown(
                 word_content=word_bytes,
                 filename="proposal.docx",
                 generated_markdown=markdown,  
+                doc_config=doc_config if isinstance(doc_config, dict) else None,
+                language=language,
             )
             if res and "word_url" in res:
                 proposal_word_url = res["word_url"]
