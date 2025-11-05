@@ -37,4 +37,5 @@ jobs:
         with:
           app-name: 'rfp-proposal-frontend'
           publish-profile: ${{ secrets.AZURE_FRONTEND_PUBLISH_PROFILE }}
-          package: apps/frontend
+          package: apps/frontend/.next
+
