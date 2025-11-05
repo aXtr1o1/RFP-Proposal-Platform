@@ -5,7 +5,7 @@
   "scripts": {
   "dev": "next dev",
   "build": "next build",
-  "start": "next start -p 8000"
+  "start": "next start -p 8080"
 },
   "dependencies": {
     "@azure/msal-browser": "^4.22.1",
