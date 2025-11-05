@@ -1,6 +1,7 @@
 name: Deploy Frontend (Next.js)
 
 on:
+  workflow_dispatch:
   push:
     branches: [ master ]
     paths:
