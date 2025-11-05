@@ -30,6 +30,10 @@ type OutputProps = {
   isRegenerating: boolean;
   isRegenerationComplete: boolean;
   docConfig?: any;
+  onPdfDownload: () => void;
+  isPdfConverting: boolean;
+  pdfError: string | null;
+  wordDownloadName: string;
 };
 
 type CommentItem = {
@@ -63,6 +67,7 @@ type WordGenRow = {
   generated_markdown: string | null;
   regen_comments: string | null;
   delete_at?: string | null;
+  general_preference?: string | null;
 };
 
 type ParsedWordGenRecord = WordGenRow & {
@@ -144,6 +149,29 @@ const normalizeStoredFileList = (raw: string | null): StoredFileInfo[] => {
   return single ? [single] : [];
 };
 
+const formatNameForSidebar = (input: string | null | undefined, maxLength = 40): string => {
+  const name = (input || "").trim();
+  if (!name) {
+    return "";
+  }
+
+  if (name.length <= maxLength) {
+    return name;
+  }
+
+  const dotIndex = name.lastIndexOf(".");
+  if (dotIndex > 0 && dotIndex < name.length - 1) {
+    const extension = name.slice(dotIndex);
+    const remaining = maxLength - extension.length - 3;
+    if (remaining <= 0) {
+      return `${name.slice(0, maxLength - 3)}...`;
+    }
+    return `${name.slice(0, remaining)}...${extension}`;
+  }
+
+  return `${name.slice(0, maxLength - 3)}...`;
+};
+
 const interpretProposalString = (value: string): StoredProposalSnapshot => {
   const snapshot: StoredProposalSnapshot = {};
   if (!value) {
@@ -207,8 +235,16 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   isRegenerating,
   isRegenerationComplete,
   docConfig,
+  onPdfDownload,
+  isPdfConverting,
+  pdfError,
+  wordDownloadName,
 }) => {
-  
+  const hasWordLink = Boolean(wordLink);
+  const hasPdfLink = Boolean(pdfLink);
+  const pdfButtonDisabled = isPdfConverting || (!hasWordLink && !hasPdfLink);
+  const pdfButtonTitle = hasPdfLink || hasWordLink ? "Download PDF" : "PDF document is not available";
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
       {/* Header with actions */}
@@ -238,7 +274,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       </div>
 
       {/* Download buttons on top of markdown */}
-      {markdownContent && (wordLink || pdfLink) && !isRegenerating && (
+      {markdownContent && (hasWordLink || hasPdfLink) && !isRegenerating && (
         <div className="border-b border-gray-100 p-4 bg-gray-50">
           <div className="flex items-center justify-center gap-3">
             {wordLink && (
@@ -246,7 +282,9 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
                 className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
                 onClick={() => {
                   const t = Date.now();
-                  const url = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.docx&t=${t}`;
+                  const url = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=${encodeURIComponent(
+                    wordDownloadName
+                  )}&t=${t}`;
                   window.open(url, "_blank");
                 }}
                 title="Download Word document"
@@ -254,20 +292,28 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
                 <Download size={16} /> Word
               </button>
             )}
-            {pdfLink && (
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors duration-200 flex items-center gap-2"
-                onClick={() => {
-                  const t = Date.now();
-                  const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=proposal_${jobUuid||'file'}.pdf&t=${t}`;
-                  window.open(url, "_blank");
-                }}
-                title="Download PDF document"
-              >
-                <Download size={16} /> PDF
-              </button>
-            )}
+            <button
+              className={`px-4 py-2 rounded text-sm font-medium transition-colors duration-200 flex items-center gap-2 ${
+                pdfButtonDisabled ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+              onClick={onPdfDownload}
+              disabled={pdfButtonDisabled}
+              title={pdfButtonTitle}
+            >
+              {isPdfConverting ? (
+                <>
+                  <Loader className="animate-spin" size={16} /> Downloading...
+                </>
+              ) : (
+                <>
+                  <Download size={16} /> PDF
+                </>
+              )}
+            </button>
           </div>
+          {pdfError && (
+            <p className="mt-2 text-xs text-red-600 text-center">{pdfError}</p>
+          )}
         </div>
       )}
 
@@ -293,6 +339,10 @@ export const OutputDocumentDisplay = React.memo(
     prev.jobUuid === next.jobUuid &&
     prev.isRegenerating === next.isRegenerating &&
     prev.isRegenerationComplete === next.isRegenerationComplete &&
+    prev.onPdfDownload === next.onPdfDownload &&
+    prev.isPdfConverting === next.isPdfConverting &&
+    prev.pdfError === next.pdfError &&
+    prev.wordDownloadName === next.wordDownloadName &&
     JSON.stringify(prev.docConfig) === JSON.stringify(next.docConfig)
 );
 
@@ -311,6 +361,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [generatedDocument, setGeneratedDocument] = useState<string | null>(null);
   const [wordLink, setWordLink] = useState<string | null>(null);
   const [pdfLink, setPdfLink] = useState<string | null>(null);
+  const [isPdfConverting, setIsPdfConverting] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [markdownContent, setMarkdownContent] = useState<string | null>(null);
   const [isGenerated, setIsGenerated] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -341,10 +393,65 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [expandedUseCases, setExpandedUseCases] = useState<Record<string, boolean>>({});
+  const [expandedVersionDetails, setExpandedVersionDetails] = useState<Record<string, boolean>>({});
   const [selectedUseCase, setSelectedUseCase] = useState<string | null>(null);
   const [selectedGenId, setSelectedGenId] = useState<string | null>(null);
   const pendingRegenCommentsRef = useRef<CommentItem[]>([]);
-  
+  const versionLanguageRef = useRef<Record<string, string>>({});
+  const [currentVersionLanguage, setCurrentVersionLanguage] = useState<string>('arabic');
+  const setPdfLinkSafely = useCallback(
+    (nextLink: string | null) => {
+      setPdfLink(prev => {
+        if (prev && prev.startsWith("blob:")) {
+          URL.revokeObjectURL(prev);
+        }
+        return nextLink;
+      });
+    },
+    [setPdfLink]
+  );
+
+  const resetPdfState = useCallback(() => {
+    setPdfLinkSafely(null);
+    setPdfError(null);
+    setIsPdfConverting(false);
+  }, [setPdfLinkSafely]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfLink && pdfLink.startsWith("blob:")) {
+        URL.revokeObjectURL(pdfLink);
+      }
+    };
+  }, [pdfLink]);
+  useEffect(() => {
+    setExpandedVersionDetails({});
+  }, [generationHistory]);
+
+  const getWordFileName = useCallback((): string => {
+    const explicitName = wordLink ? extractFileNameFromUrl(wordLink) : null;
+    if (explicitName) {
+      return explicitName;
+    }
+    if (generatedDocument) {
+      return generatedDocument.endsWith(".doc") || generatedDocument.endsWith(".docx")
+        ? generatedDocument
+        : `${generatedDocument}.docx`;
+    }
+    return `proposal_${jobUuid || "file"}.docx`;
+  }, [wordLink, generatedDocument, jobUuid]);
+
+  const getPdfFileName = useCallback((): string => {
+    const wordName = getWordFileName();
+    if (wordName.toLowerCase().endsWith(".pdf")) {
+      return wordName;
+    }
+    if (/\.(docx?|doc)$/i.test(wordName)) {
+      return wordName.replace(/\.(docx?|doc)$/i, ".pdf");
+    }
+    return `${wordName}.pdf`;
+  }, [getWordFileName]);
+
   // Document configuration state
   const [commentConfigList, setCommentConfigList] = useState<CommentItem[]>([]);
   const [docConfig, setDocConfig] = useState({
@@ -422,7 +529,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       const { data, error } = await supabase
         .from<WordGenRow>("word_gen")
         .select("*")
-        .is("delete_at", null)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -433,6 +539,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       (data || []).forEach((row) => {
         const parsed = mapRowToRecord(row);
+        if (parsed.proposalMeta?.language) {
+          versionLanguageRef.current[parsed.gen_id] = parsed.proposalMeta.language;
+        }
         if (!grouped[parsed.uuid]) {
           grouped[parsed.uuid] = [];
         }
@@ -456,6 +565,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       rfpFiles?: StoredFileInfo[];
       supportingFiles?: StoredFileInfo[];
       regenComments?: CommentItem[];
+      generalPreference?: string;
     }) => {
       try {
         if (!supabase) {
@@ -499,10 +609,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         };
         await ensurePptGenRow();
 
+        const deleteAtDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+        const deleteAtIso = deleteAtDate.toISOString().split(".")[0].replace("T", " ");
         const recordPayload: Record<string, any> = {
           uuid: payload.uuid,
           gen_id: payload.genId,
+          delete_at: deleteAtIso,
         };
+        if (payload.generalPreference !== undefined) {
+          recordPayload.general_preference = payload.generalPreference || null;
+        }
 
         if (payload.rfpFiles !== undefined) {
           const rfpList = payload.rfpFiles ?? [];
@@ -575,9 +691,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       if (proposalSnapshot.config !== undefined) {
         setConfig(proposalSnapshot.config);
+      } else if (record.general_preference) {
+        setConfig(record.general_preference);
       }
-      if (proposalSnapshot.language) {
-        setLanguage(proposalSnapshot.language);
+      const snapshotLanguage = proposalSnapshot.language;
+      if (snapshotLanguage) {
+        versionLanguageRef.current[record.gen_id] = snapshotLanguage;
+        setLanguage(snapshotLanguage);
+        setCurrentVersionLanguage(snapshotLanguage);
+      } else {
+        const rememberedLanguage = versionLanguageRef.current[record.gen_id];
+        if (rememberedLanguage) {
+          setLanguage(rememberedLanguage);
+          setCurrentVersionLanguage(rememberedLanguage);
+        } else {
+          setCurrentVersionLanguage(language);
+        }
       }
       if (proposalSnapshot.docConfig) {
         setDocConfig(prev => ({
@@ -587,7 +716,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       }
 
       setWordLink(proposalSnapshot.wordLink ?? null);
-      setPdfLink(proposalSnapshot.pdfLink ?? null);
+      setPdfLinkSafely(proposalSnapshot.pdfLink ?? null);
+      setPdfError(null);
+      setIsPdfConverting(false);
 
       const markdown = record.generated_markdown || "";
       setMarkdownContent(markdown);
@@ -612,7 +743,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setProcessingStage("");
       setUploadProgress(0);
     },
-    [pendingRegenCommentsRef]
+    [pendingRegenCommentsRef, setPdfLinkSafely, setPdfError, setIsPdfConverting]
   );
 
   const sortedUseCases = useMemo(() => {
@@ -622,15 +753,21 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       );
       const reference = sortedItems[sortedItems.length - 1] ?? sortedItems[0];
       const rfpName = reference?.rfpFiles?.[0]?.name || `Use Case ${uuid.substring(0, 8)}`;
+      const isArchived = sortedItems.every(item => Boolean(item.delete_at));
 
       return {
         uuid,
         items: sortedItems,
         label: rfpName,
+        isArchived,
+        latestVersion: sortedItems.length,
       };
     });
 
     return entries.sort((a, b) => {
+      if (a.isArchived !== b.isArchived) {
+        return a.isArchived ? 1 : -1;
+      }
       const latestA = a.items[0]?.created_at || "";
       const latestB = b.items[0]?.created_at || "";
       return new Date(latestB).getTime() - new Date(latestA).getTime();
@@ -644,8 +781,19 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }));
   }, []);
 
+  const toggleVersionDetails = useCallback((genId: string) => {
+    setExpandedVersionDetails(prev => ({
+      ...prev,
+      [genId]: !prev[genId],
+    }));
+  }, []);
+
   const handleSelectHistoryItem = useCallback((record: ParsedWordGenRecord) => {
     applyRecordToState(record);
+    setExpandedVersionDetails(prev => ({
+      ...prev,
+      [record.gen_id]: true,
+    }));
     setIsHistoryOpen(false);
   }, [applyRecordToState]);
 
@@ -668,12 +816,25 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     if (!selectedUseCase || !selectedGenId) {
       return null;
     }
-    const match = generationHistory[selectedUseCase]?.find(item => item.gen_id === selectedGenId);
-    if (!match) {
+    const useCaseEntry = sortedUseCases.find(item => item.uuid === selectedUseCase);
+    const records = useCaseEntry?.items || generationHistory[selectedUseCase];
+    if (!records) {
       return null;
     }
-    return getGenerationLabel(match);
-  }, [generationHistory, getGenerationLabel, selectedGenId, selectedUseCase]);
+    const sortedRecords = useCaseEntry?.items
+      ? useCaseEntry.items
+      : [...records].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const index = sortedRecords.findIndex(item => item.gen_id === selectedGenId);
+    if (index === -1) {
+      return null;
+    }
+    const versionNumber = sortedRecords.length - index;
+    const label = getGenerationLabel(sortedRecords[index]);
+    const formatted = label ? formatNameForSidebar(label, 36) : null;
+    return formatted ? `V${versionNumber} • ${formatted}` : `V${versionNumber}`;
+  }, [generationHistory, getGenerationLabel, selectedGenId, selectedUseCase, sortedUseCases]);
+
+  const wordDownloadName = useMemo(() => getWordFileName(), [getWordFileName]);
 
   const uploadFileToSupabase = async (
         file: File,
@@ -831,7 +992,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    return new Promise<{ docxShareUrl: string | null; pdfShareUrl: string | null; proposalContent: string }>((resolve, reject) => {
+    return new Promise<{ docxShareUrl: string | null; proposalContent: string }>((resolve, reject) => {
       fetch(apiPath(`/initialgen/${uuid}`), {
         method: "POST",
         headers: { 
@@ -885,7 +1046,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   console.error("Failed to generate documents");
                   resolve({ 
                     docxShareUrl: null, 
-                    pdfShareUrl: null, 
                     proposalContent: accumulatedMarkdown 
                   });
                   return;
@@ -894,7 +1054,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 const docResult = await docRes.json();
                 resolve({ 
                   docxShareUrl: docResult.proposal_word_url || null, 
-                  pdfShareUrl: docResult.proposal_pdf_url || null, 
                   proposalContent: accumulatedMarkdown 
                 });
                 setIsUploading(false);
@@ -902,7 +1061,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 console.error("Error generating documents:", error);
                 resolve({ 
                   docxShareUrl: null, 
-                  pdfShareUrl: null, 
                   proposalContent: accumulatedMarkdown 
                 });
               }
@@ -1024,15 +1182,124 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     return interval;
   };
 
-  const handleDownload = () => {
+  const handlePdfDownload = useCallback(async () => {
+    const pdfFileName = getPdfFileName();
+    const wordFileName = getWordFileName();
     if (pdfLink) {
-      window.open(`${pdfLink}?download=1`, "_blank");
-    } else if (wordLink) {
-      window.open(`${wordLink}?download=1`, "_blank");
-    } else {
-      alert("No file available to download yet.");
+      if (pdfLink.startsWith("blob:")) {
+        const anchor = document.createElement("a");
+        anchor.href = pdfLink;
+        anchor.download = pdfFileName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } else {
+        try {
+          setIsPdfConverting(true);
+          setPdfError(null);
+          const t = Date.now();
+          const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=${encodeURIComponent(
+            pdfFileName
+          )}&t=${t}`;
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Failed to download PDF (${response.status})`);
+          }
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          setPdfLinkSafely(objectUrl);
+
+          const anchor = document.createElement("a");
+          anchor.href = objectUrl;
+          anchor.download = pdfFileName;
+          document.body.appendChild(anchor);
+          anchor.click();
+          anchor.remove();
+        } catch (error) {
+          console.error("Failed to download PDF", error);
+          setPdfError("Unable to download PDF. Please try again.");
+        } finally {
+          setIsPdfConverting(false);
+        }
+      }
+      return;
     }
-  };
+
+    if (!wordLink) {
+      alert("Word document is not yet available. Please generate it first.");
+      return;
+    }
+
+    try {
+      setIsPdfConverting(true);
+      setPdfError(null);
+
+      const t = Date.now();
+      const downloadUrl = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=${encodeURIComponent(
+        wordFileName
+      )}&t=${t}`;
+      const wordResponse = await fetch(downloadUrl);
+      if (!wordResponse.ok) {
+        throw new Error(`Failed to download Word document (${wordResponse.status})`);
+      }
+
+      const wordBlob = await wordResponse.blob();
+      const originalName = wordFileName;
+      const hasExtension = /\.[^./\\]+$/.test(originalName);
+      const normalizedName = hasExtension ? originalName : `${originalName}.docx`;
+      const extension = normalizedName.split('.').pop()?.toLowerCase();
+      const mimeType =
+        extension === "doc"
+          ? "application/msword"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File([wordBlob], normalizedName, {
+          type: mimeType,
+        })
+      );
+
+      const convertResponse = await fetch("/nextapi/convert", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!convertResponse.ok) {
+        let message = `LibreOffice conversion failed (${convertResponse.status})`;
+        const contentType = convertResponse.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const errorData = await convertResponse.json().catch(() => null);
+          if (errorData?.error) {
+            message = errorData.error;
+          }
+        } else {
+          const text = await convertResponse.text().catch(() => "");
+          if (text) {
+            message = text;
+          }
+        }
+        throw new Error(message);
+      }
+
+      const pdfBlob = await convertResponse.blob();
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      setPdfLinkSafely(pdfUrl);
+
+      const anchor = document.createElement("a");
+      anchor.href = pdfUrl;
+      anchor.download = pdfFileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch (error) {
+      console.error("Failed to convert Word to PDF", error);
+      setPdfError("Unable to download PDF. Please try again.");
+    } finally {
+      setIsPdfConverting(false);
+    }
+  }, [pdfLink, wordLink, jobUuid, setPdfLinkSafely, setPdfError, setIsPdfConverting, getPdfFileName, getWordFileName]);
 
   const handleUpload = async () => {
     if (!supabase) {
@@ -1053,6 +1320,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     setIsUploading(true);
     setUploadProgress(0);
     setProcessingStage('Starting generation...');
+    resetPdfState();
 
     const progressInterval = simulateProgress();
 
@@ -1135,15 +1403,20 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         genId,
         rfpFiles: storedRfpFiles,
         supportingFiles: storedSupportingFiles,
+        generalPreference: config,
       });
+      setRfpFiles([]);
+      setSupportingFiles([]);
 
       setProcessingStage('Generating proposal...');
-      const { docxShareUrl, pdfShareUrl, proposalContent } = await postUuidConfig(uuid, config);
+      const { docxShareUrl, proposalContent } = await postUuidConfig(uuid, config);
 
       // Backend now updates Supabase after generation; only manage local state here.
       setWordLink(docxShareUrl);
-      setPdfLink(pdfShareUrl);
+      resetPdfState();
       setGeneratedDocument('Generated_Proposal.docx');
+      versionLanguageRef.current[genId] = language;
+      setCurrentVersionLanguage(language);
       setIsGenerated(true);
       if (proposalContent) {
         setMarkdownContent(proposalContent);
@@ -1158,6 +1431,84 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       alert('Upload failed. Please try again.');
       clearInterval(progressInterval);
     } finally {
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+        setProcessingStage('');
+      }, 2000);
+    }
+  };
+
+  const regenerateWithLanguageChange = async (
+    commentsSnapshot: CommentItem[],
+    regenDocConfig: typeof docConfig,
+    regenConfig: string,
+    regenLanguage: string
+  ) => {
+    if (!supabase) {
+      alert('Supabase configuration missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+      return;
+    }
+    if (!jobUuid) {
+      alert('No job to regenerate. Please run Upload & Process first.');
+      return;
+    }
+
+    const progressInterval = simulateProgress();
+    setIsUploading(true);
+    setIsRegenerating(true);
+    setIsRegenerationComplete(false);
+    setUploadProgress(0);
+    setProcessingStage('Generating document in selected language...');
+    setMarkdownContent(null);
+    resetPdfState();
+
+    try {
+      pendingRegenCommentsRef.current = commentsSnapshot;
+      if (commentsSnapshot.length) {
+        try {
+          await saveAllComments(supabase, jobUuid, commentsSnapshot);
+        } catch (err) {
+          console.warn('Failed to persist comments before regeneration', err);
+        }
+      }
+
+      const newGenId = generateUUID();
+      setSelectedGenId(newGenId);
+
+      await persistGenerationRecord({
+        uuid: jobUuid,
+        genId: newGenId,
+        rfpFiles: savedRfpFiles,
+        supportingFiles: savedSupportingFiles,
+        generalPreference: regenConfig,
+      });
+
+      const { docxShareUrl, proposalContent } = await postUuidConfig(jobUuid, regenConfig);
+
+      setWordLink(docxShareUrl);
+      setGeneratedDocument('Generated_Proposal.docx');
+      setSelectedUseCase(jobUuid);
+      versionLanguageRef.current[newGenId] = regenLanguage;
+      setCurrentVersionLanguage(regenLanguage);
+      setIsGenerated(true);
+      if (proposalContent) {
+        setMarkdownContent(proposalContent);
+      }
+      setIsRegenerationComplete(true);
+      setIsRegenerating(false);
+      pendingRegenCommentsRef.current = [];
+      setCommentConfigList([]);
+      setCurrentCommentContent("");
+      setCurrentCommentText("");
+      await refreshHistory();
+    } catch (error) {
+      console.error('Language change regeneration failed:', error);
+      alert('Regenerate failed. Please try again.');
+      setIsRegenerating(false);
+      setIsRegenerationComplete(false);
+    } finally {
+      clearInterval(progressInterval);
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(0);
@@ -1182,13 +1533,19 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return;
     }
     const commentsSnapshot = commentConfigList.length ? [...commentConfigList] : [];
-    pendingRegenCommentsRef.current = commentsSnapshot;
-
     const regenDocConfig = { ...docConfig };
     const regenConfig = config;
     const regenLanguage = language;
+    const normalizedBaseLanguage = (currentVersionLanguage || '').toLowerCase();
+    const normalizedTargetLanguage = (regenLanguage || '').toLowerCase();
+
+    if (normalizedBaseLanguage !== normalizedTargetLanguage) {
+      await regenerateWithLanguageChange(commentsSnapshot, regenDocConfig, regenConfig, regenLanguage);
+      return;
+    }
 
     try {
+      pendingRegenCommentsRef.current = commentsSnapshot;
       setIsUploading(true);
       setIsRegenerating(true);
       setIsRegenerationComplete(false);
@@ -1202,6 +1559,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setCurrentCommentText("");
 
       setMarkdownContent(null);
+      resetPdfState();
 
       const response = await fetch(apiPath("/regenerate"), {
         method: "POST",
@@ -1232,6 +1590,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       const regenGenId: string = regenResult?.regen_gen_id || regenResult?.gen_id || generateUUID();
       const newWordLink: string | null = regenResult?.wordLink ?? null;
+      const newPdfLink: string | null = regenResult?.pdfLink ?? null;
 
       setProcessingStage('Fetching regenerated content...');
 
@@ -1253,12 +1612,21 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         console.warn("Error retrieving regenerated markdown from Supabase", fetchError);
       }
 
+      await persistGenerationRecord({
+        uuid: jobUuid,
+        genId: regenGenId,
+        regenComments: commentsSnapshot,
+        generalPreference: regenConfig,
+        rfpFiles: savedRfpFiles,
+        supportingFiles: savedSupportingFiles,
+      });
+
       const proposalSnapshot: StoredProposalSnapshot = {
         config: regenConfig,
         language: regenLanguage,
         docConfig: regenDocConfig,
         wordLink: newWordLink,
-        pdfLink: null,
+        pdfLink: newPdfLink,
         generatedDocument: 'Regenerated_Proposal.docx',
       };
 
@@ -1267,7 +1635,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSelectedGenId(regenGenId);
       setGeneratedDocument(proposalSnapshot.generatedDocument ?? 'Regenerated_Proposal.docx');
       setWordLink(proposalSnapshot.wordLink ?? null);
-      setPdfLink(proposalSnapshot.pdfLink ?? null);
+      versionLanguageRef.current[regenGenId] = regenLanguage;
+      setCurrentVersionLanguage(regenLanguage);
+      setPdfLinkSafely(proposalSnapshot.pdfLink ?? null);
+      setPdfError(null);
+      setIsPdfConverting(false);
       setMarkdownContent(regeneratedMarkdown);
       setIsRegenerationComplete(true);
       setIsRegenerating(false);
@@ -1645,6 +2017,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               ) : (
                 sortedUseCases.map((useCase) => {
                   const isExpanded = expandedUseCases[useCase.uuid] ?? (selectedUseCase === useCase.uuid);
+                  const displayUseCaseLabel = formatNameForSidebar(useCase.label, 48);
                   return (
                     <div key={useCase.uuid} className="border-b border-gray-100">
                       <button
@@ -1653,11 +2026,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                         className="w-full px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
                       >
                         <div className="pr-4">
-                          <p className="text-sm font-medium text-gray-800 truncate">
-                            {useCase.label}
+                          <p className="text-sm font-medium text-gray-800 truncate flex items-center gap-2">
+                            <span className="truncate" title={useCase.label}>{displayUseCaseLabel}</span>
+                            {useCase.isArchived && (
+                              <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold text-orange-600 bg-orange-100 rounded">
+                                Archived
+                              </span>
+                            )}
                           </p>
                           <p className="text-[11px] text-gray-500">
-                            {useCase.items.length} version{useCase.items.length === 1 ? '' : 's'}
+                            Latest version V{useCase.latestVersion} • {useCase.items.length} total
                           </p>
                         </div>
                         {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
@@ -1665,32 +2043,101 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
                       {isExpanded && (
                         <ul className="bg-gray-50 border-t border-gray-100">
-                          {useCase.items.map((item) => {
+                          {useCase.items.map((item, index) => {
+                            const versionNumber = useCase.items.length - index;
                             const isActive = selectedGenId === item.gen_id;
                             const label = getGenerationLabel(item);
+                            const displayVersionLabel = formatNameForSidebar(label || `Generation ${versionNumber}`, 44);
+                            const shortGenId = item.gen_id ? `${item.gen_id.slice(0, 8)}…` : '';
+                            const versionExpanded = expandedVersionDetails[item.gen_id] ?? false;
+                            const generalPreferenceSnippet =
+                              item.general_preference && item.general_preference.trim().length
+                                ? item.general_preference.trim()
+                                : null;
+
                             return (
-                              <li key={item.gen_id} className="border-b border-gray-100 last:border-b-0">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSelectHistoryItem(item)}
-                                  className={`w-full px-5 py-3 text-left text-xs transition-colors ${
-                                    isActive
-                                      ? 'bg-white text-blue-600 border-l-2 border-blue-500 font-semibold'
-                                      : 'hover:bg-white text-gray-700'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="truncate">{label}</span>
-                                    <span className="flex-shrink-0 text-[10px] text-gray-400">
-                                      {new Date(item.created_at).toLocaleDateString()}
-                                    </span>
+                              <li
+                                key={item.gen_id}
+                                className="relative border-b border-gray-100 last:border-b-0 pl-5"
+                              >
+                                <div className="absolute left-2 top-0 bottom-0 border-l border-gray-200 pointer-events-none" />
+                                <div className="absolute left-1.5 top-4 w-2 h-2 rounded-full bg-gray-200 border border-white pointer-events-none" />
+                                <div className="flex items-stretch">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSelectHistoryItem(item)}
+                                    className={`flex-1 px-4 py-3 text-left text-xs transition-colors rounded-l ${
+                                      isActive
+                                        ? 'bg-white text-blue-600 border-l-2 border-blue-500 font-semibold shadow-sm'
+                                        : 'bg-transparent hover:bg-white text-gray-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="truncate flex items-center gap-2">
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                          V{versionNumber}
+                                        </span>
+                                        <span className="truncate" title={label || `Generation ${versionNumber}`}>{displayVersionLabel}</span>
+                                        {item.delete_at && (
+                                          <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-semibold text-orange-600 bg-orange-100 rounded">
+                                            Archived
+                                          </span>
+                                        )}
+                                      </span>
+                                      <span className="flex-shrink-0 text-[10px] text-gray-400">
+                                        {new Date(item.created_at).toLocaleString()}
+                                      </span>
+                                    </div>
+                                    {shortGenId && (
+                                      <p className="mt-1 text-[9px] text-gray-400">ID: {shortGenId}</p>
+                                    )}
+                                    {item.regenComments.length > 0 && (
+                                      <p className="mt-1 text-[10px] text-gray-500 truncate">
+                                        {item.regenComments[0].comment2 || item.regenComments[0].comment1}
+                                      </p>
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleVersionDetails(item.gen_id)}
+                                    className="px-3 py-3 text-gray-500 border-l border-gray-200 bg-white hover:text-gray-700 rounded-tr rounded-br"
+                                    aria-label={versionExpanded ? "Hide version details" : "Show version details"}
+                                  >
+                                    {versionExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  </button>
+                                </div>
+                                {versionExpanded && (
+                                  <div className="ml-6 mr-4 mb-3 mt-2 rounded border border-gray-200 bg-white p-3 text-[11px] text-gray-600 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-gray-700">Created:</span>
+                                      <span>{new Date(item.created_at).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-gray-700">Gen ID:</span>
+                                      <span className="font-mono text-[10px] text-gray-500 break-all">{item.gen_id}</span>
+                                    </div>
+                                    {generalPreferenceSnippet && (
+                                      <div>
+                                        <p className="font-medium text-gray-700">Preference:</p>
+                                        <p className="mt-1 text-[11px] text-gray-500 whitespace-pre-wrap max-h-20 overflow-hidden">
+                                          {generalPreferenceSnippet}
+                                        </p>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-gray-700">Comments:</span>
+                                      <span>{item.regenComments.length}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-gray-700">Status:</span>
+                                      <span>
+                                        {item.delete_at
+                                          ? `Scheduled to archive on ${new Date(item.delete_at).toLocaleString()}`
+                                          : 'Active'}
+                                      </span>
+                                    </div>
                                   </div>
-                                  {item.regenComments.length > 0 && (
-                                    <p className="mt-1 text-[10px] text-gray-500 truncate">
-                                      {item.regenComments[0].comment2 || item.regenComments[0].comment1}
-                                    </p>
-                                  )}
-                                </button>
+                                )}
                               </li>
                             );
                           })}
@@ -1764,13 +2211,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                     <p className="flex items-center gap-2">
                       <CheckCircle2 className="text-green-500" size={14} />
                       <span className="text-gray-700">Active use case:</span>
-                      <span className="text-gray-900 font-medium truncate">{activeUseCaseLabel}</span>
+                      <span className="text-gray-900 font-medium truncate" title={activeUseCaseLabel}>
+                        {formatNameForSidebar(activeUseCaseLabel, 48)}
+                      </span>
                     </p>
                     {activeVersionLabel && (
                       <p className="flex items-center gap-2">
                         <ChevronRight size={12} className="text-gray-400" />
                         <span className="text-gray-700">Current version:</span>
-                        <span className="text-gray-900 font-medium truncate">{activeVersionLabel}</span>
+                        <span className="text-gray-900 font-medium truncate" title={activeVersionLabel}>
+                          {formatNameForSidebar(activeVersionLabel, 52)}
+                        </span>
                       </p>
                     )}
                   </div>
@@ -1952,6 +2403,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 isRegenerating={isRegenerating}
                 isRegenerationComplete={isRegenerationComplete}
                 docConfig={docConfig}
+                onPdfDownload={handlePdfDownload}
+                isPdfConverting={isPdfConverting}
+                pdfError={pdfError}
+                wordDownloadName={wordDownloadName}
               />
             )}
           </div>
