@@ -527,7 +527,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         return;
       }
       const { data, error } = await supabase
-        .from<WordGenRow>("word_gen")
+        .from("word_gen")
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -537,7 +537,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       const grouped: Record<string, ParsedWordGenRecord[]> = {};
 
-      (data || []).forEach((row) => {
+      const rows = ((data ?? []) as WordGenRow[]);
+      rows.forEach((row) => {
         const parsed = mapRowToRecord(row);
         if (parsed.proposalMeta?.language) {
           versionLanguageRef.current[parsed.gen_id] = parsed.proposalMeta.language;
@@ -1597,7 +1598,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       let regeneratedMarkdown: string | null = null;
       try {
         const { data: regenRow, error: regenRowError } = await supabase
-          .from<WordGenRow>("word_gen")
+          .from("word_gen")
           .select("*")
           .eq("uuid", jobUuid)
           .eq("gen_id", regenGenId)
@@ -1606,7 +1607,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         if (regenRowError) {
           console.warn("Failed to fetch regenerated row from Supabase", regenRowError);
         } else if (regenRow) {
-          regeneratedMarkdown = regenRow.generated_markdown ?? null;
+          const row = regenRow as WordGenRow;
+          regeneratedMarkdown = row.generated_markdown ?? null;
         }
       } catch (fetchError) {
         console.warn("Error retrieving regenerated markdown from Supabase", fetchError);
