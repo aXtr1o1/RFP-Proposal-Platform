@@ -2,12 +2,11 @@ module.exports = {
   apps: [
     {
       name: "rfp-api",
-      cwd: "/home/azureuser/RFP-Proposal-Platform", // Working directory path
+      cwd: "/home/azureuser/RFP-Proposal-Platform",
       script: "/home/azureuser/RFP-Proposal-Platform/.venv/bin/uvicorn", // Path to the uvicorn executable inside the virtual environment
       interpreter: "none", // No interpreter as it's already handled by the script (uvicorn in this case)
       args: [
-        "-m", "uvicorn", // Running uvicorn
-        "apps.main:app", // FastAPI app location
+        "apps.main:app",  // FastAPI app location
         "--host", "0.0.0.0", // Bind to all network interfaces
         "--port", "8000" // Port for the FastAPI app
       ],
