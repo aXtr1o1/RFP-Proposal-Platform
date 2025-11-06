@@ -8,7 +8,7 @@ pillow==10.4.0
 pytesseract==0.3.13
 openai==1.109.1
 tenacity==8.4.2
-
+gunicorn
 typing-extensions==4.12.2
 colorlog==6.8.2
 pytest==8.3.3
