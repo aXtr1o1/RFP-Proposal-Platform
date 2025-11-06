@@ -104,7 +104,7 @@ jobs:
             --name "${{ env.WEBAPP_BACKEND }}" \
             --startup-file "python3 -m uvicorn apps.main:app --host 0.0.0.0 --port \$PORT"
 
-      # Install Python dependencies
+      # Install Python dependencies and ensure pip is in PATH
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -112,6 +112,8 @@ jobs:
 
       - name: Install dependencies
         run: |
+          echo "Adding /home/.local/bin to PATH"
+          echo "/home/.local/bin" >> $GITHUB_ENV  # Add pip directory to PATH
           python3 -m pip install -U pip
           pip install -r requirements.txt  # Make sure this path is correct
 
