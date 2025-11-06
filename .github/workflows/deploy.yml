@@ -95,18 +95,12 @@ jobs:
               { "name": "PYTHONUNBUFFERED", "value": "1" }
             ]
 
-      # Set environment variables for Python 3.11
-      - name: Set Python 3.11 Environment Variables
-        run: |
-          echo 'export PATH="/tmp/oryx/platforms/python/3.11.14/bin:$PATH"' >> ~/.bashrc
-          echo 'export LD_LIBRARY_PATH="/tmp/oryx/platforms/python/3.11.14/lib:$LD_LIBRARY_PATH"' >> ~/.bashrc
-          source ~/.bashrc
-
-      # Install Python dependencies and ensure pip is in PATH
+      # Install Python dependencies
       - name: Install dependencies
         run: |
+          source /tmp/.venv3.11/bin/activate
           python3 -m pip install -U pip
-          python3 -m pip install -r requirements.txt  # Make sure this path is correct
+          pip install -r requirements.txt  # Make sure this path is correct
 
       - name: Deploy to Azure Web App (backend)
         uses: azure/webapps-deploy@v3
