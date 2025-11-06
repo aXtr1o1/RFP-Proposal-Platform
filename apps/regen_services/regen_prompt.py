@@ -207,7 +207,6 @@ def regenerate_markdown_with_comments(
             "gen_id": gen_id,
             "language": language,
             "wordLink": urls.get("proposal_word_url"),
-            "pdfLink": urls.get("proposal_pdf_url"),
         }
 
     except Exception as e:
@@ -270,7 +269,6 @@ def regenerate_markdown_with_comments_streaming(
             "gen_id": gen_id,
             "updated_markdown": full_markdown,
             "wordLink": word_res.get("proposal_word_url", ""),
-            "pdfLink": word_res.get("proposal_pdf_url", ""),
             "language": language,
         })
 

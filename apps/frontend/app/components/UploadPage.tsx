@@ -369,8 +369,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [isRegenerationComplete, setIsRegenerationComplete] = useState(false);
   const [jobUuid, setJobUuid] = useState<string | null>(null);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabaseUrl = "https://qonqrjghzilosvnlasej.supabase.co";
+  const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvbnFyamdoemlsb3N2bmxhc2VqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODE5NjI3NywiZXhwIjoyMDczNzcyMjc3fQ.2ErJ9WutSjd3QNGgUtQCHGgvnMAtJ4jvPttfOcI0vec";
   const supabase = useMemo(() => {
     if (!supabaseUrl || !supabaseAnonKey) {
       console.error("Supabase environment variables are missing");
@@ -527,7 +527,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         return;
       }
       const { data, error } = await supabase
-        .from("word_gen")
+        .from<WordGenRow>("word_gen")
         .select("*")
         .order("created_at", { ascending: false });
 
@@ -537,8 +537,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       const grouped: Record<string, ParsedWordGenRecord[]> = {};
 
-      const rows = ((data ?? []) as WordGenRow[]);
-      rows.forEach((row) => {
+      (data || []).forEach((row) => {
         const parsed = mapRowToRecord(row);
         if (parsed.proposalMeta?.language) {
           versionLanguageRef.current[parsed.gen_id] = parsed.proposalMeta.language;
@@ -1598,7 +1597,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       let regeneratedMarkdown: string | null = null;
       try {
         const { data: regenRow, error: regenRowError } = await supabase
-          .from("word_gen")
+          .from<WordGenRow>("word_gen")
           .select("*")
           .eq("uuid", jobUuid)
           .eq("gen_id", regenGenId)
@@ -1607,8 +1606,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         if (regenRowError) {
           console.warn("Failed to fetch regenerated row from Supabase", regenRowError);
         } else if (regenRow) {
-          const row = regenRow as WordGenRow;
-          regeneratedMarkdown = row.generated_markdown ?? null;
+          regeneratedMarkdown = regenRow.generated_markdown ?? null;
         }
       } catch (fetchError) {
         console.warn("Error retrieving regenerated markdown from Supabase", fetchError);
