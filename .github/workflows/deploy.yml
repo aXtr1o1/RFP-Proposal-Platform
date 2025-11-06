@@ -18,7 +18,7 @@ env:
 
 jobs:
   deploy-frontend:
-    name: Frontend → ${{ env.WEBAPP_FRONTEND }}
+    name: Frontend → wa-rfp-proposal-frontend   # static; don't reference env here
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,7 +37,6 @@ jobs:
           tenant-id:  ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Ensure required app settings exist (incl. NEXT_PUBLIC_* for build)
       - name: Configure App Settings (frontend)
         uses: azure/appservice-settings@v1
         with:
@@ -52,7 +51,6 @@ jobs:
               { "name": "SUPABASE_SERVICE_ROLE_KEY", "value": "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" }
             ]
 
-      # Optional: fail fast locally; server will still build again via Oryx
       - name: Use Node 20
         uses: actions/setup-node@v4
         with:
@@ -67,7 +65,6 @@ jobs:
         env:
           CI: true
 
-      # Deploy the subfolder; Oryx will install/build/start on App Service
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
@@ -75,7 +72,7 @@ jobs:
           package: apps/frontend
 
   deploy-backend:
-    name: Backend → ${{ env.WEBAPP_BACKEND }}
+    name: Backend → wa-rfp-proposal-backend     # static; don't reference env here
     runs-on: ubuntu-latest
     needs: deploy-frontend
     defaults:
@@ -95,7 +92,6 @@ jobs:
           tenant-id:  ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # Backend app settings (Python) + set Startup Command
       - name: Configure App Settings (backend)
         uses: azure/appservice-settings@v1
         with:
@@ -114,7 +110,6 @@ jobs:
             --name "${{ env.WEBAPP_BACKEND }}" \
             --startup-file "gunicorn -w 2 -k uvicorn.workers.UvicornWorker apps.main:app --bind=0.0.0.0:\$PORT --timeout 120"
 
-      # Optional: sanity check deps (not required for Oryx)
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
