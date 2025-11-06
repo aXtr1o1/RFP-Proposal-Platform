@@ -94,11 +94,13 @@ jobs:
               { "name": "PYTHON_VERSION", "value": "3.11" },
               { "name": "PYTHONUNBUFFERED", "value": "1" }
             ]
+      - name: Activate Virtual Environment (venv3.11)
+        run: |
+          source /home/site/wwwroot/venv3.11/bin/activate
 
       # Install Python dependencies
       - name: Install dependencies
         run: |
-          source /tmp/.venv3.11/bin/activate
           python3 -m pip install -U pip
           pip install -r requirements.txt  # Make sure this path is correct
 
