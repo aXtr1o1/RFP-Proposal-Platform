@@ -108,7 +108,7 @@ jobs:
 
       - name: Set Startup Command (backend)
         run: |
-          az webapp config set --resource-group ${{ env.AZ_RESOURCE_GROUP }} --name ${{ env.WEBAPP_BACKEND }} --startup-file "uvicorn apps.main:app --host 0.0.0.0 --port $PORT"
+          az webapp config set --resource-group ${{ env.AZ_RESOURCE_GROUP }} --name ${{ env.WEBAPP_BACKEND }} --startup-file "gunicorn --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT apps.main:app"
 
       - name: Deploy to Azure Web App (backend)
         uses: azure/webapps-deploy@v3
