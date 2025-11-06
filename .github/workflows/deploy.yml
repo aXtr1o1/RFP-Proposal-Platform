@@ -7,19 +7,52 @@ on:
       - 'apps/frontend/**'
       - 'apps/**'
       - '!apps/frontend/.next/**'
-      - '.github/workflows/deploy.yml'
+      - '.github/workflows/**'
+
+env:
+  AZ_SUBSCRIPTION_ID: 6f9fae50-73ad-45c4-a53d-4b786864113a
+  AZ_TENANT_ID: c05d006d-c249-4ec5-9fec-99a72be78592
+  AZ_RESOURCE_GROUP: rg-rfp-proposal-platform
+  WEBAPP_FRONTEND: wa-rfp-proposal-frontend
+  WEBAPP_BACKEND: wa-rfp-proposal-backend
 
 jobs:
   deploy-frontend:
-    name: Frontend → wa-rfp-proposal-frontend
+    name: Frontend → ${{ env.WEBAPP_FRONTEND }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/frontend
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:  ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Ensure required app settings exist (incl. NEXT_PUBLIC_* for build)
+      - name: Configure App Settings (frontend)
+        uses: azure/appservice-settings@v1
+        with:
+          app-name: ${{ env.WEBAPP_FRONTEND }}
+          app-settings-json: >
+            [
+              { "name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "true" },
+              { "name": "WEBSITE_NODE_DEFAULT_VERSION", "value": "~20" },
+              { "name": "NODE_ENV", "value": "production" },
+              { "name": "NEXT_PUBLIC_SUPABASE_URL", "value": "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" },
+              { "name": "NEXT_PUBLIC_SUPABASE_ANON_KEY", "value": "${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" },
+              { "name": "SUPABASE_SERVICE_ROLE_KEY", "value": "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" }
+            ]
+
+      # Optional: fail fast locally; server will still build again via Oryx
       - name: Use Node 20
         uses: actions/setup-node@v4
         with:
@@ -27,39 +60,66 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'apps/frontend/package-lock.json'
 
-      # Optional sanity build to fail-fast; Azure will still build during deploy
-      - name: CI sanity (build only)
+      - name: CI sanity (build)
         run: |
           npm ci
           npm run build
         env:
           CI: true
 
-      # Deploy the subfolder so Oryx runs on the server
+      # Deploy the subfolder; Oryx will install/build/start on App Service
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: wa-rfp-proposal-frontend
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_FRONTEND }}
+          app-name: ${{ env.WEBAPP_FRONTEND }}
           package: apps/frontend
 
   deploy-backend:
-    name: Backend → wa-rfp-proposal-backend
+    name: Backend → ${{ env.WEBAPP_BACKEND }}
     runs-on: ubuntu-latest
     needs: deploy-frontend
     defaults:
       run:
         working-directory: apps
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:  ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Backend app settings (Python) + set Startup Command
+      - name: Configure App Settings (backend)
+        uses: azure/appservice-settings@v1
+        with:
+          app-name: ${{ env.WEBAPP_BACKEND }}
+          app-settings-json: >
+            [
+              { "name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "true" },
+              { "name": "PYTHON_VERSION", "value": "3.10" },
+              { "name": "PYTHONUNBUFFERED", "value": "1" }
+            ]
+
+      - name: Set Backend Startup Command (gunicorn)
+        run: |
+          az webapp config set \
+            --resource-group "${{ env.AZ_RESOURCE_GROUP }}" \
+            --name "${{ env.WEBAPP_BACKEND }}" \
+            --startup-file "gunicorn -w 2 -k uvicorn.workers.UvicornWorker apps.main:app --bind=0.0.0.0:\$PORT --timeout 120"
+
+      # Optional: sanity check deps (not required for Oryx)
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      # Optional sanity install; Azure will install again via Oryx
       - name: CI sanity (install)
         run: |
           python -m pip install -U pip
@@ -68,6 +128,5 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: wa-rfp-proposal-backend
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_BACKEND }}
+          app-name: ${{ env.WEBAPP_BACKEND }}
           package: apps
