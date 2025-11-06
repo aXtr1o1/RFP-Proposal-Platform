@@ -72,7 +72,7 @@ jobs:
     defaults:
       run:
         working-directory: apps
-    permissions:
+    permissions: 
       contents: read
     steps:
       - name: Checkout
