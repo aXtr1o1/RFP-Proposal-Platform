@@ -3,20 +3,20 @@ module.exports = {
     {
       name: "frontend-build",
       cwd: "./",
-      script: "cmd",
-      args: "/c npm run build",
-      autorestart: false,   // don't restart after exit
-      watch: false,         // don't watch files
+      script: "npm",
+      args: "run build",  // Run the 'build' script defined in your package.json
+      autorestart: false,   // Don't restart after exit
+      watch: false,         // Don't watch files
       instances: 1,
-      exec_mode: "fork",    // just run once
+      exec_mode: "fork",    // Just run once
     },
     {
       name: "frontend-app",
       cwd: "./",
-      script: "cmd",
-      args: "/c npm start",
+      script: "npm",
+      args: "start",        // Run the 'start' script defined in your package.json
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: "production", // Set the environment variable
       },
     },
   ],
