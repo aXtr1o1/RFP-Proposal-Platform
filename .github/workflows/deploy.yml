@@ -1,0 +1,50 @@
+name: Deploy to EC2 (PM2)
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no Administrator@${{ secrets.EC2_HOST }} << 'EOF'
+            cd C:/Users/Administrator/Documents/rfp-proposal-platform
+
+            echo "Pulling latest code..."
+            git reset --hard
+            git pull origin master
+
+            echo "Activating Python venv..."
+            # If using PowerShell on Windows
+            ../RFPvenv/Scripts/activate.ps1
+            # If using Git Bash on Windows (uncomment instead)
+            # source ../RFPvenv/Scripts/activate
+
+            echo "Installing backend deps..."
+            cd apps
+            pip install -r requirements.txt
+            cd ..
+
+            echo "Installing frontend deps..."
+            cd apps/frontend
+            npm install
+            npm run build
+            cd ../..
+
+            echo "Restarting PM2 apps..."
+            pm2 restart fastapi-app --update-env
+            pm2 restart frontend-app --update-env
+            pm2 save
+          EOF
