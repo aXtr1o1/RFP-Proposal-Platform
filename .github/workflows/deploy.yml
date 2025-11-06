@@ -103,7 +103,7 @@ jobs:
           az webapp config set \
             --resource-group "${{ env.AZ_RESOURCE_GROUP }}" \
             --name "${{ env.WEBAPP_BACKEND }}" \
-            --startup-file "uvicorn main:app --host 0.0.0.0 --port \$PORT"
+            --startup-file "python -m uvicorn apps.main:app --host 0.0.0.0 --port \$PORT"
 
       # Optional local sanity (not required; Oryx installs on server)
       - name: Setup Python
