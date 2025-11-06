@@ -1,1 +1,1 @@
-fastapi run apps/main.py
+python3 -m fastapi run apps/main.py
