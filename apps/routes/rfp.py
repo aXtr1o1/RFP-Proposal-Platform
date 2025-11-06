@@ -75,8 +75,8 @@ async def regenerate(request: RegenRequest):
     """
     Regenerates the proposal based on the previous gen_id (base version).
     """
-    from api.services import supabase_service
-    from regen_services import regen_prompt
+    from apps.api.services import supabase_service
+    from apps.regen_services import regen_prompt
 
     uuid = request.uuid
     base_gen_id = request.gen_id 
