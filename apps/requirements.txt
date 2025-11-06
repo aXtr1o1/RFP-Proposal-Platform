@@ -4,7 +4,6 @@ python-multipart==0.0.6
 pydantic==2.9.2
 python-dotenv==1.0.1
 requests==2.32.3
-torch
 pillow==10.4.0
 pytesseract==0.3.13
 openai==1.109.1
