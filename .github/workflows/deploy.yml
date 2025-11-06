@@ -119,4 +119,4 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.WEBAPP_BACKEND }}
-          package: apps
+          package: .
