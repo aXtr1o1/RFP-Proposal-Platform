@@ -91,18 +91,20 @@ jobs:
           app-settings-json: >
             [
               { "name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "true" },
-              { "name": "PYTHON_VERSION", "value": "3.11" },
+              { "name": "PYTHON_VERSION", "value": "3.11" },  # Ensure Python 3.11 runtime
               { "name": "PYTHONUNBUFFERED", "value": "1" }
             ]
-      - name: Activate Virtual Environment (venv3.11)
-        run: |
-          source /home/site/wwwroot/venv3.11/bin/activate
 
-      # Install Python dependencies
+      - name: Setup Python Environment
+        run: |
+          python --version  # Verify Python version is 3.11
+          python -m venv venv  # Create virtual environment
+          source venv/bin/activate  # Activate virtual environment
+
       - name: Install dependencies
         run: |
-          python3 -m pip install -U pip
-          pip install -r requirements.txt  # Make sure this path is correct
+          python -m pip install --upgrade pip  # Upgrade pip
+          pip install -r requirements.txt  # Install dependencies
 
       - name: Deploy to Azure Web App (backend)
         uses: azure/webapps-deploy@v3
