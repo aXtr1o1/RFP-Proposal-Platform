@@ -1,1 +1,1 @@
-fastapi run main.py
+fastapi run apps/main.py
