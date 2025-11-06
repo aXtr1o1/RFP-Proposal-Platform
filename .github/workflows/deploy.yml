@@ -98,12 +98,12 @@ jobs:
             ]
 
       # Set Startup Command (idempotent)
-      - name: Set Backend Startup Command (gunicorn)
+      - name: Set Backend Startup Command (uvicorn)
         run: |
           az webapp config set \
             --resource-group "${{ env.AZ_RESOURCE_GROUP }}" \
             --name "${{ env.WEBAPP_BACKEND }}" \
-            --startup-file "gunicorn -w 2 -k uvicorn.workers.UvicornWorker main:app --bind=0.0.0.0:\$PORT --timeout 120"
+            --startup-file "uvicorn main:app --port $PORT"
 
       # Optional local sanity (not required; Oryx installs on server)
       - name: Setup Python
