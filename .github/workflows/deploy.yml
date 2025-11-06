@@ -1,50 +1,73 @@
-name: Deploy to EC2 (PM2)
+name: Deploy Frontend & Backend (Azure Web Apps)
 
 on:
   push:
-    branches: [master]
+    branches: [ master ]
+    paths:
+      - 'apps/frontend/**'
+      - 'apps/**'
+      - '!apps/frontend/.next/**'
+      - '.github/workflows/deploy.yml'
 
 jobs:
-  deploy:
+  deploy-frontend:
+    name: Frontend → wa-rfp-proposal-frontend
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: apps/frontend
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Use Node 20
+        uses: actions/setup-node@v4
         with:
-          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'apps/frontend/package-lock.json'
 
-      - name: Deploy to EC2
+      # Optional sanity build to fail-fast; Azure will still build during deploy
+      - name: CI sanity (build only)
         run: |
-          ssh -o StrictHostKeyChecking=no Administrator@${{ secrets.EC2_HOST }} << 'EOF'
-            cd C:/Users/Administrator/Documents/rfp-proposal-platform
+          npm ci
+          npm run build
+        env:
+          CI: true
 
-            echo "Pulling latest code..."
-            git reset --hard
-            git pull origin master
+      # Deploy the subfolder so Oryx runs on the server
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: wa-rfp-proposal-frontend
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_FRONTEND }}
+          package: apps/frontend
 
-            echo "Activating Python venv..."
-            # If using PowerShell on Windows
-            ../RFPvenv/Scripts/activate.ps1
-            # If using Git Bash on Windows (uncomment instead)
-            # source ../RFPvenv/Scripts/activate
+  deploy-backend:
+    name: Backend → wa-rfp-proposal-backend
+    runs-on: ubuntu-latest
+    needs: deploy-frontend
+    defaults:
+      run:
+        working-directory: apps
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            echo "Installing backend deps..."
-            cd apps
-            pip install -r requirements.txt
-            cd ..
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-            echo "Installing frontend deps..."
-            cd apps/frontend
-            npm install
-            npm run build
-            cd ../..
+      # Optional sanity install; Azure will install again via Oryx
+      - name: CI sanity (install)
+        run: |
+          python -m pip install -U pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-            echo "Restarting PM2 apps..."
-            pm2 restart fastapi-app --update-env
-            pm2 restart frontend-app --update-env
-            pm2 save
-          EOF
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: wa-rfp-proposal-backend
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_BACKEND }}
+          package: apps
