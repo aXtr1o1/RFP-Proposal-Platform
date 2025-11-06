@@ -92,7 +92,7 @@ jobs:
           app-settings-json: >
             [
               { "name": "SCM_DO_BUILD_DURING_DEPLOYMENT", "value": "true" },
-              { "name": "PYTHON_VERSION", "value": "3.10" },
+              { "name": "PYTHON_VERSION", "value": "3.11" },
               { "name": "PYTHONUNBUFFERED", "value": "1" }
             ]
 
