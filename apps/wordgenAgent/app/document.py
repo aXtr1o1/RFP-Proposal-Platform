@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from html.parser import HTMLParser
 
-from apps.wordgenAgent.app.wordcom import build_word_from_proposal, default_CONFIG
-from apps.api.services.supabase_service import (
+from wordgenAgent.app.wordcom import build_word_from_proposal, default_CONFIG
+from api.services.supabase_service import (
     upload_word_and_update_table,
 )
 
