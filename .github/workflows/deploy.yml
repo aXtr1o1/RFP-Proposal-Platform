@@ -32,7 +32,7 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Ensure frontend app settings exist (build-time + runtime)
+      # Ensure build/runtime env is present on the App Service
       - name: Configure App Settings (frontend)
         uses: azure/appservice-settings@v1
         with:
@@ -44,26 +44,24 @@ jobs:
               { "name": "NODE_ENV", "value": "production" },
               { "name": "NEXT_PUBLIC_SUPABASE_URL", "value": "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" },
               { "name": "NEXT_PUBLIC_SUPABASE_ANON_KEY", "value": "${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" },
-              { "name": "SUPABASE_SERVICE_ROLE_KEY", "value": "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" }
+              { "name": "SUPABASE_SERVICE_ROLE_KEY", "value": "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" },
+              { "name": "NEXT_TELEMETRY_DISABLED", "value": "1" }
             ]
 
-      # Optional: fail fast locally (Azure will still build via Oryx)
-      - name: Use Node 20
+      - name: Use Node 20 (cache optional)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: 'apps/frontend/package-lock.json'
 
-      - name: CI sanity (build)
-        run: |
-          npm ci
-          npm run build
+      # Install only; let Oryx build on Azure with app settings available
+      - name: CI sanity (install only)
+        run: npm ci
         env:
           CI: true
 
-      # Deploy subfolder; Oryx will build & start on App Service
-      - name: Deploy to Azure Web App
+      - name: Deploy to Azure Web App (frontend)
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.WEBAPP_FRONTEND }}
@@ -87,7 +85,7 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Backend settings (Python) and Startup Command
+      # Python app settings for Oryx
       - name: Configure App Settings (backend)
         uses: azure/appservice-settings@v1
         with:
@@ -99,6 +97,7 @@ jobs:
               { "name": "PYTHONUNBUFFERED", "value": "1" }
             ]
 
+      # Set Startup Command (idempotent)
       - name: Set Backend Startup Command (gunicorn)
         run: |
           az webapp config set \
@@ -106,7 +105,7 @@ jobs:
             --name "${{ env.WEBAPP_BACKEND }}" \
             --startup-file "gunicorn -w 2 -k uvicorn.workers.UvicornWorker apps.main:app --bind=0.0.0.0:\$PORT --timeout 120"
 
-      # Optional: quick pip resolve; Oryx will install again on server
+      # Optional local sanity (not required; Oryx installs on server)
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -117,7 +116,7 @@ jobs:
           python -m pip install -U pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Deploy to Azure Web App
+      - name: Deploy to Azure Web App (backend)
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.WEBAPP_BACKEND }}
