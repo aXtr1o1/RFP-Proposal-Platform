@@ -369,8 +369,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [isRegenerationComplete, setIsRegenerationComplete] = useState(false);
   const [jobUuid, setJobUuid] = useState<string | null>(null);
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
-  const supabaseUrl = "https://qonqrjghzilosvnlasej.supabase.co";
-  const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvbnFyamdoemlsb3N2bmxhc2VqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1ODE5NjI3NywiZXhwIjoyMDczNzcyMjc3fQ.2ErJ9WutSjd3QNGgUtQCHGgvnMAtJ4jvPttfOcI0vec";
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   const supabase = useMemo(() => {
     if (!supabaseUrl || !supabaseAnonKey) {
       console.error("Supabase environment variables are missing");
