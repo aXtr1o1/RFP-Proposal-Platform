@@ -11,7 +11,7 @@ from docx.enum.section import WD_ORIENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from wordgenAgent.app.config_setting import build_updated_config
+from apps.wordgenAgent.app.config_setting import build_updated_config
 
 logger = logging.getLogger("wordcom")
 

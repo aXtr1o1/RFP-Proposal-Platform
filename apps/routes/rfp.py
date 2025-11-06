@@ -4,13 +4,13 @@ import json
 from fastapi import APIRouter, HTTPException, Body, Path
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
-from wordgenAgent.app.api import wordgen_api
-from api.services.supabase_service import (
+from apps.wordgenAgent.app.api import wordgen_api
+from apps.api.services.supabase_service import (
     get_pdf_urls_by_uuid,
     get_generated_markdown,
     get_latest_gen_id,
 )
-from wordgenAgent.app.document import generate_word_from_markdown
+from apps.wordgenAgent.app.document import generate_word_from_markdown
 
 logger = logging.getLogger("routes.rfp")
 router = APIRouter()
