@@ -23,11 +23,11 @@ def _emit_stdout(text: str) -> None:
     safe_text = (text + "\n").encode("ascii", errors="replace").decode("ascii")
     print(safe_text, end="", flush=True)
 
-from apps.api.services.supabase_service import (
+from api.services.supabase_service import (
     save_generated_markdown,
 )
-from apps.wordgenAgent.app import prompt5 as P
-from apps.wordgenAgent.app.document import generate_word_from_markdown
+from wordgenAgent.app import prompt5 as P
+from wordgenAgent.app.document import generate_word_from_markdown
 
 logger = logging.getLogger("wordgen_api")
 

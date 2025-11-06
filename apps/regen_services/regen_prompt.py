@@ -4,11 +4,11 @@ import logging
 from typing import Dict, Any, List, Optional, Iterator
 from openai import OpenAI
 from dotenv import load_dotenv
-from apps.api.services.supabase_service import (
+from api.services.supabase_service import (
     supabase,
     save_generated_markdown,
 )
-from apps.wordgenAgent.app.document import generate_word_from_markdown
+from wordgenAgent.app.document import generate_word_from_markdown
 load_dotenv(override=True)
 logger = logging.getLogger("regen_prompt")
 
