@@ -5,6 +5,7 @@ pydantic==2.9.2
 python-dotenv==1.0.1
 requests==2.32.3
 pillow==10.4.0
+gunicorn
 pytesseract==0.3.13
 openai==1.109.1
 tenacity==8.4.2
