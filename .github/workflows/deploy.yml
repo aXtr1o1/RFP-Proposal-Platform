@@ -72,7 +72,7 @@ jobs:
     needs: deploy-frontend
     defaults:
       run:
-        working-directory: apps
+        working-directory: .
     permissions:
       contents: read
     steps:
