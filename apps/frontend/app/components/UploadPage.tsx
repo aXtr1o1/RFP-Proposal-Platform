@@ -92,15 +92,6 @@ const HISTORY_SORT_OPTIONS: { value: HistorySortValue; label: string }[] = [
   { value: 'oldest', label: 'Oldest first' },
 ];
 
-type SseHandlers = {
-  onChunk?: (chunk: string) => void;
-  onStage?: (payload: Record<string, any> | string) => void;
-  onDone?: (payload: Record<string, any> | string) => void;
-  onResult?: (payload: Record<string, any> | string) => void;
-  onError?: (payload: Record<string, any> | string) => void;
-  onEvent?: (eventType: string, rawData: string) => void;
-};
-
 const safeJsonParse = <T,>(input: string | null | undefined, fallback: T): T => {
   if (!input) {
     return fallback;
@@ -296,140 +287,6 @@ const toStoredFileInfo = (file: { name: string; url: string; size?: number | nul
   url: file?.url || "",
   size: file?.size ?? null,
 });
-
-const STAGE_MESSAGE_MAP: Record<string, string> = {
-  starting: 'Starting...',
-  uploading_files: 'Uploading PDFs to AI...',
-  downloading_and_uploading_pdfs: 'Uploading PDFs to AI...',
-  prompting_model: 'Generating proposal...',
-  saving_generated_text: 'Saving content...',
-  saving_markdown: 'Saving content...',
-  building_word: 'Building Word document...',
-  generating_word: 'Building Word document...',
-  validating_input: 'Validating requested changes...',
-  processing_with_ai: 'Applying requested edits...',
-  no_modifications: 'Reusing previous content...',
-};
-
-const resolveStageMessage = (stageKey?: string) => {
-  if (!stageKey) {
-    return 'Processing...';
-  }
-  return STAGE_MESSAGE_MAP[stageKey] || stageKey.replace(/_/g, ' ');
-};
-
-const streamSseResponse = async (response: Response, handlers: SseHandlers = {}) => {
-  if (!response.body) {
-    throw new Error("No response body");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  const dispatchEventBlock = (eventBlock: string) => {
-    if (!eventBlock.trim()) {
-      return;
-    }
-    const lines = eventBlock.split("\n");
-    let eventType = "";
-    const dataLines: string[] = [];
-
-    for (const rawLine of lines) {
-      const line = rawLine.replace(/\r$/, "");
-      if (line.startsWith("event:")) {
-        eventType = line.substring(6).trim();
-      } else if (line.startsWith("data:")) {
-        const dataContent = line.substring(5);
-        dataLines.push(dataContent.startsWith(" ") ? dataContent.substring(1) : dataContent);
-      }
-    }
-
-    if (!eventType || dataLines.length === 0) {
-      return;
-    }
-
-    const rawData = dataLines.join("\n");
-    handlers.onEvent?.(eventType, rawData);
-
-    const safeParse = () => {
-      try {
-        return JSON.parse(rawData);
-      } catch {
-        return rawData;
-      }
-    };
-
-    if (eventType === "chunk") {
-      const chunkPayload = safeParse();
-      if (typeof chunkPayload === "string") {
-        handlers.onChunk?.(chunkPayload);
-      } else {
-        handlers.onChunk?.(JSON.stringify(chunkPayload));
-      }
-      return;
-    }
-
-    const payload = safeParse();
-
-    if (eventType === "stage") {
-      handlers.onStage?.(payload);
-      return;
-    }
-    if (eventType === "done") {
-      handlers.onDone?.(payload);
-      return;
-    }
-    if (eventType === "result") {
-      handlers.onResult?.(payload);
-      return;
-    }
-    if (eventType === "error") {
-      handlers.onError?.(payload);
-      const message =
-        typeof payload === "string"
-          ? payload
-          : (payload && typeof payload === "object" && "message" in payload)
-            ? String((payload as { message?: string }).message || "Stream error")
-            : "Stream error";
-      throw new Error(message);
-    }
-  };
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        buffer += decoder.decode();
-        buffer = buffer.replace(/\r\n/g, "\n");
-        if (buffer.trim()) {
-          dispatchEventBlock(buffer);
-        }
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true });
-      buffer = buffer.replace(/\r\n/g, "\n");
-      const events = buffer.split("\n\n");
-      buffer = events.pop() || "";
-      for (const eventBlock of events) {
-        dispatchEventBlock(eventBlock);
-      }
-    }
-  } catch (error) {
-    try {
-      await reader.cancel();
-    } catch {
-      // ignore cancellation errors
-    }
-    throw error;
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch {
-      // ignore release errors
-    }
-  }
-};
 
 
 const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
@@ -786,33 +643,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setHistoryLoading(false);
     }
   }, [supabase]);
-
-  const fetchMarkdownForGen = useCallback(
-    async (uuid: string, genId: string): Promise<string | null> => {
-      if (!supabase) {
-        return null;
-      }
-      try {
-        const { data, error } = await supabase
-          .from("word_gen")
-          .select("generated_markdown")
-          .eq("uuid", uuid)
-          .eq("gen_id", genId)
-          .maybeSingle();
-
-        if (error) {
-          console.warn("Failed to fetch markdown for regeneration", error);
-          return null;
-        }
-        const typedRow = data as WordGenRow | null;
-        return typedRow?.generated_markdown ?? null;
-      } catch (err) {
-        console.warn("Unexpected error retrieving markdown for regeneration", err);
-        return null;
-      }
-    },
-    [supabase]
-  );
 
   const persistGenerationRecord = useCallback(
     async (payload: {
@@ -1327,72 +1157,169 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    const response = await fetch(apiPath(`/initialgen/${uuid}`), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-      },
-      body: JSON.stringify({
-        config: config,
-        docConfig: docConfig,
-        timestamp: new Date().toISOString(),
-        language: language,
-      }),
-    });
-
-    if (!response.ok) {
-      const txt = await response.text().catch(() => "");
-      throw new Error(`Backend /initialgen failed: ${response.status} ${txt}`);
-    }
-
-    let accumulatedMarkdown = "";
-    await streamSseResponse(response, {
-      onChunk: (chunk) => {
-        accumulatedMarkdown += chunk;
-        setMarkdownContent(accumulatedMarkdown);
-      },
-      onStage: (payload) => {
-        const stageKey =
-          typeof payload === "string"
-            ? payload
-            : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
-        if (stageKey) {
-          setProcessingStage(resolveStageMessage(stageKey));
-        }
-      },
-      onError: (payload) => {
-        console.error("Initial generation stream error", payload);
-      },
-    });
-
-    let docxShareUrl: string | null = null;
-    try {
-      const docRes = await fetch(apiPath(`/download/${uuid}`), {
+    return new Promise<{ docxShareUrl: string | null; proposalContent: string }>((resolve, reject) => {
+      fetch(apiPath(`/initialgen/${uuid}`), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream"
+        },
         body: JSON.stringify({
+          config: config,
           docConfig: docConfig,
-          language: language,
+          timestamp: new Date().toISOString(),
+          language: language
         }),
-      });
+      }).then(async (res) => {
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          reject(new Error(`Backend /initialgen failed: ${res.status} ${txt}`));
+          return;
+        }
 
-      if (!docRes.ok) {
-        console.error("Failed to generate documents from /download");
-      } else {
-        const docResult = await docRes.json();
-        docxShareUrl = docResult.proposal_word_url || null;
-      }
-    } catch (error) {
-      console.error("Error generating documents:", error);
-    } finally {
-      setIsUploading(false);
-    }
+        if (!res.body) {
+          reject(new Error("No response body"));
+          return;
+        }
 
-    return {
-      docxShareUrl,
-      proposalContent: accumulatedMarkdown,
-    };
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let accumulatedMarkdown = "";
+        let isSaved = false;
+
+        const processChunk = async () => {
+          try {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              // Stream ended - now generate the Word and PDF documents
+              console.log("Stream completed, generating documents...");
+              
+              try {
+                // Generate Word and PDF documents using the /download endpoint
+                const docRes = await fetch(apiPath(`/download/${uuid}`), {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    docConfig: docConfig,
+                    language: language
+                  }),
+                });
+
+                if (!docRes.ok) {
+                  console.error("Failed to generate documents");
+                  resolve({ 
+                    docxShareUrl: null, 
+                    proposalContent: accumulatedMarkdown 
+                  });
+                  return;
+                }
+
+                const docResult = await docRes.json();
+                resolve({ 
+                  docxShareUrl: docResult.proposal_word_url || null, 
+                  proposalContent: accumulatedMarkdown 
+                });
+                setIsUploading(false);
+              } catch (error) {
+                console.error("Error generating documents:", error);
+                resolve({ 
+                  docxShareUrl: null, 
+                  proposalContent: accumulatedMarkdown 
+                });
+              }
+              return;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Split by double newlines to separate SSE events
+            const events = buffer.split('\n\n');
+            // Keep the last incomplete event in the buffer
+            buffer = events.pop() || "";
+
+            for (const eventBlock of events) {
+              if (!eventBlock.trim()) continue;
+              
+              const lines = eventBlock.split('\n');
+              let eventType = '';
+              let dataLines: string[] = [];
+              
+              for (const line of lines) {
+                if (line.startsWith('event:')) {
+                  eventType = line.substring(6).trim();
+                } else if (line.startsWith('data:')) {
+                  // Don't trim data content - preserve whitespace in markdown
+                  const dataContent = line.substring(5);
+                  // Only remove the single leading space that SSE spec adds after 'data:'
+                  dataLines.push(dataContent.startsWith(' ') ? dataContent.substring(1) : dataContent);
+                }
+              }
+              
+              if (!eventType || dataLines.length === 0) continue;
+              
+              // Join multi-line data with newlines to preserve markdown formatting
+              const data = dataLines.join('\n');
+              
+              if (eventType === 'chunk') {
+                // Chunk data is JSON-encoded to preserve newlines and special chars
+                try {
+                  const decodedChunk = JSON.parse(data);
+                  accumulatedMarkdown += decodedChunk;
+                  console.log(`Chunk received: ${decodedChunk.length} chars, Total: ${accumulatedMarkdown.length}`);
+                  setMarkdownContent(accumulatedMarkdown);
+                } catch (e) {
+                  console.error("Failed to parse chunk data:", e, data);
+                  // Fallback: use data as-is
+                  accumulatedMarkdown += data;
+                  setMarkdownContent(accumulatedMarkdown);
+                }
+              } else if (eventType === 'stage') {
+                try {
+                  const stageData = JSON.parse(data);
+                  console.log("Stage:", stageData.stage);
+                  const stageMessages: Record<string, string> = {
+                    'starting': 'Starting...',
+                    'downloading_and_uploading_pdfs': 'Uploading PDFs to AI...',
+                    'prompting_model': 'Generating proposal...',
+                    'saving_generated_text': 'Saving content...'
+                  };
+                  setProcessingStage(stageMessages[stageData.stage] || stageData.stage || 'Processing...');
+                } catch (e) {
+                  console.warn("Failed to parse stage data:", data);
+                }
+              } else if (eventType === 'done') {
+                try {
+                  const doneData = JSON.parse(data);
+                  console.log("Done:", doneData);
+                  isSaved = doneData.status === "saved";
+                } catch (e) {
+                  console.warn("Failed to parse done data:", data);
+                }
+              } else if (eventType === 'error') {
+                try {
+                  const errorData = JSON.parse(data);
+                  console.error("Stream error:", errorData.message);
+                  reject(new Error(errorData.message));
+                  return;
+                } catch (e) {
+                  console.error("Stream error:", data);
+                  reject(new Error(data));
+                  return;
+                }
+              }
+            }
+
+            processChunk();
+          } catch (error) {
+            reject(error);
+          }
+        };
+
+        processChunk();
+      }).catch(reject);
+    });
   };
 
   const simulateProgress = () => {
@@ -1803,7 +1730,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "text/event-stream",
         },
         body: JSON.stringify({
           uuid: jobUuid,
@@ -1820,58 +1746,41 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         throw new Error(`Backend /regenerate failed: ${response.status} ${txt}`);
       }
 
-      let streamedMarkdown = "";
-      let regenWordLink: string | null = null;
-      let regenGenId: string | null = null;
+      let regenResult: any = null;
+      try {
+        regenResult = await response.json();
+      } catch (parseError) {
+        console.warn("Failed to parse regenerate response JSON", parseError);
+      }
 
-      await streamSseResponse(response, {
-        onChunk: (chunk) => {
-          streamedMarkdown += chunk;
-          setMarkdownContent(streamedMarkdown);
-        },
-        onStage: (payload) => {
-          const stageKey =
-            typeof payload === "string"
-              ? payload
-              : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
-          if (stageKey) {
-            setProcessingStage(resolveStageMessage(stageKey));
-          }
-        },
-        onResult: (payload) => {
-          if (payload && typeof payload === "object" && "markdown" in payload) {
-            const fullMarkdown = (payload as { markdown?: string }).markdown;
-            if (typeof fullMarkdown === "string") {
-              streamedMarkdown = fullMarkdown;
-              setMarkdownContent(fullMarkdown);
-            }
-          }
-        },
-        onDone: (payload) => {
-          if (payload && typeof payload === "object") {
-            const doneData = payload as { gen_id?: string; wordLink?: string };
-            if (doneData.gen_id) {
-              regenGenId = doneData.gen_id;
-            }
-            if (doneData.wordLink) {
-              regenWordLink = doneData.wordLink;
-            }
-          }
-        },
-        onError: (payload) => {
-          console.error("Regenerate stream error", payload);
-        },
-      });
+      const regenGenId: string = regenResult?.regen_gen_id || regenResult?.gen_id || generateUUID();
+      const newWordLink: string | null = regenResult?.wordLink ?? null;
+      const newPdfLink: string | null = regenResult?.pdfLink ?? null;
 
-      const finalGenId = regenGenId || generateUUID();
-      let regeneratedMarkdown: string | null = streamedMarkdown || null;
-      if (!regeneratedMarkdown) {
-        regeneratedMarkdown = await fetchMarkdownForGen(jobUuid, finalGenId);
+      setProcessingStage('Fetching regenerated content...');
+
+      let regeneratedMarkdown: string | null = null;
+      try {
+        const { data: regenRow, error: regenRowError } = await supabase
+          .from("word_gen")
+          .select("*")
+          .eq("uuid", jobUuid)
+          .eq("gen_id", regenGenId)
+          .maybeSingle();
+
+        if (regenRowError) {
+          console.warn("Failed to fetch regenerated row from Supabase", regenRowError);
+        } else if (regenRow) {
+          const typedRow = regenRow as WordGenRow | null;
+          regeneratedMarkdown = typedRow?.generated_markdown ?? null;
+        }
+      } catch (fetchError) {
+        console.warn("Error retrieving regenerated markdown from Supabase", fetchError);
       }
 
       await persistGenerationRecord({
         uuid: jobUuid,
-        genId: finalGenId,
+        genId: regenGenId,
         regenComments: commentsSnapshot,
         generalPreference: regenConfig,
         rfpFiles: savedRfpFiles,
@@ -1882,17 +1791,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         config: regenConfig,
         language: regenLanguage,
         docConfig: regenDocConfig,
-        wordLink: regenWordLink,
-        pdfLink: null,
+        wordLink: newWordLink,
+        pdfLink: newPdfLink,
         generatedDocument: 'Regenerated_Proposal.docx',
       };
 
       setProcessingStage('Finalizing regenerated proposal...');
       setUploadProgress(100);
-      setSelectedGenId(finalGenId);
+      setSelectedGenId(regenGenId);
       setGeneratedDocument(proposalSnapshot.generatedDocument ?? 'Regenerated_Proposal.docx');
       setWordLink(proposalSnapshot.wordLink ?? null);
-      versionLanguageRef.current[finalGenId] = regenLanguage;
+      versionLanguageRef.current[regenGenId] = regenLanguage;
       setCurrentVersionLanguage(regenLanguage);
       setPdfLinkSafely(proposalSnapshot.pdfLink ?? null);
       setPdfError(null);
@@ -1904,8 +1813,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       await refreshHistory();
     } catch (error) {
       console.error('Regenerate failed:', error);
-      const message = error instanceof Error ? error.message : 'Regenerate failed. Please try again.';
-      alert(message);
+      alert('Regenerate failed. Please try again.');
       setIsRegenerating(false);
       setIsRegenerationComplete(false);
     } finally {
