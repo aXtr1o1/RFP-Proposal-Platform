@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, ChevronUp, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle, Menu } from 'lucide-react';
+import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, ChevronUp, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle, Menu, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
 import { saveAllComments } from "./utils";
@@ -460,6 +460,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [expandedVersionDetails, setExpandedVersionDetails] = useState<Record<string, boolean>>({});
   const [selectedUseCase, setSelectedUseCase] = useState<string | null>(null);
   const [selectedGenId, setSelectedGenId] = useState<string | null>(null);
+  const [deletingGenId, setDeletingGenId] = useState<string | null>(null);
   const pendingRegenCommentsRef = useRef<CommentItem[]>([]);
   const versionLanguageRef = useRef<Record<string, string>>({});
   const [currentVersionLanguage, setCurrentVersionLanguage] = useState<string>('arabic');
@@ -873,6 +874,73 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       [genId]: !prev[genId],
     }));
   }, []);
+
+  const handleDeleteGeneration = useCallback(async (record: ParsedWordGenRecord) => {
+    const descriptor = record.regenComments.length > 0 ? 'regeneration' : 'generation';
+    const label = getGenerationLabel(record);
+    const confirmMessage = `Delete this ${descriptor}${label ? ` ("${label}")` : ''}? This action cannot be undone.`;
+    if (typeof window === 'undefined' || !window.confirm(confirmMessage)) {
+      return;
+    }
+    if (!supabase) {
+      alert('Supabase configuration missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+      return;
+    }
+
+    const prevUseCaseLength = generationHistory[record.uuid]?.length ?? 0;
+    const willRemoveUseCase = prevUseCaseLength <= 1;
+
+    setDeletingGenId(record.gen_id);
+    try {
+      const { error } = await supabase.from('word_gen').delete().eq('gen_id', record.gen_id);
+      if (error) {
+        throw error;
+      }
+
+      setGenerationHistory(prev => {
+        const next = { ...prev };
+        const prevItems = next[record.uuid] || [];
+        const filtered = prevItems.filter(item => item.gen_id !== record.gen_id);
+        if (filtered.length > 0) {
+          next[record.uuid] = filtered;
+        } else {
+          delete next[record.uuid];
+        }
+        return next;
+      });
+
+      setExpandedVersionDetails(prev => {
+        if (!prev[record.gen_id]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[record.gen_id];
+        return next;
+      });
+
+      if (willRemoveUseCase) {
+        setExpandedUseCases(prev => {
+          if (!prev[record.uuid]) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[record.uuid];
+          return next;
+        });
+      }
+
+      setSelectedGenId(prev => (prev === record.gen_id ? null : prev));
+      if (willRemoveUseCase) {
+        setSelectedUseCase(prev => (prev === record.uuid ? null : prev));
+      }
+    } catch (err) {
+      console.error('Failed to delete generation', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Failed to delete generation: ${message}`);
+    } finally {
+      setDeletingGenId(null);
+    }
+  }, [generationHistory, getGenerationLabel, supabase]);
 
   const handleSelectHistoryItem = useCallback((record: ParsedWordGenRecord) => {
     applyRecordToState(record);
@@ -2216,10 +2284,24 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                                   <button
                                     type="button"
                                     onClick={() => toggleVersionDetails(item.gen_id)}
-                                    className="px-3 py-3 text-gray-500 border border-gray-200 border-l-0 bg-white hover:text-gray-700 rounded-r-lg"
+                                    className="px-3 py-3 text-gray-500 border border-gray-200 border-l-0 bg-white hover:text-gray-700"
                                     aria-label={versionExpanded ? "Hide version details" : "Show version details"}
                                   >
                                     {versionExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteGeneration(item)}
+                                    className="px-3 py-3 text-red-500 border border-gray-200 border-l-0 bg-white hover:text-red-600 rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label={`Delete this ${item.regenComments.length > 0 ? 'regeneration' : 'generation'}`}
+                                    title="Delete this version"
+                                    disabled={deletingGenId === item.gen_id}
+                                  >
+                                    {deletingGenId === item.gen_id ? (
+                                      <Loader size={14} className="animate-spin" />
+                                    ) : (
+                                      <Trash2 size={14} />
+                                    )}
                                   </button>
                                 </div>
                                 {versionExpanded && (
@@ -2277,7 +2359,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         <div className="flex">
           {/* Left Panel - Upload Form */}
           <div className="w-96 bg-white border-r border-gray-200 min-h-screen p-6">
-            <div className="mb-8 flex gap-3">
+            <div className="mb-8 flex items-start gap-4">
               <button
                 type="button"
                 onClick={() => setIsHistoryOpen(prev => !prev)}
@@ -2306,11 +2388,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                         : 'Open version history'
                 }
                 aria-pressed={isHistoryOpen}
-                aria-expanded={isHistoryOpen}
-              >
+                aria-expanded={isHistoryOpen}>
                 <Menu size={18} />
               </button>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <h1 className="text-lg font-semibold text-gray-900 mb-2">
                   RFP Processing
                 </h1>
@@ -2324,18 +2405,24 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 )}
                 {activeUseCaseLabel && (
                   <div className="mt-3 space-y-1 text-xs text-gray-500">
-                    <p className="flex items-center gap-2">
+                    <p className="flex items-center gap-2 min-w-0">
                       <CheckCircle2 className="text-green-500" size={14} />
-                      <span className="text-gray-700">Active use case:</span>
-                      <span className="text-gray-900 font-medium truncate" title={activeUseCaseLabel}>
+                      <span className="text-gray-700 whitespace-nowrap">Active use case:</span>
+                      <span
+                        className="flex-1 min-w-0 text-gray-900 font-medium truncate"
+                        title={activeUseCaseLabel}
+                      >
                         {formatNameForSidebar(activeUseCaseLabel, 48)}
                       </span>
                     </p>
                     {activeVersionLabel && (
-                      <p className="flex items-center gap-2">
+                      <p className="flex items-center gap-2 min-w-0">
                         <ChevronRight size={12} className="text-gray-400" />
-                        <span className="text-gray-700">Current version:</span>
-                        <span className="text-gray-900 font-medium truncate" title={activeVersionLabel}>
+                        <span className="text-gray-700 whitespace-nowrap">Current version:</span>
+                        <span
+                          className="flex-1 min-w-0 text-gray-900 font-medium truncate"
+                          title={activeVersionLabel}
+                        >
                           {formatNameForSidebar(activeVersionLabel, 52)}
                         </span>
                       </p>
