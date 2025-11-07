@@ -353,7 +353,7 @@ def _apply_header_footer(doc: Document, cfg: dict, rtl: bool) -> None:
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         _set_paragraph_bidi(p, rtl)
 
-def build_word_from_proposal(proposal_dict, user_config, output_path, language, visible=False):
+def build_word_from_proposal(proposal_dict, user_config, output_path, visible=False):
     """
     Build a DOCX using python-docx. Language-aware (Arabic/English) formatting.
     Renders 'points' as lines prefixed by '- ' (kept from your COM logic).
@@ -364,9 +364,7 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, language, 
 
     cfg = build_updated_config(default_CONFIG, user_config)
 
-    lang = (language or "").lower()
-    rtl = (lang == "arabic")
-    cfg["reading_order"] = WD_READINGORDER_RTL if rtl else WD_READINGORDER_LTR
+    rtl = bool(cfg.get("reading_order", WD_READINGORDER_LTR))
 
     title = (proposal_dict.get("title") or "").strip()
     sections = proposal_dict.get("sections", [])
