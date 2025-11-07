@@ -43,6 +43,21 @@ interface DocConfig {
   show_page_numbers: boolean;
 }
 
+const normalizeMarkdown = (input: string): string => {
+  if (!input) {
+    return '';
+  }
+
+  const normalized = input.replace(/\r\n/g, '\n').trim();
+  const fencedMatch = normalized.match(/^```(?:[a-zA-Z0-9_-]+)?\s*([\s\S]*?)\s*```$/);
+
+  if (fencedMatch) {
+    return fencedMatch[1].trim();
+  }
+
+  return normalized;
+};
+
 const MarkdownRenderer = ({ 
   markdownContent, 
   docConfig 
@@ -50,8 +65,8 @@ const MarkdownRenderer = ({
   markdownContent: string;
   docConfig?: DocConfig;
 }) => {
-  // Pre-process markdown to ensure proper rendering
-  const processedContent = markdownContent || '';
+  // Pre-process markdown to strip stray code fences the model sometimes adds
+  const processedContent = normalizeMarkdown(markdownContent || '');
   
   // Helper function to convert pt to rem (assuming 16px base font size)
   const ptToRem = (pt: string) => `${parseFloat(pt) / 12}rem`;
