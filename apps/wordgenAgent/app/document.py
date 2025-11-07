@@ -179,7 +179,6 @@ def generate_word_from_markdown(
             proposal_dict=proposal_json,
             user_config=effective_config,
             output_path=str(docx_path),
-            language=language,
             visible=False,
         )
 
