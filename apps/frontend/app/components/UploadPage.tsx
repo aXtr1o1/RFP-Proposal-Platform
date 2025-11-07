@@ -77,6 +77,21 @@ type ParsedWordGenRecord = WordGenRow & {
   regenComments: CommentItem[];
 };
 
+type UseCaseHistoryEntry = {
+  uuid: string;
+  items: ParsedWordGenRecord[];
+  label: string;
+  latestVersion: number;
+  latestCreatedAt: string | null;
+};
+
+type HistorySortValue = 'newest' | 'oldest';
+
+const HISTORY_SORT_OPTIONS: { value: HistorySortValue; label: string }[] = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+];
+
 const safeJsonParse = <T,>(input: string | null | undefined, fallback: T): T => {
   if (!input) {
     return fallback;
@@ -170,6 +185,54 @@ const formatNameForSidebar = (input: string | null | undefined, maxLength = 40):
   }
 
   return `${name.slice(0, maxLength - 3)}...`;
+};
+
+const formatRelativeTimestamp = (value: string | null | undefined): string => {
+  if (!value) {
+    return "Unknown";
+  }
+  const parsed = new Date(value);
+  const timestamp = parsed.getTime();
+  if (Number.isNaN(timestamp)) {
+    return "Unknown";
+  }
+
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+
+  if (diff < minute) {
+    return "Just now";
+  }
+  if (diff < hour) {
+    return `${Math.max(1, Math.round(diff / minute))}m ago`;
+  }
+  if (diff < day) {
+    return `${Math.max(1, Math.round(diff / hour))}h ago`;
+  }
+  if (diff < week) {
+    return `${Math.max(1, Math.round(diff / day))}d ago`;
+  }
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+const formatSidebarTimestamp = (value: string | null | undefined): string => {
+  if (!value) {
+    return "—";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+  return parsed.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 const interpretProposalString = (value: string): StoredProposalSnapshot => {
@@ -392,6 +455,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historySort, setHistorySort] = useState<HistorySortValue>('newest');
   const [expandedUseCases, setExpandedUseCases] = useState<Record<string, boolean>>({});
   const [expandedVersionDetails, setExpandedVersionDetails] = useState<Record<string, boolean>>({});
   const [selectedUseCase, setSelectedUseCase] = useState<string | null>(null);
@@ -767,33 +831,34 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     [pendingRegenCommentsRef, setPdfLinkSafely, setPdfError, setIsPdfConverting]
   );
 
-  const sortedUseCases = useMemo(() => {
-    const entries = Object.entries(generationHistory).map(([uuid, items]) => {
+  const useCaseEntries = useMemo<UseCaseHistoryEntry[]>(() => {
+    return Object.entries(generationHistory).map(([uuid, items]) => {
       const sortedItems = [...items].sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       const reference = sortedItems[sortedItems.length - 1] ?? sortedItems[0];
       const rfpName = reference?.rfpFiles?.[0]?.name || `Use Case ${uuid.substring(0, 8)}`;
-      const isArchived = sortedItems.every(item => Boolean(item.delete_at));
+      const latestCreatedAt = sortedItems[0]?.created_at ?? null;
 
       return {
         uuid,
         items: sortedItems,
         label: rfpName,
-        isArchived,
         latestVersion: sortedItems.length,
+        latestCreatedAt,
       };
     });
-
-    return entries.sort((a, b) => {
-      if (a.isArchived !== b.isArchived) {
-        return a.isArchived ? 1 : -1;
-      }
-      const latestA = a.items[0]?.created_at || "";
-      const latestB = b.items[0]?.created_at || "";
-      return new Date(latestB).getTime() - new Date(latestA).getTime();
-    });
   }, [generationHistory]);
+
+  const sortedUseCases = useMemo(() => {
+    const toTimestamp = (value: string | null) =>
+      value ? new Date(value).getTime() : 0;
+
+    return [...useCaseEntries].sort((a, b) => {
+      const delta = toTimestamp(b.latestCreatedAt) - toTimestamp(a.latestCreatedAt);
+      return historySort === 'newest' ? delta : -delta;
+    });
+  }, [historySort, useCaseEntries]);
 
   const toggleUseCaseExpansion = useCallback((uuid: string) => {
     setExpandedUseCases(prev => ({
@@ -856,6 +921,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   }, [generationHistory, getGenerationLabel, selectedGenId, selectedUseCase, sortedUseCases]);
 
   const wordDownloadName = useMemo(() => getWordFileName(), [getWordFileName]);
+
+  const hasHistory = sortedUseCases.length > 0;
+  const historyHelperText = historyError
+    ? historyError
+    : historyLoading && !hasHistory
+      ? "Loading history..."
+      : !hasHistory
+        ? "No versions found yet. Generate a proposal to start tracking history."
+        : historyLoading
+          ? "Syncing latest history..."
+          : "Select a use case to view and load any saved generation or regeneration.";
 
   const uploadFileToSupabase = async (
         file: File,
@@ -1999,7 +2075,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           }`}
         >
           <aside
-            className={`w-80 max-w-full bg-white border-r border-gray-200 shadow-2xl flex flex-col overflow-hidden transform transition-transform duration-300 ease-in-out ${
+            className={`w-[360px] max-w-full bg-white border-r border-gray-200 shadow-2xl flex flex-col overflow-hidden transform transition-transform duration-300 ease-in-out ${
               isHistoryOpen ? 'translate-x-0 pointer-events-auto' : '-translate-x-full pointer-events-none'
             }`}
             role={isHistoryOpen ? 'dialog' : undefined}
@@ -2007,34 +2083,60 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             aria-hidden={!isHistoryOpen}
             aria-label="Version history"
           >
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                <Database size={16} />
-                Version History
+            <div className="px-5 py-4 border-b border-gray-100">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                    <Database size={16} />
+                    Version History
+                  </div>
+                  <p
+                    className={`mt-1 text-[11px] leading-4 ${historyError ? 'text-red-600' : 'text-gray-500'}`}
+                  >
+                    {historyHelperText}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                  aria-label="Close version history"
+                >
+                  <X size={14} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsHistoryOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-                aria-label="Close version history"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="px-5 py-3 border-b border-gray-100 text-[11px] text-gray-500">
-              {historyError
-                ? historyError
-                : sortedUseCases.length === 0
-                  ? 'No versions found yet. Generate a proposal to start tracking history.'
-                  : 'Select a use case to view and load any saved generation or regeneration.'}
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="text-gray-400 uppercase tracking-wide">Sort</span>
+                {HISTORY_SORT_OPTIONS.map(option => {
+                  const isActive = historySort === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setHistorySort(option.value)}
+                      className={`px-3 py-1.5 rounded-full border transition-all ${
+                        isActive
+                          ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                      }`}
+                      aria-pressed={isActive}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              {historyLoading && sortedUseCases.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-xs text-gray-500 gap-2">
+              {historyLoading && !hasHistory ? (
+                <div className="flex items-center justify-center h-full text-[11px] text-gray-500 gap-2">
                   <Loader className="animate-spin" size={14} />
-                  Loading history...
+                  Syncing history...
+                </div>
+              ) : !hasHistory ? (
+                <div className="flex items-center justify-center h-full px-6 text-center text-[11px] text-gray-500">
+                  No versions found yet. Generate a proposal to start tracking history.
                 </div>
               ) : (
                 sortedUseCases.map((useCase) => {
@@ -2045,20 +2147,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                       <button
                         type="button"
                         onClick={() => toggleUseCaseExpansion(useCase.uuid)}
-                        className="w-full px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                        className="w-full px-5 py-4 flex items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
                       >
-                        <div className="pr-4">
-                          <p className="text-sm font-medium text-gray-800 truncate flex items-center gap-2">
-                            <span className="truncate" title={useCase.label}>{displayUseCaseLabel}</span>
-                            {useCase.isArchived && (
-                              <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold text-orange-600 bg-orange-100 rounded">
-                                Archived
-                              </span>
-                            )}
+                        <div className="flex-1 pr-2">
+                          <p className="text-sm font-medium text-gray-800 truncate" title={useCase.label}>
+                            {displayUseCaseLabel}
                           </p>
-                          <p className="text-[11px] text-gray-500">
-                            Latest version V{useCase.latestVersion} • {useCase.items.length} total
-                          </p>
+                          <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 gap-2">
+                            <span className="truncate">{formatRelativeTimestamp(useCase.latestCreatedAt)}</span>
+                            <span className="font-semibold text-gray-700">V{useCase.latestVersion}</span>
+                          </div>
+                          <p className="text-[10px] text-gray-400">{useCase.items.length} saved versions</p>
                         </div>
                         {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                       </button>
@@ -2084,34 +2183,29 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                               >
                                 <div className="absolute left-2 top-0 bottom-0 border-l border-gray-200 pointer-events-none" />
                                 <div className="absolute left-1.5 top-4 w-2 h-2 rounded-full bg-gray-200 border border-white pointer-events-none" />
-                                <div className="flex items-stretch">
+                                <div className="flex items-stretch gap-2">
                                   <button
                                     type="button"
                                     onClick={() => handleSelectHistoryItem(item)}
-                                    className={`flex-1 px-4 py-3 text-left text-xs transition-colors rounded-l ${
+                                    className={`flex-1 px-4 py-3 text-left text-xs transition-colors rounded-l-lg border ${
                                       isActive
-                                        ? 'bg-white text-blue-600 border-l-2 border-blue-500 font-semibold shadow-sm'
-                                        : 'bg-transparent hover:bg-white text-gray-700'
+                                        ? 'bg-white text-blue-600 border-blue-300 shadow-sm'
+                                        : 'bg-transparent hover:bg-white text-gray-700 border-transparent hover:border-gray-200'
                                     }`}
                                   >
-                                    <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-start justify-between gap-2">
                                       <span className="truncate flex items-center gap-2">
                                         <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                                           V{versionNumber}
                                         </span>
                                         <span className="truncate" title={label || `Generation ${versionNumber}`}>{displayVersionLabel}</span>
-                                        {item.delete_at && (
-                                          <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-semibold text-orange-600 bg-orange-100 rounded">
-                                            Archived
-                                          </span>
-                                        )}
                                       </span>
-                                      <span className="flex-shrink-0 text-[10px] text-gray-400">
-                                        {new Date(item.created_at).toLocaleString()}
+                                      <span className="flex-shrink-0 text-[10px] text-gray-400 whitespace-nowrap">
+                                        {formatSidebarTimestamp(item.created_at)}
                                       </span>
                                     </div>
                                     {shortGenId && (
-                                      <p className="mt-1 text-[9px] text-gray-400">ID: {shortGenId}</p>
+                                      <p className="mt-1 text-[9px] text-gray-400 font-mono">ID: {shortGenId}</p>
                                     )}
                                     {item.regenComments.length > 0 && (
                                       <p className="mt-1 text-[10px] text-gray-500 truncate">
@@ -2122,7 +2216,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                                   <button
                                     type="button"
                                     onClick={() => toggleVersionDetails(item.gen_id)}
-                                    className="px-3 py-3 text-gray-500 border-l border-gray-200 bg-white hover:text-gray-700 rounded-tr rounded-br"
+                                    className="px-3 py-3 text-gray-500 border border-gray-200 border-l-0 bg-white hover:text-gray-700 rounded-r-lg"
                                     aria-label={versionExpanded ? "Hide version details" : "Show version details"}
                                   >
                                     {versionExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -2192,11 +2286,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                     ? 'bg-gray-900 text-white border-gray-900 shadow'
                     : 'bg-white text-gray-700 border-gray-200 hover:shadow'
                 }`}
-                disabled={supabaseEnvMissing || (historyLoading && sortedUseCases.length === 0)}
+                disabled={supabaseEnvMissing || (historyLoading && !hasHistory)}
                 aria-label={
                   supabaseEnvMissing
                     ? 'Supabase configuration required'
-                    : historyLoading && sortedUseCases.length === 0
+                    : historyLoading && !hasHistory
                       ? 'Loading version history'
                       : isHistoryOpen
                         ? 'Close version history'
@@ -2205,7 +2299,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 title={
                   supabaseEnvMissing
                     ? 'Configure Supabase to enable version history'
-                    : historyLoading && sortedUseCases.length === 0
+                    : historyLoading && !hasHistory
                       ? 'Loading version history...'
                       : isHistoryOpen
                         ? 'Close version history'
