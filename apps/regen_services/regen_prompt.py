@@ -27,6 +27,14 @@ def _sse_event_json(event: str, obj: Dict[str, Any]) -> bytes:
     """SSE event for JSON messages."""
     return f"event: {event}\ndata: {json.dumps(obj, ensure_ascii=False)}\n\n".encode("utf-8")
 
+
+def _text_chunks(text: str, chunk_size: int = 2000) -> Iterator[str]:
+    """Yield reasonably sized pieces of text for SSE chunk streaming."""
+    if not text:
+        return
+    for idx in range(0, len(text), chunk_size):
+        yield text[idx : idx + chunk_size]
+
 def _get_latest_markdown_excluding(uuid: str, exclude_gen_id: Optional[str]) -> str:
     """
     Get the most recent markdown for uuid, excluding the row with exclude_gen_id (the new regen row).
@@ -154,8 +162,7 @@ class MarkdownModifier:
 
         full_markdown = "".join(buffer_chunks)
         logger.info(f"Streaming regen completed, length: {len(full_markdown)} chars")
-        yield _sse_event_json("stage", {"stage": "saving_generated_text"})
-        yield _sse_event_json("result", {"markdown": full_markdown})
+        return full_markdown
 
 def regenerate_markdown_with_comments(
     uuid: str,
@@ -212,6 +219,78 @@ def regenerate_markdown_with_comments(
     except Exception as e:
         logger.exception(f"[regen] Failed regeneration for uuid={uuid}, gen_id={gen_id}")
         raise
+
+
+def regenerate_markdown_with_comments_streaming(
+    uuid: str,
+    source_markdown: str,
+    gen_id: str,
+    docConfig: Dict[str, Any],
+    language: str = "english",
+    comments: Optional[List[Dict[str, str]]] = None,
+) -> Iterator[bytes]:
+    """
+    Streaming variant of regeneration that emits SSE chunks while updating Supabase + Word.
+    """
+    try:
+        comments = comments or []
+        if not source_markdown:
+            raise ValueError("Empty source markdown — cannot regenerate")
+
+        yield _sse_event_json("stage", {"stage": "starting"})
+        yield _sse_event_json("stage", {"stage": "prompting_model"})
+
+        updated_markdown = source_markdown
+        api_key = os.getenv("OPENAI_API_KEY")
+
+        if comments:
+            if not api_key:
+                raise ValueError("Missing OPENAI_API_KEY")
+            modifier = MarkdownModifier(api_key)
+            updated_markdown = yield from modifier.process_markdown_streaming(
+                markdown=source_markdown,
+                items=comments,
+                language=language,
+            )
+        else:
+            logger.warning("No comments provided for streaming regen, returning original markdown")
+            for chunk in _text_chunks(source_markdown):
+                yield _sse_event_raw("chunk", chunk)
+
+        yield _sse_event_json("result", {"markdown": updated_markdown})
+        yield _sse_event_json("stage", {"stage": "saving_generated_text"})
+
+        saved_ok = save_generated_markdown(uuid, gen_id, updated_markdown)
+        if not saved_ok:
+            yield _sse_event_json("error", {"message": f"Failed to save regenerated markdown for gen_id={gen_id}"})
+
+        yield _sse_event_json("stage", {"stage": "building_word"})
+        word_urls = {}
+        try:
+            word_urls = generate_word_from_markdown(
+                uuid=uuid,
+                gen_id=gen_id,
+                markdown=updated_markdown,
+                doc_config=docConfig,
+                language=(language or "english").lower(),
+            )
+        except Exception as word_err:
+            logger.exception("Word generation/upload failed during streaming regen")
+            yield _sse_event_json("error", {"message": f"word build error: {str(word_err)}"})
+
+        yield _sse_event_json(
+            "done",
+            {
+                "status": "saved" if saved_ok else "not_saved",
+                "uuid": uuid,
+                "gen_id": gen_id,
+                "language": language,
+                "wordLink": word_urls.get("proposal_word_url") if isinstance(word_urls, dict) else None,
+            },
+        )
+    except Exception as exc:
+        logger.exception(f"[regen-stream] Failed regeneration for uuid={uuid}, gen_id={gen_id}")
+        yield _sse_event_json("error", {"message": str(exc)})
 
 import os
 import sys
