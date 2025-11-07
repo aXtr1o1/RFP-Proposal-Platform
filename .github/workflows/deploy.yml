@@ -28,7 +28,6 @@ jobs:
             cd "$PROJECT_ROOT"
 
             echo "Fetching latest master..."
-            git stash
             git fetch origin master
             git checkout master
             git pull origin master --ff-only
