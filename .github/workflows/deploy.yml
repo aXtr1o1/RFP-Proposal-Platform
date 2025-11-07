@@ -32,6 +32,9 @@ jobs:
             git checkout master
             git pull origin master --ff-only
 
+            echo "Activating virtual environment..."
+            source .venv/bin/activate
+
             echo "Installing backend dependencies..."
             python3 -m pip install --upgrade pip
             python3 -m pip install -r apps/requirements.txt
