@@ -113,6 +113,9 @@ async def regenerate(request: RegenRequest):
 
         return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
+    except HTTPException:
+        logger.exception("regenerate HTTP error")
+        raise
     except Exception as e:
         logger.exception("regenerate endpoint failed")
         raise HTTPException(status_code=500, detail=f"Regeneration failed: {str(e)}")

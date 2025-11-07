@@ -353,7 +353,7 @@ def _apply_header_footer(doc: Document, cfg: dict, rtl: bool) -> None:
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         _set_paragraph_bidi(p, rtl)
 
-def build_word_from_proposal(proposal_dict, user_config, output_path, visible=False):
+def build_word_from_proposal(proposal_dict, user_config, output_path, language, visible=False):
     """
     Build a DOCX using python-docx. Language-aware (Arabic/English) formatting.
     Renders 'points' as lines prefixed by '- ' (kept from your COM logic).
@@ -364,7 +364,32 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, visible=Fa
 
     cfg = build_updated_config(default_CONFIG, user_config)
 
-    rtl = bool(cfg.get("reading_order", WD_READINGORDER_LTR))
+    # --- NEW: Handle text_alignment override ---
+    text_alignment = user_config.get("text_alignment")
+    if text_alignment is not None:
+        align_map = {
+            "left": WD_ALIGN_LEFT,
+            "center": WD_ALIGN_CENTER,
+            "right": WD_ALIGN_RIGHT,
+            "justify": WD_ALIGN_JUSTIFY,
+            0: WD_ALIGN_LEFT,
+            1: WD_ALIGN_CENTER,
+            2: WD_ALIGN_RIGHT,
+            3: WD_ALIGN_JUSTIFY
+        }
+        try:
+            if isinstance(text_alignment, str) and text_alignment.isdigit():
+                cfg["default_alignment"] = int(text_alignment)
+            else:
+                cfg["default_alignment"] = align_map.get(text_alignment, WD_ALIGN_LEFT)
+        except Exception as e:
+            logger.warning(f"Invalid text_alignment value: {text_alignment}, using default.")
+    # ----------------------------------------
+
+
+    lang = (language or "").lower()
+    rtl = (lang == "arabic")
+    cfg["reading_order"] = WD_READINGORDER_RTL if rtl else WD_READINGORDER_LTR
 
     title = (proposal_dict.get("title") or "").strip()
     sections = proposal_dict.get("sections", [])
@@ -373,15 +398,19 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, visible=Fa
     doc = Document()
     _apply_header_footer(doc, cfg, rtl)
 
+    # --- Title ---
     if title:
         _add_para(
-            doc, title, style=cfg.get("title_style", "Title"),
+            doc, title,
+            style=cfg.get("title_style", "Title"),
             align=cfg.get("default_alignment", WD_ALIGN_LEFT),
             size=cfg.get("title_font_size", 16),
             color=cfg.get("title_font_color", 0),
-            bold=True, rtl=rtl
+            bold=True,
+            rtl=rtl
         )
 
+    # --- Sections ---
     for sec in sections:
         heading = (sec.get("heading") or "").strip()
         content = (sec.get("content") or "").strip()
@@ -390,43 +419,54 @@ def build_word_from_proposal(proposal_dict, user_config, output_path, visible=Fa
         headers = table.get("headers") or []
         rows = table.get("rows") or []
 
+        # Heading
         if heading:
             _add_para(
-                doc, heading, style=cfg.get("heading_style", "Heading 1"),
+                doc, heading,
+                style=cfg.get("heading_style", "Heading 1"),
                 align=cfg.get("default_alignment", WD_ALIGN_LEFT),
                 size=cfg.get("heading_font_size", 14),
                 color=cfg.get("heading_font_color", 0),
-                bold=True, rtl=rtl
+                bold=True,
+                rtl=rtl
             )
 
+        # Paragraph content
         if content:
             for para in content.split("\n"):
                 t = (para or "").strip()
                 if t:
                     _add_para(
-                        doc, t, style=cfg.get("normal_style", "Normal"),
+                        doc, t,
+                        style=cfg.get("normal_style", "Normal"),
                         align=cfg.get("default_alignment", WD_ALIGN_LEFT),
                         size=cfg.get("font_size", 11),
                         color=cfg.get("content_font_color", 0),
-                        bold=False, rtl=rtl
+                        bold=False,
+                        rtl=rtl
                     )
 
+        # Bullet points
         if points:
             for ptxt in points:
                 t = str(ptxt or "").strip()
                 if not t:
                     continue
                 _add_para(
-                    doc, f"- {t}", style=cfg.get("normal_style", "Normal"),
+                    doc, f"- {t}",
+                    style=cfg.get("normal_style", "Normal"),
                     align=cfg.get("default_alignment", WD_ALIGN_LEFT),
                     size=cfg.get("points_font_size", 11),
                     color=cfg.get("content_font_color", 0),
-                    bold=False, rtl=rtl
+                    bold=False,
+                    rtl=rtl
                 )
 
+        # Table
         if headers or rows:
             _add_table(doc, headers, rows, cfg, rtl=rtl)
 
+    # --- Save the document ---
     abs_out = str(Path(output_path or default_CONFIG["output_path"]).resolve())
     Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
     doc.save(abs_out)

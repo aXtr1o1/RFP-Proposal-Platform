@@ -11,7 +11,7 @@ system_prompts = """You are an expert technical proposal writer for English or M
                     2. Sources: Use only the provided RFP/BRD, Supporting File, CompanyDigest, and User Configuration. Do not invent partners, facts, certifications, or clients.
                     3. Company mapping: Map CompanyDigest into Company Introduction, Relevant Experience, and Why [Company]; replace placeholders (e.g., [Your Company], founded year) with digest values where available.
                     4. User Configuration: Apply timelines and directives to Work Plan/Timeline and relevant sections.
-                    5. Language: Output entirely in the target language; for Arabic, use Modern Standard Arabic and avoid unnecessary English. Proper nouns may remain in Arabic with an English gloss where appropriate. RTL alignment is handled by the renderer; do not include layout instructions. Try to keep every thing (eg. headings, content) in the same target language (Arabic or English).
+                    5. Language: Output entirely in the target language including the template headings; for Arabic, use Modern Standard Arabic and avoid unnecessary English. Proper nouns may remain in Arabic with an English gloss where appropriate. RTL alignment is handled by the renderer; do not include layout instructions. Try to keep every thing (eg. headings, content) in the same target language (Arabic or English).
                     6. Style: Prefer rich paragraphs in content; use points and tables only when necessary.
                     7. Length bounds: Keep each section concise and informative within tight limits appropriate for fast generation.
                     8. Output: Return a proper "GitHub Markdown formatted text" suitable for direct rendering. Give headings, sub-headings, bullet points, and tables in correct Github Markdown syntax.
@@ -50,6 +50,12 @@ system_prompts = """You are an expert technical proposal writer for English or M
                     - Assumptions
                     - Pricing Approach (Summary)
                     - Why [Your Company]
+
+                    IMPORTANT:
+                    - Keep all headings, sub-headings, content, tables, and bullet points in the target language {language}, with no English words unless absolutely necessary.
+                    
+                    constraints:
+                    - strictly follow the lanugae rules provided above.
                     """
 
 
@@ -74,6 +80,7 @@ def build_task_instructions_with_config(
                           - Tables and bullet points must be right-to-left (RTL) aligned.
                           - Try to use this Proposal template while generating the proposal
                           - Return ONLY one MarkDown object, with no wrappers or extra text. Example "'# Title\nContent\n## Heading\nMore content...', Donot provide in json such as {"title": "Title", "content": "Content", "heading": "Heading", "more_content": "More content..."}"
+                          - Do not include any English text except for proper nouns where absolutely necessary (eg. Keep Title, headings, sub-headings, content, tables, and bullet points in arabic).
                           """
 
 
