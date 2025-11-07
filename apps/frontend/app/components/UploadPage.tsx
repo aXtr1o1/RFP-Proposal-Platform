@@ -498,6 +498,26 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     
   });
 
+  useEffect(() => {
+    const targetAlignment = language === 'arabic' ? 'right' : 'left';
+    const targetDirection = language === 'arabic' ? 'rtl' : 'ltr';
+
+    setDocConfig(prev => {
+      if (
+        prev.text_alignment === targetAlignment &&
+        prev.reading_direction === targetDirection
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        text_alignment: targetAlignment,
+        reading_direction: targetDirection,
+      };
+    });
+  }, [language]);
+
   const [expandedSections, setExpandedSections] = useState({
     layout: true,
     typography: false,
