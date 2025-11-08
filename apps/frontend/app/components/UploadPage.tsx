@@ -34,7 +34,7 @@ type OutputProps = {
   isPdfConverting: boolean;
   pdfError: string | null;
   wordDownloadName: string;
-  markdownRef?: React.RefObject<HTMLDivElement>;
+  markdownRef?: React.MutableRefObject<HTMLDivElement | null>;
 };
 
 type CommentItem = {
@@ -529,7 +529,11 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
         {markdownContent && (
           <div
-            ref={markdownRef || undefined}
+            ref={(node) => {
+              if (markdownRef) {
+                markdownRef.current = node;
+              }
+            }}
             className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area overflow-auto"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           >
@@ -742,7 +746,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   
   const rfpInputRef = useRef<HTMLInputElement>(null);
   const supportingInputRef = useRef<HTMLInputElement>(null);
-  const markdownContainerRef = useRef<HTMLDivElement>(null);
+  const markdownContainerRef = useRef<HTMLDivElement | null>(null);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
