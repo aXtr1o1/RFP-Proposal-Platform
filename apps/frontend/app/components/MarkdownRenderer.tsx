@@ -45,17 +45,30 @@ interface DocConfig {
 
 const normalizeMarkdown = (input: string): string => {
   if (!input) {
-    return '';
+    return "";
   }
 
-  const normalized = input.replace(/\r\n/g, '\n').trim();
-  const fencedMatch = normalized.match(/^```(?:[a-zA-Z0-9_-]+)?\s*([\s\S]*?)\s*```$/);
+  // Normalize new lines and strip BOM that can appear when streaming
+  let normalized = input.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
 
-  if (fencedMatch) {
-    return fencedMatch[1].trim();
+  // If the entire payload is wrapped in a leading code fence (e.g. ```markdown\n ...),
+  // strip that fence even if the trailing ``` has not streamed in yet.
+  let strippedWrapperFence = false;
+  const openingFenceMatch = normalized.match(/^```(?:[a-zA-Z0-9_-]+)?[ \t]*\n/);
+  if (openingFenceMatch) {
+    normalized = normalized.slice(openingFenceMatch[0].length);
+    strippedWrapperFence = true;
   }
 
-  return normalized;
+  // Remove a trailing closing fence only if we already stripped the opening fence.
+  if (strippedWrapperFence) {
+    const trimmedEnd = normalized.trimEnd();
+    if (trimmedEnd.endsWith("```")) {
+      normalized = trimmedEnd.slice(0, trimmedEnd.lastIndexOf("```"));
+    }
+  }
+
+  return normalized.trim();
 };
 
 const MarkdownRenderer = ({ 
