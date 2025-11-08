@@ -34,6 +34,7 @@ type OutputProps = {
   isPdfConverting: boolean;
   pdfError: string | null;
   wordDownloadName: string;
+  markdownRef?: React.RefObject<HTMLDivElement>;
 };
 
 type CommentItem = {
@@ -445,6 +446,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   isPdfConverting,
   pdfError,
   wordDownloadName,
+  markdownRef,
 }) => {
   const hasWordLink = Boolean(wordLink);
   const hasPdfLink = Boolean(pdfLink);
@@ -527,6 +529,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
         {markdownContent && (
           <div
+            ref={markdownRef || undefined}
             className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area overflow-auto"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           >
@@ -552,6 +555,7 @@ export const OutputDocumentDisplay = React.memo(
     prev.isPdfConverting === next.isPdfConverting &&
     prev.pdfError === next.pdfError &&
     prev.wordDownloadName === next.wordDownloadName &&
+    prev.markdownRef === next.markdownRef &&
     JSON.stringify(prev.docConfig) === JSON.stringify(next.docConfig)
 );
 
@@ -2231,7 +2235,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     <>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
-      <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+      <div className="h-screen bg-gray-50 overflow-hidden" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
         <div
           className={`fixed inset-0 z-40 flex transition-all duration-300 ${
             isHistoryOpen ? '' : 'pointer-events-none'
@@ -2451,9 +2455,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           />
         </div>
 
-        <div className="flex">
+        <div className="flex h-full">
           {/* Left Panel - Upload Form */}
-          <div className="w-96 bg-white border-r border-gray-200 min-h-screen p-6">
+          <div className="w-96 bg-white border-r border-gray-200 h-full p-6 overflow-y-auto">
             <div className="mb-8 flex items-start gap-4">
               <button
                 type="button"
@@ -2677,41 +2681,44 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           </div>
 
           {/* Center Panel - Loading/Output Display */}
-          <div className="flex-1 p-6 min-w-0">
-            {isUploading && !markdownContent ? (
-              <LoadingDisplay />
-            ) : !isUploading && !markdownContent ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
-                <div className="text-center">
-                  <FileText className="mx-auto mb-4 text-gray-300" size={64} />
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">Ready to Process</h3>
-                  <p className="text-sm text-gray-500">
-                    Upload your RFP documents and click "Upload & Process" to begin
-                  </p>
+          <div className="flex-1 h-full p-6 min-w-0 flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0">
+              {isUploading && !markdownContent ? (
+                <LoadingDisplay />
+              ) : !isUploading && !markdownContent ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <FileText className="mx-auto mb-4 text-gray-300" size={64} />
+                    <h3 className="text-lg font-medium text-gray-600 mb-2">Ready to Process</h3>
+                    <p className="text-sm text-gray-500">
+                      Upload your RFP documents and click "Upload & Process" to begin
+                    </p>
+                  </div>
                 </div>
-              </div>
-              
-            ) : (
-              <OutputDocumentDisplay
-                generatedDocument={generatedDocument}
-                markdownContent={markdownContent}
-                wordLink={wordLink}
-                pdfLink={pdfLink}
-                jobUuid={jobUuid}
-                isRegenerating={isRegenerating}
-                isRegenerationComplete={isRegenerationComplete}
-                docConfig={docConfig}
-                onPdfDownload={handlePdfDownload}
-                isPdfConverting={isPdfConverting}
-                pdfError={pdfError}
-                wordDownloadName={wordDownloadName}
-              />
-            )}
+                
+              ) : (
+                <OutputDocumentDisplay
+                  generatedDocument={generatedDocument}
+                  markdownContent={markdownContent}
+                  wordLink={wordLink}
+                  pdfLink={pdfLink}
+                  jobUuid={jobUuid}
+                  isRegenerating={isRegenerating}
+                  isRegenerationComplete={isRegenerationComplete}
+                  docConfig={docConfig}
+                  onPdfDownload={handlePdfDownload}
+                  isPdfConverting={isPdfConverting}
+                  pdfError={pdfError}
+                  wordDownloadName={wordDownloadName}
+                  markdownRef={markdownContainerRef}
+                />
+              )}
+            </div>
           </div>
           
 
           {/* Right Panel - Document Configuration */}
-          <div className="w-96 p-6 border-l border-gray-200 bg-white">
+          <div className="w-96 p-6 border-l border-gray-200 bg-white h-full overflow-y-auto">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-2">
                 Document Formatting
