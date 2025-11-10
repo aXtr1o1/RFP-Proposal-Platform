@@ -86,13 +86,6 @@ type UseCaseHistoryEntry = {
   latestCreatedAt: string | null;
 };
 
-type HistorySortValue = 'newest' | 'oldest';
-
-const HISTORY_SORT_OPTIONS: { value: HistorySortValue; label: string }[] = [
-  { value: 'newest', label: 'Newest first' },
-  { value: 'oldest', label: 'Oldest first' },
-];
-
 type SseHandlers = {
   onChunk?: (chunk: string) => void;
   onStage?: (payload: Record<string, any> | string) => void;
@@ -100,19 +93,6 @@ type SseHandlers = {
   onResult?: (payload: Record<string, any> | string) => void;
   onError?: (payload: Record<string, any> | string) => void;
   onEvent?: (eventType: string, rawData: string) => void;
-};
-
-const safeJsonParse = <T,>(input: string | null | undefined, fallback: T): T => {
-  if (!input) {
-    return fallback;
-  }
-
-  try {
-    return JSON.parse(input) as T;
-  } catch (error) {
-    console.warn("Failed to parse JSON value", error);
-    return fallback;
-  }
 };
 
 const extractFileNameFromUrl = (url: string | null | undefined): string => {
@@ -128,50 +108,6 @@ const extractFileNameFromUrl = (url: string | null | undefined): string => {
   } catch {
     return "document";
   }
-};
-
-const normalizeStoredFileList = (raw: string | null): StoredFileInfo[] => {
-  if (!raw) {
-    return [];
-  }
-
-  const buildFromUnknown = (value: unknown): StoredFileInfo | null => {
-    if (!value) {
-      return null;
-    }
-
-    if (typeof value === "string") {
-      return {
-        name: extractFileNameFromUrl(value),
-        url: value,
-      };
-    }
-
-    if (typeof value === "object" && "url" in value) {
-      const obj = value as { url?: string; name?: string; size?: number };
-      if (!obj.url) {
-        return null;
-      }
-      return {
-        name: obj.name || extractFileNameFromUrl(obj.url),
-        url: obj.url,
-        size: obj.size ?? null,
-      };
-    }
-
-    return null;
-  };
-
-  const parsed = safeJsonParse<unknown>(raw, raw);
-
-  if (Array.isArray(parsed)) {
-    return parsed
-      .map(buildFromUnknown)
-      .filter((item): item is StoredFileInfo => Boolean(item));
-  }
-
-  const single = buildFromUnknown(parsed);
-  return single ? [single] : [];
 };
 
 const formatNameForSidebar = (input: string | null | undefined, maxLength = 40): string => {
@@ -244,53 +180,6 @@ const formatSidebarTimestamp = (value: string | null | undefined): string => {
     minute: '2-digit',
   });
 };
-
-const interpretProposalString = (value: string): StoredProposalSnapshot => {
-  const snapshot: StoredProposalSnapshot = {};
-  if (!value) {
-    return snapshot;
-  }
-  if (/^https?:\/\//i.test(value)) {
-    snapshot.wordLink = value;
-  } else {
-    snapshot.generatedDocument = value;
-  }
-  return snapshot;
-};
-
-const parseProposalSnapshot = (raw: string | null | undefined): StoredProposalSnapshot => {
-  if (!raw) {
-    return {};
-  }
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return {};
-  }
-
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed === "string") {
-        return interpretProposalString(parsed);
-      }
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as StoredProposalSnapshot;
-      }
-    } catch (error) {
-      console.warn("Failed to parse proposal JSON; treating value as string", error);
-    }
-  }
-
-  return interpretProposalString(trimmed);
-};
-
-const mapRowToRecord = (row: WordGenRow): ParsedWordGenRecord => ({
-  ...row,
-  rfpFiles: normalizeStoredFileList(row.rfp_files),
-  supportingFiles: normalizeStoredFileList(row.supporting_files),
-  proposalMeta: parseProposalSnapshot(row.proposal),
-  regenComments: safeJsonParse<CommentItem[]>(row.regen_comments, []),
-});
 
 const toStoredFileInfo = (file: { name: string; url: string; size?: number | null }): StoredFileInfo => ({
   name: file?.name || extractFileNameFromUrl(file?.url),
@@ -608,10 +497,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [savedRfpFiles, setSavedRfpFiles] = useState<StoredFileInfo[]>([]);
   const [savedSupportingFiles, setSavedSupportingFiles] = useState<StoredFileInfo[]>([]);
   const [generationHistory, setGenerationHistory] = useState<Record<string, ParsedWordGenRecord[]>>({});
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [historySort, setHistorySort] = useState<HistorySortValue>('newest');
   const [expandedUseCases, setExpandedUseCases] = useState<Record<string, boolean>>({});
   const [expandedVersionDetails, setExpandedVersionDetails] = useState<Record<string, boolean>>({});
   const [selectedUseCase, setSelectedUseCase] = useState<string | null>(null);
@@ -757,178 +643,174 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }));
   };
 
-  const refreshHistory = useCallback(async () => {
-    setHistoryLoading(true);
-    setHistoryError(null);
+  type GenerationSnapshotInput = {
+    uuid: string;
+    genId: string;
+    generalPreference?: string;
+    regenComments?: CommentItem[];
+    rfpFiles?: StoredFileInfo[];
+    supportingFiles?: StoredFileInfo[];
+    proposalSnapshot: StoredProposalSnapshot;
+    generatedMarkdown: string | null;
+    createdAt?: string;
+    deleteAt?: string | null;
+  };
 
-    try {
-      if (!supabase) {
-        setHistoryError("Supabase client not configured");
-        setHistoryLoading(false);
-        return;
-      }
-      const { data, error } = await supabase
-        .from("word_gen")
-        .select("*")
-        .order("created_at", { ascending: false });
+  const buildParsedRecord = useCallback((snapshot: GenerationSnapshotInput): ParsedWordGenRecord => {
+    const regenComments = snapshot.regenComments ?? [];
+    const rfpFiles = snapshot.rfpFiles ?? [];
+    const supportingFiles = snapshot.supportingFiles ?? [];
+    const proposalMeta = snapshot.proposalSnapshot ?? {};
 
-      if (error) {
-        throw error;
-      }
+    return {
+      id: Date.now(),
+      uuid: snapshot.uuid,
+      gen_id: snapshot.genId,
+      created_at: snapshot.createdAt ?? new Date().toISOString(),
+      rfp_files: rfpFiles[0]?.url ?? null,
+      supporting_files: supportingFiles[0]?.url ?? null,
+      proposal: proposalMeta ? JSON.stringify(proposalMeta) : null,
+      generated_markdown: snapshot.generatedMarkdown ?? null,
+      regen_comments: regenComments.length ? JSON.stringify(regenComments) : null,
+      delete_at: snapshot.deleteAt ?? null,
+      general_preference: snapshot.generalPreference ?? null,
+      rfpFiles,
+      supportingFiles,
+      proposalMeta,
+      regenComments,
+    };
+  }, []);
 
-      const rows = (data ?? []) as WordGenRow[];
-      const grouped: Record<string, ParsedWordGenRecord[]> = {};
-
-      rows.forEach((row) => {
-        const parsed = mapRowToRecord(row);
-        if (parsed.proposalMeta?.language) {
-          versionLanguageRef.current[parsed.gen_id] = parsed.proposalMeta.language;
+  const recordVersionHistory = useCallback(
+    (record: ParsedWordGenRecord) => {
+      setGenerationHistory(prev => {
+        const next = { ...prev };
+        const existing = next[record.uuid] ? [...next[record.uuid]] : [];
+        const index = existing.findIndex(item => item.gen_id === record.gen_id);
+        if (index >= 0) {
+          existing[index] = record;
+        } else {
+          existing.unshift(record);
         }
-        if (!grouped[parsed.uuid]) {
-          grouped[parsed.uuid] = [];
-        }
-        grouped[parsed.uuid].push(parsed);
+        existing.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        next[record.uuid] = existing;
+        return next;
       });
-
-      setGenerationHistory(grouped);
-    } catch (err) {
-      console.error("Failed to load generation history", err);
-      const message = err instanceof Error ? err.message : "Failed to load history";
-      setHistoryError(message);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [supabase]);
-
-  const fetchMarkdownForGen = useCallback(
-    async (uuid: string, genId: string): Promise<string | null> => {
-      if (!supabase) {
-        return null;
-      }
-      try {
-        const { data, error } = await supabase
-          .from("word_gen")
-          .select("generated_markdown")
-          .eq("uuid", uuid)
-          .eq("gen_id", genId)
-          .maybeSingle();
-
-        if (error) {
-          console.warn("Failed to fetch markdown for regeneration", error);
-          return null;
-        }
-        const typedRow = data as WordGenRow | null;
-        return typedRow?.generated_markdown ?? null;
-      } catch (err) {
-        console.warn("Unexpected error retrieving markdown for regeneration", err);
-        return null;
-      }
     },
-    [supabase]
+    [setGenerationHistory]
+  );
+
+  const findGenerationRecord = useCallback(
+    (uuid: string, genId: string) => {
+      const items = generationHistory[uuid];
+      if (!items) {
+        return null;
+      }
+      return items.find(item => item.gen_id === genId) ?? null;
+    },
+    [generationHistory]
+  );
+
+  const getLocalMarkdownForGen = useCallback(
+    (uuid: string, genId: string): string | null => {
+      const record = findGenerationRecord(uuid, genId);
+      return record?.generated_markdown ?? null;
+    },
+    [findGenerationRecord]
   );
 
   const persistGenerationRecord = useCallback(
-    async (payload: {
-      uuid: string;
-      genId: string;
-      rfpFiles?: StoredFileInfo[];
-      supportingFiles?: StoredFileInfo[];
-      regenComments?: CommentItem[];
-      generalPreference?: string;
-    }) => {
+    async (snapshot: GenerationSnapshotInput) => {
+      const record = buildParsedRecord(snapshot);
+
       try {
-        if (!supabase) {
-          throw new Error("Supabase client not configured");
-        }
-        setHistoryError(null);
+        if (supabase) {
+          const ensurePptGenRow = async () => {
+            const attempts = [
+              { ppt_genid: snapshot.genId, gen_id: snapshot.genId, uuid: snapshot.uuid },
+              { ppt_genid: snapshot.genId, gen_id: snapshot.genId },
+            ];
+            let ensured = false;
+            let lastError: any = null;
 
-        const ensurePptGenRow = async () => {
-          const attempts = [
-            { ppt_genid: payload.genId, gen_id: payload.genId, uuid: payload.uuid },
-            { ppt_genid: payload.genId, gen_id: payload.genId },
-          ];
-          let ensured = false;
-          let lastError: any = null;
-
-          for (const attempt of attempts) {
-            const { error: pptError } = await supabase
-              .from("ppt_gen")
-              .upsert(attempt, { ignoreDuplicates: true });
-            if (!pptError) {
-              ensured = true;
-              break;
-            }
-            const message = pptError.message?.toLowerCase?.() || "";
-            if (message.includes("duplicate key value") || message.includes("duplicate key") || message.includes("violates unique constraint")) {
-              ensured = true;
-              break;
-            }
-            if (message.includes('column "uuid" does not exist')) {
+            for (const attempt of attempts) {
+              const { error: pptError } = await supabase
+                .from("ppt_gen")
+                .upsert(attempt, { ignoreDuplicates: true });
+              if (!pptError) {
+                ensured = true;
+                break;
+              }
+              const message = pptError.message?.toLowerCase?.() || "";
+              if (
+                message.includes("duplicate key value") ||
+                message.includes("duplicate key") ||
+                message.includes("violates unique constraint")
+              ) {
+                ensured = true;
+                break;
+              }
+              if (message.includes('column "uuid" does not exist')) {
+                lastError = pptError;
+                continue;
+              }
               lastError = pptError;
-              continue;
+              console.warn("Failed attempt to ensure ppt_gen row", pptError);
             }
-            lastError = pptError;
-            console.warn("Failed attempt to ensure ppt_gen row", pptError);
+
+            if (!ensured) {
+              const err = lastError || new Error("Unknown error ensuring ppt_gen row");
+              throw err;
+            }
+          };
+
+          await ensurePptGenRow();
+
+          const deleteAtIso =
+            snapshot.deleteAt ??
+            new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split(".")[0].replace("T", " ");
+
+          const recordPayload: Record<string, any> = {
+            uuid: snapshot.uuid,
+            gen_id: snapshot.genId,
+            delete_at: deleteAtIso,
+            general_preference: snapshot.generalPreference ?? null,
+            regen_comments:
+              snapshot.regenComments && snapshot.regenComments.length
+                ? JSON.stringify(snapshot.regenComments)
+                : null,
+            proposal: snapshot.proposalSnapshot ? JSON.stringify(snapshot.proposalSnapshot) : null,
+            generated_markdown: snapshot.generatedMarkdown,
+            rfp_files: snapshot.rfpFiles && snapshot.rfpFiles.length ? snapshot.rfpFiles[0].url : null,
+            supporting_files:
+              snapshot.supportingFiles && snapshot.supportingFiles.length ? snapshot.supportingFiles[0].url : null,
+          };
+
+          const { error } = await supabase
+            .from("word_gen")
+            .upsert(recordPayload, { onConflict: "gen_id" });
+
+          if (error) {
+            throw error;
           }
-
-          if (!ensured) {
-            const err = lastError || new Error("Unknown error ensuring ppt_gen row");
-            throw err;
-          }
-        };
-        await ensurePptGenRow();
-
-        const deleteAtDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-        const deleteAtIso = deleteAtDate.toISOString().split(".")[0].replace("T", " ");
-        const recordPayload: Record<string, any> = {
-          uuid: payload.uuid,
-          gen_id: payload.genId,
-          delete_at: deleteAtIso,
-        };
-        if (payload.generalPreference !== undefined) {
-          recordPayload.general_preference = payload.generalPreference || null;
         }
-
-        if (payload.rfpFiles !== undefined) {
-          const rfpList = payload.rfpFiles ?? [];
-          const primaryRfpUrl = rfpList.find(file => file?.url)?.url ?? null;
-          recordPayload.rfp_files = primaryRfpUrl;
-        }
-        if (payload.supportingFiles !== undefined) {
-          const supportList = payload.supportingFiles ?? [];
-          const primarySupportingUrl = supportList.find(file => file?.url)?.url ?? null;
-          recordPayload.supporting_files = primarySupportingUrl;
-        }
-        if (payload.regenComments !== undefined) {
-          recordPayload.regen_comments =
-            payload.regenComments && payload.regenComments.length
-              ? JSON.stringify(payload.regenComments)
-              : null;
-        }
-
-        const { data, error } = await supabase
-          .from("word_gen")
-          .upsert(recordPayload, { onConflict: "gen_id" })
-          .select()
-          .single<WordGenRow>();
-
-        if (error) {
-          throw error;
-        }
-
-        const parsed = mapRowToRecord(data);
-        setSelectedUseCase(parsed.uuid);
-        setSelectedGenId(parsed.gen_id);
-        setSavedRfpFiles(parsed.rfpFiles);
-        setSavedSupportingFiles(parsed.supportingFiles);
-        await refreshHistory();
-        return parsed;
       } catch (err) {
         console.error("Failed to persist generation record", err);
-        throw err;
+      } finally {
+        setSelectedUseCase(snapshot.uuid);
+        setSelectedGenId(snapshot.genId);
+        if (snapshot.rfpFiles) {
+          setSavedRfpFiles(snapshot.rfpFiles);
+        }
+        if (snapshot.supportingFiles) {
+          setSavedSupportingFiles(snapshot.supportingFiles);
+        }
+        recordVersionHistory(record);
       }
+
+      return record;
     },
-    [refreshHistory, supabase]
+    [buildParsedRecord, recordVersionHistory, supabase]
   );
 
   const getGenerationLabel = useCallback((record: ParsedWordGenRecord) => {
@@ -1038,11 +920,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     const toTimestamp = (value: string | null) =>
       value ? new Date(value).getTime() : 0;
 
-    return [...useCaseEntries].sort((a, b) => {
-      const delta = toTimestamp(b.latestCreatedAt) - toTimestamp(a.latestCreatedAt);
-      return historySort === 'newest' ? delta : -delta;
-    });
-  }, [historySort, useCaseEntries]);
+    return [...useCaseEntries].sort(
+      (a, b) => toTimestamp(b.latestCreatedAt) - toTimestamp(a.latestCreatedAt)
+    );
+  }, [useCaseEntries]);
 
   const toggleUseCaseExpansion = useCallback((uuid: string) => {
     setExpandedUseCases(prev => ({
@@ -1174,15 +1055,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const wordDownloadName = useMemo(() => getWordFileName(), [getWordFileName]);
 
   const hasHistory = sortedUseCases.length > 0;
-  const historyHelperText = historyError
-    ? historyError
-    : historyLoading && !hasHistory
-      ? "Loading history..."
-      : !hasHistory
-        ? "No versions found yet. Generate a proposal to start tracking history."
-        : historyLoading
-          ? "Syncing latest history..."
-          : "Select a use case to view and load any saved generation or regeneration.";
+  const historyHelperText = hasHistory
+    ? "Select a version from this session to review or restore it."
+    : "Generate or regenerate to build history for this session.";
 
   const uploadFileToSupabase = async (
         file: File,
@@ -1649,13 +1524,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSavedRfpFiles(storedRfpFiles);
       setSavedSupportingFiles(storedSupportingFiles);
 
-      await persistGenerationRecord({
-        uuid,
-        genId,
-        rfpFiles: storedRfpFiles,
-        supportingFiles: storedSupportingFiles,
-        generalPreference: config,
-      });
       setRfpFiles([]);
       setSupportingFiles([]);
 
@@ -1676,7 +1544,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSelectedGenId(genId);
       pendingRegenCommentsRef.current = [];
       setCommentConfigList([]);
-      await refreshHistory();
+      await persistGenerationRecord({
+        uuid,
+        genId,
+        rfpFiles: storedRfpFiles,
+        supportingFiles: storedSupportingFiles,
+        generalPreference: config,
+        regenComments: [],
+        proposalSnapshot: {
+          config,
+          language,
+          docConfig,
+          wordLink: docxShareUrl,
+          generatedDocument: 'Generated_Proposal.docx',
+        },
+        generatedMarkdown: proposalContent ?? null,
+      });
     } catch (error) {
       console.error('Upload failed:', error);
       alert('Upload failed. Please try again.');
@@ -1727,14 +1610,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       const newGenId = generateUUID();
       setSelectedGenId(newGenId);
 
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: newGenId,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-        generalPreference: regenConfig,
-      });
-
       const { docxShareUrl, proposalContent } = await postUuidConfig(jobUuid, regenConfig);
 
       setWordLink(docxShareUrl);
@@ -1752,7 +1627,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setCommentConfigList([]);
       setCurrentCommentContent("");
       setCurrentCommentText("");
-      await refreshHistory();
+      await persistGenerationRecord({
+        uuid: jobUuid,
+        genId: newGenId,
+        rfpFiles: savedRfpFiles,
+        supportingFiles: savedSupportingFiles,
+        generalPreference: regenConfig,
+        regenComments: commentsSnapshot,
+        proposalSnapshot: {
+          config: regenConfig,
+          language: regenLanguage,
+          docConfig: regenDocConfig,
+          wordLink: docxShareUrl,
+          generatedDocument: 'Generated_Proposal.docx',
+        },
+        generatedMarkdown: proposalContent ?? null,
+      });
     } catch (error) {
       console.error('Language change regeneration failed:', error);
       alert('Regenerate failed. Please try again.');
@@ -1879,17 +1769,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       const finalGenId = regenGenId || generateUUID();
       let regeneratedMarkdown: string | null = streamedMarkdown || null;
       if (!regeneratedMarkdown) {
-        regeneratedMarkdown = await fetchMarkdownForGen(jobUuid, finalGenId);
+        regeneratedMarkdown = getLocalMarkdownForGen(jobUuid, finalGenId);
       }
-
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: finalGenId,
-        regenComments: commentsSnapshot,
-        generalPreference: regenConfig,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-      });
 
       const proposalSnapshot: StoredProposalSnapshot = {
         config: regenConfig,
@@ -1914,7 +1795,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setIsRegenerationComplete(true);
       setIsRegenerating(false);
       pendingRegenCommentsRef.current = [];
-      await refreshHistory();
+      await persistGenerationRecord({
+        uuid: jobUuid,
+        genId: finalGenId,
+        regenComments: commentsSnapshot,
+        generalPreference: regenConfig,
+        rfpFiles: savedRfpFiles,
+        supportingFiles: savedSupportingFiles,
+        proposalSnapshot,
+        generatedMarkdown: regeneratedMarkdown,
+      });
     } catch (error) {
       console.error('Regenerate failed:', error);
       const message = error instanceof Error ? error.message : 'Regenerate failed. Please try again.';
@@ -2229,10 +2119,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   );
 
   useEffect(() => {
-    refreshHistory();
-  }, [refreshHistory]);
-
-  useEffect(() => {
     checkSupabaseConnection();
   }, [checkSupabaseConnection]);
  
@@ -2325,9 +2211,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                     <Database size={16} />
                     Version History
                   </div>
-                  <p
-                    className={`mt-1 text-[11px] leading-4 ${historyError ? 'text-red-600' : 'text-gray-500'}`}
-                  >
+                  <p className="mt-1 text-[11px] leading-4 text-gray-500">
                     {historyHelperText}
                   </p>
                 </div>
@@ -2340,36 +2224,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   <X size={14} />
                 </button>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px]">
-                <span className="text-gray-400 uppercase tracking-wide">Sort</span>
-                {HISTORY_SORT_OPTIONS.map(option => {
-                  const isActive = historySort === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setHistorySort(option.value)}
-                      className={`px-3 py-1.5 rounded-full border transition-all ${
-                        isActive
-                          ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-                      }`}
-                      aria-pressed={isActive}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              {historyLoading && !hasHistory ? (
-                <div className="flex items-center justify-center h-full text-[11px] text-gray-500 gap-2">
-                  <Loader className="animate-spin" size={14} />
-                  Syncing history...
-                </div>
-              ) : !hasHistory ? (
+              {!hasHistory ? (
                 <div className="flex items-center justify-center h-full px-6 text-center text-[11px] text-gray-500">
                   No versions found yet. Generate a proposal to start tracking history.
                 </div>
@@ -2530,30 +2388,13 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               <button
                 type="button"
                 onClick={() => setIsHistoryOpen(prev => !prev)}
-                className={`flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-md border transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
+                className={`flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-md border transition-all duration-200 ${
                   isHistoryOpen
                     ? 'bg-gray-900 text-white border-gray-900 shadow'
                     : 'bg-white text-gray-700 border-gray-200 hover:shadow'
                 }`}
-                disabled={supabaseEnvMissing || (historyLoading && !hasHistory)}
-                aria-label={
-                  supabaseEnvMissing
-                    ? 'Supabase configuration required'
-                    : historyLoading && !hasHistory
-                      ? 'Loading version history'
-                      : isHistoryOpen
-                        ? 'Close version history'
-                        : 'Open version history'
-                }
-                title={
-                  supabaseEnvMissing
-                    ? 'Configure Supabase to enable version history'
-                    : historyLoading && !hasHistory
-                      ? 'Loading version history...'
-                      : isHistoryOpen
-                        ? 'Close version history'
-                        : 'Open version history'
-                }
+                aria-label={isHistoryOpen ? 'Close version history' : 'Open version history'}
+                title={isHistoryOpen ? 'Close version history' : 'Open version history'}
                 aria-pressed={isHistoryOpen}
                 aria-expanded={isHistoryOpen}>
                 <Menu size={18} />
