@@ -40,7 +40,7 @@ def strip_html(text: str) -> str:
 
 def parse_markdown_to_json(markdown: str, language: str = "english") -> Dict[str, Any]:
     if not markdown or not markdown.strip():
-        default_title = "Generated Proposal" if language.lower() != "arabic" else "عرض مُنشأ"
+        default_title = "Generated Proposal" if language.lower() != "arabic" else "المقترح المُنشأ"
         return {"title": default_title, "sections": []}
     
     markdown = re.sub(r'```[\w]*\n', '', markdown)
@@ -150,7 +150,7 @@ def parse_markdown_to_json(markdown: str, language: str = "english") -> Dict[str
     flush_table()
 
     if not title:
-        title = "Generated Proposal" if language.lower() != "arabic" else "عرض مُنشأ"
+        title = "Generated Proposal" if language.lower() != "arabic" else "المقترح المُنشأ"
 
     return {"title": title, "sections": sections}
 

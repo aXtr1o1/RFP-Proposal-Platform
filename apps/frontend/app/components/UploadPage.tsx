@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, ChevronUp, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle, Menu } from 'lucide-react';
+import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, ChevronUp, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle, Menu, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
 import { saveAllComments } from "./utils";
@@ -34,6 +34,7 @@ type OutputProps = {
   isPdfConverting: boolean;
   pdfError: string | null;
   wordDownloadName: string;
+  markdownRef?: React.MutableRefObject<HTMLDivElement | null>;
 };
 
 type CommentItem = {
@@ -75,6 +76,30 @@ type ParsedWordGenRecord = WordGenRow & {
   supportingFiles: StoredFileInfo[];
   proposalMeta: StoredProposalSnapshot;
   regenComments: CommentItem[];
+};
+
+type UseCaseHistoryEntry = {
+  uuid: string;
+  items: ParsedWordGenRecord[];
+  label: string;
+  latestVersion: number;
+  latestCreatedAt: string | null;
+};
+
+type HistorySortValue = 'newest' | 'oldest';
+
+const HISTORY_SORT_OPTIONS: { value: HistorySortValue; label: string }[] = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+];
+
+type SseHandlers = {
+  onChunk?: (chunk: string) => void;
+  onStage?: (payload: Record<string, any> | string) => void;
+  onDone?: (payload: Record<string, any> | string) => void;
+  onResult?: (payload: Record<string, any> | string) => void;
+  onError?: (payload: Record<string, any> | string) => void;
+  onEvent?: (eventType: string, rawData: string) => void;
 };
 
 const safeJsonParse = <T,>(input: string | null | undefined, fallback: T): T => {
@@ -172,6 +197,54 @@ const formatNameForSidebar = (input: string | null | undefined, maxLength = 40):
   return `${name.slice(0, maxLength - 3)}...`;
 };
 
+const formatRelativeTimestamp = (value: string | null | undefined): string => {
+  if (!value) {
+    return "Unknown";
+  }
+  const parsed = new Date(value);
+  const timestamp = parsed.getTime();
+  if (Number.isNaN(timestamp)) {
+    return "Unknown";
+  }
+
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+
+  if (diff < minute) {
+    return "Just now";
+  }
+  if (diff < hour) {
+    return `${Math.max(1, Math.round(diff / minute))}m ago`;
+  }
+  if (diff < day) {
+    return `${Math.max(1, Math.round(diff / hour))}h ago`;
+  }
+  if (diff < week) {
+    return `${Math.max(1, Math.round(diff / day))}d ago`;
+  }
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+const formatSidebarTimestamp = (value: string | null | undefined): string => {
+  if (!value) {
+    return "—";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+  return parsed.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const interpretProposalString = (value: string): StoredProposalSnapshot => {
   const snapshot: StoredProposalSnapshot = {};
   if (!value) {
@@ -225,6 +298,140 @@ const toStoredFileInfo = (file: { name: string; url: string; size?: number | nul
   size: file?.size ?? null,
 });
 
+const STAGE_MESSAGE_MAP: Record<string, string> = {
+  starting: 'Starting...',
+  uploading_files: 'Uploading PDFs to AI...',
+  downloading_and_uploading_pdfs: 'Uploading PDFs to AI...',
+  prompting_model: 'Generating proposal...',
+  saving_generated_text: 'Saving content...',
+  saving_markdown: 'Saving content...',
+  building_word: 'Building Word document...',
+  generating_word: 'Building Word document...',
+  validating_input: 'Validating requested changes...',
+  processing_with_ai: 'Applying requested edits...',
+  no_modifications: 'Reusing previous content...',
+};
+
+const resolveStageMessage = (stageKey?: string) => {
+  if (!stageKey) {
+    return 'Processing...';
+  }
+  return STAGE_MESSAGE_MAP[stageKey] || stageKey.replace(/_/g, ' ');
+};
+
+const streamSseResponse = async (response: Response, handlers: SseHandlers = {}) => {
+  if (!response.body) {
+    throw new Error("No response body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const dispatchEventBlock = (eventBlock: string) => {
+    if (!eventBlock.trim()) {
+      return;
+    }
+    const lines = eventBlock.split("\n");
+    let eventType = "";
+    const dataLines: string[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\r$/, "");
+      if (line.startsWith("event:")) {
+        eventType = line.substring(6).trim();
+      } else if (line.startsWith("data:")) {
+        const dataContent = line.substring(5);
+        dataLines.push(dataContent.startsWith(" ") ? dataContent.substring(1) : dataContent);
+      }
+    }
+
+    if (!eventType || dataLines.length === 0) {
+      return;
+    }
+
+    const rawData = dataLines.join("\n");
+    handlers.onEvent?.(eventType, rawData);
+
+    const safeParse = () => {
+      try {
+        return JSON.parse(rawData);
+      } catch {
+        return rawData;
+      }
+    };
+
+    if (eventType === "chunk") {
+      const chunkPayload = safeParse();
+      if (typeof chunkPayload === "string") {
+        handlers.onChunk?.(chunkPayload);
+      } else {
+        handlers.onChunk?.(JSON.stringify(chunkPayload));
+      }
+      return;
+    }
+
+    const payload = safeParse();
+
+    if (eventType === "stage") {
+      handlers.onStage?.(payload);
+      return;
+    }
+    if (eventType === "done") {
+      handlers.onDone?.(payload);
+      return;
+    }
+    if (eventType === "result") {
+      handlers.onResult?.(payload);
+      return;
+    }
+    if (eventType === "error") {
+      handlers.onError?.(payload);
+      const message =
+        typeof payload === "string"
+          ? payload
+          : (payload && typeof payload === "object" && "message" in payload)
+            ? String((payload as { message?: string }).message || "Stream error")
+            : "Stream error";
+      throw new Error(message);
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        buffer = buffer.replace(/\r\n/g, "\n");
+        if (buffer.trim()) {
+          dispatchEventBlock(buffer);
+        }
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r\n/g, "\n");
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || "";
+      for (const eventBlock of events) {
+        dispatchEventBlock(eventBlock);
+      }
+    }
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      // ignore cancellation errors
+    }
+    throw error;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore release errors
+    }
+  }
+};
+
 
 const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   generatedDocument,
@@ -239,6 +446,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   isPdfConverting,
   pdfError,
   wordDownloadName,
+  markdownRef,
 }) => {
   const hasWordLink = Boolean(wordLink);
   const hasPdfLink = Boolean(pdfLink);
@@ -320,10 +528,18 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       {/* Body / Markdown Preview */}
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
         {markdownContent && (
-          <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area" style={{ overflow: "scroll", backgroundColor: '#ffffff', color: '#000000' }}>
+          <div
+            ref={(node) => {
+              if (markdownRef) {
+                markdownRef.current = node;
+              }
+            }}
+            className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area overflow-auto"
+            style={{ backgroundColor: '#ffffff', color: '#000000' }}
+          >
             <MarkdownRenderer markdownContent={markdownContent} docConfig={docConfig} />
           </div>
-        ) }
+        )}
       </div>
     </div>
   );
@@ -343,6 +559,7 @@ export const OutputDocumentDisplay = React.memo(
     prev.isPdfConverting === next.isPdfConverting &&
     prev.pdfError === next.pdfError &&
     prev.wordDownloadName === next.wordDownloadName &&
+    prev.markdownRef === next.markdownRef &&
     JSON.stringify(prev.docConfig) === JSON.stringify(next.docConfig)
 );
 
@@ -392,10 +609,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historySort, setHistorySort] = useState<HistorySortValue>('newest');
   const [expandedUseCases, setExpandedUseCases] = useState<Record<string, boolean>>({});
   const [expandedVersionDetails, setExpandedVersionDetails] = useState<Record<string, boolean>>({});
   const [selectedUseCase, setSelectedUseCase] = useState<string | null>(null);
   const [selectedGenId, setSelectedGenId] = useState<string | null>(null);
+  const [deletingGenId, setDeletingGenId] = useState<string | null>(null);
   const pendingRegenCommentsRef = useRef<CommentItem[]>([]);
   const versionLanguageRef = useRef<Record<string, string>>({});
   const [currentVersionLanguage, setCurrentVersionLanguage] = useState<string>('arabic');
@@ -498,6 +717,26 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     
   });
 
+  useEffect(() => {
+    const targetAlignment = language === 'arabic' ? 'right' : 'left';
+    const targetDirection = language === 'arabic' ? 'rtl' : 'ltr';
+
+    setDocConfig(prev => {
+      if (
+        prev.text_alignment === targetAlignment &&
+        prev.reading_direction === targetDirection
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        text_alignment: targetAlignment,
+        reading_direction: targetDirection,
+      };
+    });
+  }, [language]);
+
   const [expandedSections, setExpandedSections] = useState({
     layout: true,
     typography: false,
@@ -507,7 +746,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   
   const rfpInputRef = useRef<HTMLInputElement>(null);
   const supportingInputRef = useRef<HTMLInputElement>(null);
-  const markdownContainerRef = useRef<HTMLDivElement>(null);
+  const markdownContainerRef = useRef<HTMLDivElement | null>(null);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -558,6 +797,33 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setHistoryLoading(false);
     }
   }, [supabase]);
+
+  const fetchMarkdownForGen = useCallback(
+    async (uuid: string, genId: string): Promise<string | null> => {
+      if (!supabase) {
+        return null;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("word_gen")
+          .select("generated_markdown")
+          .eq("uuid", uuid)
+          .eq("gen_id", genId)
+          .maybeSingle();
+
+        if (error) {
+          console.warn("Failed to fetch markdown for regeneration", error);
+          return null;
+        }
+        const typedRow = data as WordGenRow | null;
+        return typedRow?.generated_markdown ?? null;
+      } catch (err) {
+        console.warn("Unexpected error retrieving markdown for regeneration", err);
+        return null;
+      }
+    },
+    [supabase]
+  );
 
   const persistGenerationRecord = useCallback(
     async (payload: {
@@ -747,33 +1013,34 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     [pendingRegenCommentsRef, setPdfLinkSafely, setPdfError, setIsPdfConverting]
   );
 
-  const sortedUseCases = useMemo(() => {
-    const entries = Object.entries(generationHistory).map(([uuid, items]) => {
+  const useCaseEntries = useMemo<UseCaseHistoryEntry[]>(() => {
+    return Object.entries(generationHistory).map(([uuid, items]) => {
       const sortedItems = [...items].sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       const reference = sortedItems[sortedItems.length - 1] ?? sortedItems[0];
       const rfpName = reference?.rfpFiles?.[0]?.name || `Use Case ${uuid.substring(0, 8)}`;
-      const isArchived = sortedItems.every(item => Boolean(item.delete_at));
+      const latestCreatedAt = sortedItems[0]?.created_at ?? null;
 
       return {
         uuid,
         items: sortedItems,
         label: rfpName,
-        isArchived,
         latestVersion: sortedItems.length,
+        latestCreatedAt,
       };
     });
-
-    return entries.sort((a, b) => {
-      if (a.isArchived !== b.isArchived) {
-        return a.isArchived ? 1 : -1;
-      }
-      const latestA = a.items[0]?.created_at || "";
-      const latestB = b.items[0]?.created_at || "";
-      return new Date(latestB).getTime() - new Date(latestA).getTime();
-    });
   }, [generationHistory]);
+
+  const sortedUseCases = useMemo(() => {
+    const toTimestamp = (value: string | null) =>
+      value ? new Date(value).getTime() : 0;
+
+    return [...useCaseEntries].sort((a, b) => {
+      const delta = toTimestamp(b.latestCreatedAt) - toTimestamp(a.latestCreatedAt);
+      return historySort === 'newest' ? delta : -delta;
+    });
+  }, [historySort, useCaseEntries]);
 
   const toggleUseCaseExpansion = useCallback((uuid: string) => {
     setExpandedUseCases(prev => ({
@@ -788,6 +1055,73 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       [genId]: !prev[genId],
     }));
   }, []);
+
+  const handleDeleteGeneration = useCallback(async (record: ParsedWordGenRecord) => {
+    const descriptor = record.regenComments.length > 0 ? 'regeneration' : 'generation';
+    const label = getGenerationLabel(record);
+    const confirmMessage = `Delete this ${descriptor}${label ? ` ("${label}")` : ''}? This action cannot be undone.`;
+    if (typeof window === 'undefined' || !window.confirm(confirmMessage)) {
+      return;
+    }
+    if (!supabase) {
+      alert('Supabase configuration missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+      return;
+    }
+
+    const prevUseCaseLength = generationHistory[record.uuid]?.length ?? 0;
+    const willRemoveUseCase = prevUseCaseLength <= 1;
+
+    setDeletingGenId(record.gen_id);
+    try {
+      const { error } = await supabase.from('word_gen').delete().eq('gen_id', record.gen_id);
+      if (error) {
+        throw error;
+      }
+
+      setGenerationHistory(prev => {
+        const next = { ...prev };
+        const prevItems = next[record.uuid] || [];
+        const filtered = prevItems.filter(item => item.gen_id !== record.gen_id);
+        if (filtered.length > 0) {
+          next[record.uuid] = filtered;
+        } else {
+          delete next[record.uuid];
+        }
+        return next;
+      });
+
+      setExpandedVersionDetails(prev => {
+        if (!prev[record.gen_id]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[record.gen_id];
+        return next;
+      });
+
+      if (willRemoveUseCase) {
+        setExpandedUseCases(prev => {
+          if (!prev[record.uuid]) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[record.uuid];
+          return next;
+        });
+      }
+
+      setSelectedGenId(prev => (prev === record.gen_id ? null : prev));
+      if (willRemoveUseCase) {
+        setSelectedUseCase(prev => (prev === record.uuid ? null : prev));
+      }
+    } catch (err) {
+      console.error('Failed to delete generation', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Failed to delete generation: ${message}`);
+    } finally {
+      setDeletingGenId(null);
+    }
+  }, [generationHistory, getGenerationLabel, supabase]);
 
   const handleSelectHistoryItem = useCallback((record: ParsedWordGenRecord) => {
     applyRecordToState(record);
@@ -836,6 +1170,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   }, [generationHistory, getGenerationLabel, selectedGenId, selectedUseCase, sortedUseCases]);
 
   const wordDownloadName = useMemo(() => getWordFileName(), [getWordFileName]);
+
+  const hasHistory = sortedUseCases.length > 0;
+  const historyHelperText = historyError
+    ? historyError
+    : historyLoading && !hasHistory
+      ? "Loading history..."
+      : !hasHistory
+        ? "No versions found yet. Generate a proposal to start tracking history."
+        : historyLoading
+          ? "Syncing latest history..."
+          : "Select a use case to view and load any saved generation or regeneration.";
 
   const uploadFileToSupabase = async (
         file: File,
@@ -993,169 +1338,72 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    return new Promise<{ docxShareUrl: string | null; proposalContent: string }>((resolve, reject) => {
-      fetch(apiPath(`/initialgen/${uuid}`), {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "text/event-stream"
-        },
-        body: JSON.stringify({
-          config: config,
-          docConfig: docConfig,
-          timestamp: new Date().toISOString(),
-          language: language
-        }),
-      }).then(async (res) => {
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          reject(new Error(`Backend /initialgen failed: ${res.status} ${txt}`));
-          return;
-        }
-
-        if (!res.body) {
-          reject(new Error("No response body"));
-          return;
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let accumulatedMarkdown = "";
-        let isSaved = false;
-
-        const processChunk = async () => {
-          try {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-              // Stream ended - now generate the Word and PDF documents
-              console.log("Stream completed, generating documents...");
-              
-              try {
-                // Generate Word and PDF documents using the /download endpoint
-                const docRes = await fetch(apiPath(`/download/${uuid}`), {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    docConfig: docConfig,
-                    language: language
-                  }),
-                });
-
-                if (!docRes.ok) {
-                  console.error("Failed to generate documents");
-                  resolve({ 
-                    docxShareUrl: null, 
-                    proposalContent: accumulatedMarkdown 
-                  });
-                  return;
-                }
-
-                const docResult = await docRes.json();
-                resolve({ 
-                  docxShareUrl: docResult.proposal_word_url || null, 
-                  proposalContent: accumulatedMarkdown 
-                });
-                setIsUploading(false);
-              } catch (error) {
-                console.error("Error generating documents:", error);
-                resolve({ 
-                  docxShareUrl: null, 
-                  proposalContent: accumulatedMarkdown 
-                });
-              }
-              return;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-            
-            // Split by double newlines to separate SSE events
-            const events = buffer.split('\n\n');
-            // Keep the last incomplete event in the buffer
-            buffer = events.pop() || "";
-
-            for (const eventBlock of events) {
-              if (!eventBlock.trim()) continue;
-              
-              const lines = eventBlock.split('\n');
-              let eventType = '';
-              let dataLines: string[] = [];
-              
-              for (const line of lines) {
-                if (line.startsWith('event:')) {
-                  eventType = line.substring(6).trim();
-                } else if (line.startsWith('data:')) {
-                  // Don't trim data content - preserve whitespace in markdown
-                  const dataContent = line.substring(5);
-                  // Only remove the single leading space that SSE spec adds after 'data:'
-                  dataLines.push(dataContent.startsWith(' ') ? dataContent.substring(1) : dataContent);
-                }
-              }
-              
-              if (!eventType || dataLines.length === 0) continue;
-              
-              // Join multi-line data with newlines to preserve markdown formatting
-              const data = dataLines.join('\n');
-              
-              if (eventType === 'chunk') {
-                // Chunk data is JSON-encoded to preserve newlines and special chars
-                try {
-                  const decodedChunk = JSON.parse(data);
-                  accumulatedMarkdown += decodedChunk;
-                  console.log(`Chunk received: ${decodedChunk.length} chars, Total: ${accumulatedMarkdown.length}`);
-                  setMarkdownContent(accumulatedMarkdown);
-                } catch (e) {
-                  console.error("Failed to parse chunk data:", e, data);
-                  // Fallback: use data as-is
-                  accumulatedMarkdown += data;
-                  setMarkdownContent(accumulatedMarkdown);
-                }
-              } else if (eventType === 'stage') {
-                try {
-                  const stageData = JSON.parse(data);
-                  console.log("Stage:", stageData.stage);
-                  const stageMessages: Record<string, string> = {
-                    'starting': 'Starting...',
-                    'downloading_and_uploading_pdfs': 'Uploading PDFs to AI...',
-                    'prompting_model': 'Generating proposal...',
-                    'saving_generated_text': 'Saving content...'
-                  };
-                  setProcessingStage(stageMessages[stageData.stage] || stageData.stage || 'Processing...');
-                } catch (e) {
-                  console.warn("Failed to parse stage data:", data);
-                }
-              } else if (eventType === 'done') {
-                try {
-                  const doneData = JSON.parse(data);
-                  console.log("Done:", doneData);
-                  isSaved = doneData.status === "saved";
-                } catch (e) {
-                  console.warn("Failed to parse done data:", data);
-                }
-              } else if (eventType === 'error') {
-                try {
-                  const errorData = JSON.parse(data);
-                  console.error("Stream error:", errorData.message);
-                  reject(new Error(errorData.message));
-                  return;
-                } catch (e) {
-                  console.error("Stream error:", data);
-                  reject(new Error(data));
-                  return;
-                }
-              }
-            }
-
-            processChunk();
-          } catch (error) {
-            reject(error);
-          }
-        };
-
-        processChunk();
-      }).catch(reject);
+    const response = await fetch(apiPath(`/initialgen/${uuid}`), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+      },
+      body: JSON.stringify({
+        config: config,
+        docConfig: docConfig,
+        timestamp: new Date().toISOString(),
+        language: language,
+      }),
     });
+
+    if (!response.ok) {
+      const txt = await response.text().catch(() => "");
+      throw new Error(`Backend /initialgen failed: ${response.status} ${txt}`);
+    }
+
+    let accumulatedMarkdown = "";
+    await streamSseResponse(response, {
+      onChunk: (chunk) => {
+        accumulatedMarkdown += chunk;
+        setMarkdownContent(accumulatedMarkdown);
+      },
+      onStage: (payload) => {
+        const stageKey =
+          typeof payload === "string"
+            ? payload
+            : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
+        if (stageKey) {
+          setProcessingStage(resolveStageMessage(stageKey));
+        }
+      },
+      onError: (payload) => {
+        console.error("Initial generation stream error", payload);
+      },
+    });
+
+    let docxShareUrl: string | null = null;
+    try {
+      const docRes = await fetch(apiPath(`/download/${uuid}`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          docConfig: docConfig,
+          language: language,
+        }),
+      });
+
+      if (!docRes.ok) {
+        console.error("Failed to generate documents from /download");
+      } else {
+        const docResult = await docRes.json();
+        docxShareUrl = docResult.proposal_word_url || null;
+      }
+    } catch (error) {
+      console.error("Error generating documents:", error);
+    } finally {
+      setIsUploading(false);
+    }
+
+    return {
+      docxShareUrl,
+      proposalContent: accumulatedMarkdown,
+    };
   };
 
   const simulateProgress = () => {
@@ -1566,6 +1814,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "text/event-stream",
         },
         body: JSON.stringify({
           uuid: jobUuid,
@@ -1582,41 +1831,58 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         throw new Error(`Backend /regenerate failed: ${response.status} ${txt}`);
       }
 
-      let regenResult: any = null;
-      try {
-        regenResult = await response.json();
-      } catch (parseError) {
-        console.warn("Failed to parse regenerate response JSON", parseError);
-      }
+      let streamedMarkdown = "";
+      let regenWordLink: string | null = null;
+      let regenGenId: string | null = null;
 
-      const regenGenId: string = regenResult?.regen_gen_id || regenResult?.gen_id || generateUUID();
-      const newWordLink: string | null = regenResult?.wordLink ?? null;
-      const newPdfLink: string | null = regenResult?.pdfLink ?? null;
+      await streamSseResponse(response, {
+        onChunk: (chunk) => {
+          streamedMarkdown += chunk;
+          setMarkdownContent(streamedMarkdown);
+        },
+        onStage: (payload) => {
+          const stageKey =
+            typeof payload === "string"
+              ? payload
+              : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
+          if (stageKey) {
+            setProcessingStage(resolveStageMessage(stageKey));
+          }
+        },
+        onResult: (payload) => {
+          if (payload && typeof payload === "object" && "markdown" in payload) {
+            const fullMarkdown = (payload as { markdown?: string }).markdown;
+            if (typeof fullMarkdown === "string") {
+              streamedMarkdown = fullMarkdown;
+              setMarkdownContent(fullMarkdown);
+            }
+          }
+        },
+        onDone: (payload) => {
+          if (payload && typeof payload === "object") {
+            const doneData = payload as { gen_id?: string; wordLink?: string };
+            if (doneData.gen_id) {
+              regenGenId = doneData.gen_id;
+            }
+            if (doneData.wordLink) {
+              regenWordLink = doneData.wordLink;
+            }
+          }
+        },
+        onError: (payload) => {
+          console.error("Regenerate stream error", payload);
+        },
+      });
 
-      setProcessingStage('Fetching regenerated content...');
-
-      let regeneratedMarkdown: string | null = null;
-      try {
-        const { data: regenRow, error: regenRowError } = await supabase
-          .from("word_gen")
-          .select("*")
-          .eq("uuid", jobUuid)
-          .eq("gen_id", regenGenId)
-          .maybeSingle();
-
-        if (regenRowError) {
-          console.warn("Failed to fetch regenerated row from Supabase", regenRowError);
-        } else if (regenRow) {
-          const typedRow = regenRow as WordGenRow | null;
-          regeneratedMarkdown = typedRow?.generated_markdown ?? null;
-        }
-      } catch (fetchError) {
-        console.warn("Error retrieving regenerated markdown from Supabase", fetchError);
+      const finalGenId = regenGenId || generateUUID();
+      let regeneratedMarkdown: string | null = streamedMarkdown || null;
+      if (!regeneratedMarkdown) {
+        regeneratedMarkdown = await fetchMarkdownForGen(jobUuid, finalGenId);
       }
 
       await persistGenerationRecord({
         uuid: jobUuid,
-        genId: regenGenId,
+        genId: finalGenId,
         regenComments: commentsSnapshot,
         generalPreference: regenConfig,
         rfpFiles: savedRfpFiles,
@@ -1627,17 +1893,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         config: regenConfig,
         language: regenLanguage,
         docConfig: regenDocConfig,
-        wordLink: newWordLink,
-        pdfLink: newPdfLink,
+        wordLink: regenWordLink,
+        pdfLink: null,
         generatedDocument: 'Regenerated_Proposal.docx',
       };
 
       setProcessingStage('Finalizing regenerated proposal...');
       setUploadProgress(100);
-      setSelectedGenId(regenGenId);
+      setSelectedGenId(finalGenId);
       setGeneratedDocument(proposalSnapshot.generatedDocument ?? 'Regenerated_Proposal.docx');
       setWordLink(proposalSnapshot.wordLink ?? null);
-      versionLanguageRef.current[regenGenId] = regenLanguage;
+      versionLanguageRef.current[finalGenId] = regenLanguage;
       setCurrentVersionLanguage(regenLanguage);
       setPdfLinkSafely(proposalSnapshot.pdfLink ?? null);
       setPdfError(null);
@@ -1649,7 +1915,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       await refreshHistory();
     } catch (error) {
       console.error('Regenerate failed:', error);
-      alert('Regenerate failed. Please try again.');
+      const message = error instanceof Error ? error.message : 'Regenerate failed. Please try again.';
+      alert(message);
       setIsRegenerating(false);
       setIsRegenerationComplete(false);
     } finally {
@@ -1972,14 +2239,14 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     <>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
-      <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+      <div className="h-screen bg-gray-50 overflow-hidden" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
         <div
           className={`fixed inset-0 z-40 flex transition-all duration-300 ${
             isHistoryOpen ? '' : 'pointer-events-none'
           }`}
         >
           <aside
-            className={`w-80 max-w-full bg-white border-r border-gray-200 shadow-2xl flex flex-col overflow-hidden transform transition-transform duration-300 ease-in-out ${
+            className={`w-[360px] max-w-full bg-white border-r border-gray-200 shadow-2xl flex flex-col overflow-hidden transform transition-transform duration-300 ease-in-out ${
               isHistoryOpen ? 'translate-x-0 pointer-events-auto' : '-translate-x-full pointer-events-none'
             }`}
             role={isHistoryOpen ? 'dialog' : undefined}
@@ -1987,34 +2254,60 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             aria-hidden={!isHistoryOpen}
             aria-label="Version history"
           >
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                <Database size={16} />
-                Version History
+            <div className="px-5 py-4 border-b border-gray-100">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                    <Database size={16} />
+                    Version History
+                  </div>
+                  <p
+                    className={`mt-1 text-[11px] leading-4 ${historyError ? 'text-red-600' : 'text-gray-500'}`}
+                  >
+                    {historyHelperText}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                  aria-label="Close version history"
+                >
+                  <X size={14} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsHistoryOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-                aria-label="Close version history"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="px-5 py-3 border-b border-gray-100 text-[11px] text-gray-500">
-              {historyError
-                ? historyError
-                : sortedUseCases.length === 0
-                  ? 'No versions found yet. Generate a proposal to start tracking history.'
-                  : 'Select a use case to view and load any saved generation or regeneration.'}
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="text-gray-400 uppercase tracking-wide">Sort</span>
+                {HISTORY_SORT_OPTIONS.map(option => {
+                  const isActive = historySort === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setHistorySort(option.value)}
+                      className={`px-3 py-1.5 rounded-full border transition-all ${
+                        isActive
+                          ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                      }`}
+                      aria-pressed={isActive}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              {historyLoading && sortedUseCases.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-xs text-gray-500 gap-2">
+              {historyLoading && !hasHistory ? (
+                <div className="flex items-center justify-center h-full text-[11px] text-gray-500 gap-2">
                   <Loader className="animate-spin" size={14} />
-                  Loading history...
+                  Syncing history...
+                </div>
+              ) : !hasHistory ? (
+                <div className="flex items-center justify-center h-full px-6 text-center text-[11px] text-gray-500">
+                  No versions found yet. Generate a proposal to start tracking history.
                 </div>
               ) : (
                 sortedUseCases.map((useCase) => {
@@ -2025,20 +2318,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                       <button
                         type="button"
                         onClick={() => toggleUseCaseExpansion(useCase.uuid)}
-                        className="w-full px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                        className="w-full px-5 py-4 flex items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
                       >
-                        <div className="pr-4">
-                          <p className="text-sm font-medium text-gray-800 truncate flex items-center gap-2">
-                            <span className="truncate" title={useCase.label}>{displayUseCaseLabel}</span>
-                            {useCase.isArchived && (
-                              <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold text-orange-600 bg-orange-100 rounded">
-                                Archived
-                              </span>
-                            )}
+                        <div className="flex-1 pr-2">
+                          <p className="text-sm font-medium text-gray-800 truncate" title={useCase.label}>
+                            {displayUseCaseLabel}
                           </p>
-                          <p className="text-[11px] text-gray-500">
-                            Latest version V{useCase.latestVersion} • {useCase.items.length} total
-                          </p>
+                          <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 gap-2">
+                            <span className="truncate">{formatRelativeTimestamp(useCase.latestCreatedAt)}</span>
+                            <span className="font-semibold text-gray-700">V{useCase.latestVersion}</span>
+                          </div>
+                          <p className="text-[10px] text-gray-400">{useCase.items.length} saved versions</p>
                         </div>
                         {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                       </button>
@@ -2064,34 +2354,29 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                               >
                                 <div className="absolute left-2 top-0 bottom-0 border-l border-gray-200 pointer-events-none" />
                                 <div className="absolute left-1.5 top-4 w-2 h-2 rounded-full bg-gray-200 border border-white pointer-events-none" />
-                                <div className="flex items-stretch">
+                                <div className="flex items-stretch gap-2">
                                   <button
                                     type="button"
                                     onClick={() => handleSelectHistoryItem(item)}
-                                    className={`flex-1 px-4 py-3 text-left text-xs transition-colors rounded-l ${
+                                    className={`flex-1 px-4 py-3 text-left text-xs transition-colors rounded-l-lg border ${
                                       isActive
-                                        ? 'bg-white text-blue-600 border-l-2 border-blue-500 font-semibold shadow-sm'
-                                        : 'bg-transparent hover:bg-white text-gray-700'
+                                        ? 'bg-white text-blue-600 border-blue-300 shadow-sm'
+                                        : 'bg-transparent hover:bg-white text-gray-700 border-transparent hover:border-gray-200'
                                     }`}
                                   >
-                                    <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-start justify-between gap-2">
                                       <span className="truncate flex items-center gap-2">
                                         <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                                           V{versionNumber}
                                         </span>
                                         <span className="truncate" title={label || `Generation ${versionNumber}`}>{displayVersionLabel}</span>
-                                        {item.delete_at && (
-                                          <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-semibold text-orange-600 bg-orange-100 rounded">
-                                            Archived
-                                          </span>
-                                        )}
                                       </span>
-                                      <span className="flex-shrink-0 text-[10px] text-gray-400">
-                                        {new Date(item.created_at).toLocaleString()}
+                                      <span className="flex-shrink-0 text-[10px] text-gray-400 whitespace-nowrap">
+                                        {formatSidebarTimestamp(item.created_at)}
                                       </span>
                                     </div>
                                     {shortGenId && (
-                                      <p className="mt-1 text-[9px] text-gray-400">ID: {shortGenId}</p>
+                                      <p className="mt-1 text-[9px] text-gray-400 font-mono">ID: {shortGenId}</p>
                                     )}
                                     {item.regenComments.length > 0 && (
                                       <p className="mt-1 text-[10px] text-gray-500 truncate">
@@ -2102,10 +2387,24 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                                   <button
                                     type="button"
                                     onClick={() => toggleVersionDetails(item.gen_id)}
-                                    className="px-3 py-3 text-gray-500 border-l border-gray-200 bg-white hover:text-gray-700 rounded-tr rounded-br"
+                                    className="px-3 py-3 text-gray-500 border border-gray-200 border-l-0 bg-white hover:text-gray-700"
                                     aria-label={versionExpanded ? "Hide version details" : "Show version details"}
                                   >
                                     {versionExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteGeneration(item)}
+                                    className="px-3 py-3 text-red-500 border border-gray-200 border-l-0 bg-white hover:text-red-600 rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label={`Delete this ${item.regenComments.length > 0 ? 'regeneration' : 'generation'}`}
+                                    title="Delete this version"
+                                    disabled={deletingGenId === item.gen_id}
+                                  >
+                                    {deletingGenId === item.gen_id ? (
+                                      <Loader size={14} className="animate-spin" />
+                                    ) : (
+                                      <Trash2 size={14} />
+                                    )}
                                   </button>
                                 </div>
                                 {versionExpanded && (
@@ -2160,10 +2459,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           />
         </div>
 
-        <div className="flex">
+        <div className="flex h-full">
           {/* Left Panel - Upload Form */}
-          <div className="w-96 bg-white border-r border-gray-200 min-h-screen p-6">
-            <div className="mb-8 flex gap-3">
+          <div className="w-96 bg-white border-r border-gray-200 h-full p-6 overflow-y-auto">
+            <div className="mb-8 flex items-start gap-4">
               <button
                 type="button"
                 onClick={() => setIsHistoryOpen(prev => !prev)}
@@ -2172,11 +2471,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                     ? 'bg-gray-900 text-white border-gray-900 shadow'
                     : 'bg-white text-gray-700 border-gray-200 hover:shadow'
                 }`}
-                disabled={supabaseEnvMissing || (historyLoading && sortedUseCases.length === 0)}
+                disabled={supabaseEnvMissing || (historyLoading && !hasHistory)}
                 aria-label={
                   supabaseEnvMissing
                     ? 'Supabase configuration required'
-                    : historyLoading && sortedUseCases.length === 0
+                    : historyLoading && !hasHistory
                       ? 'Loading version history'
                       : isHistoryOpen
                         ? 'Close version history'
@@ -2185,18 +2484,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 title={
                   supabaseEnvMissing
                     ? 'Configure Supabase to enable version history'
-                    : historyLoading && sortedUseCases.length === 0
+                    : historyLoading && !hasHistory
                       ? 'Loading version history...'
                       : isHistoryOpen
                         ? 'Close version history'
                         : 'Open version history'
                 }
                 aria-pressed={isHistoryOpen}
-                aria-expanded={isHistoryOpen}
-              >
+                aria-expanded={isHistoryOpen}>
                 <Menu size={18} />
               </button>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <h1 className="text-lg font-semibold text-gray-900 mb-2">
                   RFP Processing
                 </h1>
@@ -2210,18 +2508,24 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 )}
                 {activeUseCaseLabel && (
                   <div className="mt-3 space-y-1 text-xs text-gray-500">
-                    <p className="flex items-center gap-2">
+                    <p className="flex items-center gap-2 min-w-0">
                       <CheckCircle2 className="text-green-500" size={14} />
-                      <span className="text-gray-700">Active use case:</span>
-                      <span className="text-gray-900 font-medium truncate" title={activeUseCaseLabel}>
+                      <span className="text-gray-700 whitespace-nowrap">Active use case:</span>
+                      <span
+                        className="flex-1 min-w-0 text-gray-900 font-medium truncate"
+                        title={activeUseCaseLabel}
+                      >
                         {formatNameForSidebar(activeUseCaseLabel, 48)}
                       </span>
                     </p>
                     {activeVersionLabel && (
-                      <p className="flex items-center gap-2">
+                      <p className="flex items-center gap-2 min-w-0">
                         <ChevronRight size={12} className="text-gray-400" />
-                        <span className="text-gray-700">Current version:</span>
-                        <span className="text-gray-900 font-medium truncate" title={activeVersionLabel}>
+                        <span className="text-gray-700 whitespace-nowrap">Current version:</span>
+                        <span
+                          className="flex-1 min-w-0 text-gray-900 font-medium truncate"
+                          title={activeVersionLabel}
+                        >
                           {formatNameForSidebar(activeVersionLabel, 52)}
                         </span>
                       </p>
@@ -2381,41 +2685,44 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           </div>
 
           {/* Center Panel - Loading/Output Display */}
-          <div className="flex-1 p-6 min-w-0">
-            {isUploading && !markdownContent ? (
-              <LoadingDisplay />
-            ) : !isUploading && !markdownContent ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
-                <div className="text-center">
-                  <FileText className="mx-auto mb-4 text-gray-300" size={64} />
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">Ready to Process</h3>
-                  <p className="text-sm text-gray-500">
-                    Upload your RFP documents and click "Upload & Process" to begin
-                  </p>
+          <div className="flex-1 h-full p-6 min-w-0 flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0">
+              {isUploading && !markdownContent ? (
+                <LoadingDisplay />
+              ) : !isUploading && !markdownContent ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <FileText className="mx-auto mb-4 text-gray-300" size={64} />
+                    <h3 className="text-lg font-medium text-gray-600 mb-2">Ready to Process</h3>
+                    <p className="text-sm text-gray-500">
+                      Upload your RFP documents and click "Upload & Process" to begin
+                    </p>
+                  </div>
                 </div>
-              </div>
-              
-            ) : (
-              <OutputDocumentDisplay
-                generatedDocument={generatedDocument}
-                markdownContent={markdownContent}
-                wordLink={wordLink}
-                pdfLink={pdfLink}
-                jobUuid={jobUuid}
-                isRegenerating={isRegenerating}
-                isRegenerationComplete={isRegenerationComplete}
-                docConfig={docConfig}
-                onPdfDownload={handlePdfDownload}
-                isPdfConverting={isPdfConverting}
-                pdfError={pdfError}
-                wordDownloadName={wordDownloadName}
-              />
-            )}
+                
+              ) : (
+                <OutputDocumentDisplay
+                  generatedDocument={generatedDocument}
+                  markdownContent={markdownContent}
+                  wordLink={wordLink}
+                  pdfLink={pdfLink}
+                  jobUuid={jobUuid}
+                  isRegenerating={isRegenerating}
+                  isRegenerationComplete={isRegenerationComplete}
+                  docConfig={docConfig}
+                  onPdfDownload={handlePdfDownload}
+                  isPdfConverting={isPdfConverting}
+                  pdfError={pdfError}
+                  wordDownloadName={wordDownloadName}
+                  markdownRef={markdownContainerRef}
+                />
+              )}
+            </div>
           </div>
           
 
           {/* Right Panel - Document Configuration */}
-          <div className="w-96 p-6 border-l border-gray-200 bg-white">
+          <div className="w-96 p-6 border-l border-gray-200 bg-white h-full overflow-y-auto">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-2">
                 Document Formatting

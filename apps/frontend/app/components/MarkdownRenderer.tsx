@@ -43,6 +43,34 @@ interface DocConfig {
   show_page_numbers: boolean;
 }
 
+const normalizeMarkdown = (input: string): string => {
+  if (!input) {
+    return "";
+  }
+
+  // Normalize new lines and strip BOM that can appear when streaming
+  let normalized = input.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+
+  // If the entire payload is wrapped in a leading code fence (e.g. ```markdown\n ...),
+  // strip that fence even if the trailing ``` has not streamed in yet.
+  let strippedWrapperFence = false;
+  const openingFenceMatch = normalized.match(/^```(?:[a-zA-Z0-9_-]+)?[ \t]*\n/);
+  if (openingFenceMatch) {
+    normalized = normalized.slice(openingFenceMatch[0].length);
+    strippedWrapperFence = true;
+  }
+
+  // Remove a trailing closing fence only if we already stripped the opening fence.
+  if (strippedWrapperFence) {
+    const trimmedEnd = normalized.trimEnd();
+    if (trimmedEnd.endsWith("```")) {
+      normalized = trimmedEnd.slice(0, trimmedEnd.lastIndexOf("```"));
+    }
+  }
+
+  return normalized.trim();
+};
+
 const MarkdownRenderer = ({ 
   markdownContent, 
   docConfig 
@@ -50,8 +78,8 @@ const MarkdownRenderer = ({
   markdownContent: string;
   docConfig?: DocConfig;
 }) => {
-  // Pre-process markdown to ensure proper rendering
-  const processedContent = markdownContent || '';
+  // Pre-process markdown to strip stray code fences the model sometimes adds
+  const processedContent = normalizeMarkdown(markdownContent || '');
   
   // Helper function to convert pt to rem (assuming 16px base font size)
   const ptToRem = (pt: string) => `${parseFloat(pt) / 12}rem`;
