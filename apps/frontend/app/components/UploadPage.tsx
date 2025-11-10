@@ -526,15 +526,17 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       )}
 
       {/* Body / Markdown Preview */}
-      <div className="flex-1 overflow-auto p-6 bg-gray-50">
+      <div
+        className="flex-1 overflow-auto p-6 bg-gray-50"
+        ref={(node) => {
+          if (markdownRef) {
+            markdownRef.current = node;
+          }
+        }}
+      >
         {markdownContent && (
           <div
-            ref={(node) => {
-              if (markdownRef) {
-                markdownRef.current = node;
-              }
-            }}
-            className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area overflow-auto"
+            className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area"
             style={{ backgroundColor: '#ffffff', color: '#000000' }}
           >
             <MarkdownRenderer markdownContent={markdownContent} docConfig={docConfig} />
@@ -1938,7 +1940,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     onDragOver, 
     onDrop, 
     onClick, 
-    fileType 
+    fileType,
+    disabled = false,
   }: {
     title: string;
     files: File[];
@@ -1950,6 +1953,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     onDrop: (e: React.DragEvent) => void;
     onClick: () => void;
     fileType: 'rfp' | 'supporting';
+    disabled?: boolean;
   }) => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
       <div className="border-b border-gray-100 p-4">
@@ -1961,16 +1965,18 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       
       <div className="p-4">
         <div
-          className={`relative border-2 border-dashed rounded-md p-6 text-center transition-all duration-200 cursor-pointer
+          className={`relative border-2 border-dashed rounded-md p-6 text-center transition-all duration-200
             ${dragActive 
               ? 'border-gray-400 bg-gray-50' 
               : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-            }`}
-          onDragEnter={onDragEnter}
-          onDragLeave={onDragLeave}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          onClick={onClick}
+            }
+            ${disabled ? 'opacity-60 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
+          onDragEnter={disabled ? undefined : onDragEnter}
+          onDragLeave={disabled ? undefined : onDragLeave}
+          onDragOver={disabled ? undefined : onDragOver}
+          onDrop={disabled ? undefined : onDrop}
+          onClick={disabled ? undefined : onClick}
+          aria-disabled={disabled}
         >
           <Upload 
             className={`mx-auto mb-3 ${dragActive ? 'text-gray-600' : 'text-gray-400'}`} 
@@ -2007,11 +2013,20 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 <div className="flex items-center gap-1">
                   {file.url && (
                     <button
+                      type="button"
+                      disabled={disabled}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (disabled) {
+                          return;
+                        }
                         window.open(file.url, "_blank");
                       }}
-                      className="text-blue-500 hover:text-blue-600 text-xs font-medium"
+                      className={`text-xs font-medium ${
+                        disabled
+                          ? 'text-gray-300 cursor-not-allowed'
+                          : 'text-blue-500 hover:text-blue-600'
+                      }`}
                     >
                       View
                     </button>
@@ -2032,11 +2047,20 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 </div>
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
+                    disabled={disabled}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (disabled) {
+                        return;
+                      }
                       removeFile(index, fileType);
                     }}
-                    className="text-gray-400 hover:text-red-500 p-1 flex-shrink-0"
+                    className={`p-1 flex-shrink-0 ${
+                      disabled
+                        ? 'text-gray-300 cursor-not-allowed'
+                        : 'text-gray-400 hover:text-red-500'
+                    }`}
                   >
                     <X size={12} />
                   </button>
@@ -2213,17 +2237,48 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   }, [checkSupabaseConnection]);
  
 
+  const isStreamingContent = Boolean(markdownContent) && (isUploading || isRegenerating);
+
   // Auto-scroll to bottom when markdown content updates during streaming
   React.useEffect(() => {
-    if (isUploading && markdownContent && markdownContainerRef.current) {
-      const container = markdownContainerRef.current;
-      // Smooth scroll to bottom to show latest content
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: 'smooth'
-      });
+    if (!isStreamingContent || !markdownContainerRef.current) {
+      return;
     }
-  }, [markdownContent, isUploading]);
+
+    const container = markdownContainerRef.current;
+    const scrollToBottom = () => {
+      if (typeof container.scrollTo === 'function') {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth',
+        });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+    };
+
+    if (typeof window === 'undefined') {
+      scrollToBottom();
+      return;
+    }
+
+    const rafId = window.requestAnimationFrame(scrollToBottom);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [markdownContent, isStreamingContent]);
+
+  const isProcessLocked = isUploading || isPdfConverting || deletingGenId !== null;
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const previousCursor = document.body.style.cursor;
+    document.body.style.cursor = isProcessLocked ? 'wait' : '';
+    return () => {
+      document.body.style.cursor = previousCursor;
+    };
+  }, [isProcessLocked]);
+
   const [comment1, setComment1] = useState<string>("");
   const [comment2, setComment2] = useState<string>("");
 
@@ -2239,12 +2294,21 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     <>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
-      <div className="h-screen bg-gray-50 overflow-hidden" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-        <div
-          className={`fixed inset-0 z-40 flex transition-all duration-300 ${
-            isHistoryOpen ? '' : 'pointer-events-none'
-          }`}
-        >
+      <div
+        className="relative h-screen bg-gray-50 overflow-hidden"
+        style={{
+          fontFamily: 'JetBrains Mono, monospace',
+          cursor: isProcessLocked ? 'wait' : 'auto',
+        }}
+        aria-busy={isProcessLocked}
+        aria-live={isProcessLocked ? 'polite' : undefined}
+      >
+        <div className="h-full">
+          <div
+            className={`fixed inset-0 z-40 flex transition-all duration-300 ${
+              isHistoryOpen ? '' : 'pointer-events-none'
+            }`}
+          >
           <aside
             className={`w-[360px] max-w-full bg-white border-r border-gray-200 shadow-2xl flex flex-col overflow-hidden transform transition-transform duration-300 ease-in-out ${
               isHistoryOpen ? 'translate-x-0 pointer-events-auto' : '-translate-x-full pointer-events-none'
@@ -2543,22 +2607,28 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 </h3>
                 <div className="flex gap-2">
                   <button
+                    type="button"
+                    disabled={isProcessLocked}
                     onClick={() => setLanguage('arabic')}
                     className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
                       ${language === 'arabic' 
                         ? 'bg-blue-600 text-white border-blue-600' 
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
+                      }
+                      ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     Arabic
                   </button>
                   <button
+                    type="button"
+                    disabled={isProcessLocked}
                     onClick={() => setLanguage('english')}
                     className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
                       ${language === 'english' 
                         ? 'bg-blue-600 text-white border-blue-600' 
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
+                      }
+                      ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     English
                   </button>
@@ -2576,6 +2646,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 onDrop={(e) => handleDrop(e, 'rfp')}
                 onClick={() => rfpInputRef.current?.click()}
                 fileType="rfp"
+                disabled={isProcessLocked}
               />
 
               <FileUploadZone
@@ -2589,6 +2660,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 onDrop={(e) => handleDrop(e, 'supporting')}
                 onClick={() => supportingInputRef.current?.click()}
                 fileType="supporting"
+                disabled={isProcessLocked}
               />
 
               <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -2619,9 +2691,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 {!isGenerated ? (
                   <button
                     onClick={handleUpload}
-                    disabled={supabaseEnvMissing || isUploading || rfpFiles.length === 0 || !config.trim()}
+                    disabled={supabaseEnvMissing || isProcessLocked || rfpFiles.length === 0 || !config.trim()}
                     className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isUploading || rfpFiles.length === 0 || !config.trim()
+                      ${supabaseEnvMissing || isProcessLocked || rfpFiles.length === 0 || !config.trim()
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
                         : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
                       }`}
@@ -2650,9 +2722,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 ) : (
                   <button
                     onClick={handleRegenerate}
-                    disabled={supabaseEnvMissing || isUploading}
+                    disabled={supabaseEnvMissing || isProcessLocked}
                     className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isUploading
+                      ${supabaseEnvMissing || isProcessLocked
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
                         : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
                       }`}
@@ -2946,8 +3018,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             <div className="mt-2">
               <button
                 type="button"
-                className="px-4 py-2 bg-blue-600 text-white rounded text-sm"
+                disabled={isProcessLocked}
+                className={`px-4 py-2 rounded text-sm transition-colors ${
+                  isProcessLocked
+                    ? 'bg-blue-300 text-white/70 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
                 onClick={() => {
+                  if (isProcessLocked) {
+                    return;
+                  }
                   // Append new comment to the list
                   setCommentConfigList(prev => [
                     ...prev,
@@ -3048,7 +3128,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           className="hidden"
         />
       </div>
-      
+    </div>
+
     </>
   );
 };
