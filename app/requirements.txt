@@ -1,6 +1,44 @@
+# fastapi==0.115.0
+# uvicorn[standard]==0.30.6
+# openai==1.51.0
+supabase==2.6.0
+# python-dotenv==1.0.1
+# python-pptx==0.6.23
+# cairosvg==2.8.0
+# requests==2.31.0
+
+
+# FastAPI and Server
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-openai==1.51.0
-supabase==2.6.0
+python-multipart==0.0.9
+
+# AI/LLM
+openai==1.109.0
+httpx>=0.24.0
+
+# Document Processing
+python-pptx==1.0.2
+python-docx==1.1.2
+markdown==3.7
+lxml==5.3.0
+
+# Image/SVG Processing
+cairosvg==2.7.1
+Pillow==10.4.0
+svglib==1.5.1
+
+# Chart Generation
+matplotlib==3.9.2
+seaborn==0.13.2
+pandas==2.2.3
+numpy==2.1.2
+
+# Data Validation
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# Utilities
 python-dotenv==1.0.1
-python-pptx==0.6.23
+
+requests==2.32.5
