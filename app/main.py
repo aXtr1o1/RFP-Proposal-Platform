@@ -53,7 +53,7 @@ app.include_router(router)
 async def root():
     """Root endpoint with API information"""
     return {
-        "message": "Proposal PPT Generator API v2.0",
+        "message": "Proposal PPT Generator API v1.0",
         "description": "AI-powered presentation generation with Supabase storage",
         "version": "1.0.0",
     }
@@ -102,7 +102,7 @@ async def health():
 async def startup_event():
     """Application startup event"""
     logger.info("="*80)
-    logger.info("🚀 Starting Proposal PPT Generator API v2.0")
+    logger.info("🚀 Starting Proposal PPT Generator API v1.0")
     logger.info("="*80)
     logger.info(f"📝 OpenAI Model: {settings.OPENAI_MODEL}")
     logger.info(f"🎨 DALL-E Model: {settings.DALL_E_MODEL}")

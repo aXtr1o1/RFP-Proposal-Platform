@@ -1,0 +1,396 @@
+{
+  "template_id": "arweqah",
+  "template_name": "Arweqah Alreyadah Professional Template",
+  "version": "3.0.0",
+  "template_mode": "json_only",
+  "requires_pptx_file": false,
+  "description": "Professional Arabic/English presentation template with JSON-only configuration. No PPTX template file required.",
+  "created_date": "2025-11-15",
+  "last_modified": "2025-11-15",
+  "author": "Vineesh @ AXTRLabs",
+  "slide_dimensions": {
+    "width": 13.333333333333334,
+    "height": 7.5,
+    "aspect_ratio": "16:9",
+    "units": "inches",
+    "description": "Standard widescreen presentation dimensions"
+  },
+  "language_settings": {
+    "default": "en",
+    "supported": [
+      "ar",
+      "en",
+      "fr"
+    ],
+    "auto_detect": true,
+    "ar": {
+      "name": "Arabic",
+      "rtl": true,
+      "text_direction": "rtl",
+      "default_font": "Tajawal",
+      "heading_font": "Cairo",
+      "bold_font": "Cairo",
+      "alignment": "right",
+      "bullet_alignment": "right"
+    },
+    "en": {
+      "name": "English",
+      "rtl": false,
+      "text_direction": "ltr",
+      "default_font": "Open Sans",
+      "heading_font": "Roboto",
+      "bold_font": "Roboto",
+      "alignment": "left",
+      "bullet_alignment": "left"
+    },
+    "fr": {
+      "name": "French",
+      "rtl": false,
+      "text_direction": "ltr",
+      "default_font": "Open Sans",
+      "heading_font": "Roboto",
+      "bold_font": "Roboto",
+      "alignment": "left",
+      "bullet_alignment": "left"
+    }
+  },
+  "content_type_mapping": {
+    "title": "title_slide",
+    "agenda": "agenda_slide",
+    "section": [
+      "section_header_dark",
+      "section_header_green",
+      "section_header_orange"
+    ],
+    "bullets": "title_and_content",
+    "content": "title_and_content",
+    "text": "title_and_content",
+    "paragraph": "content_paragraph",
+    "table": "table_slide",
+    "chart": "chart_slide",
+    "analytics": "chart_slide",
+    "two_column": "two_content",
+    "comparison": "two_content",
+    "boxes": "four_boxes",
+    "four_boxes": "four_boxes",
+    "four_box_with_icons": "four_box_with_icons",
+    "short_boxes": "four_boxes",
+    "image": "title_only",
+    "media": "title_only",
+    "custom": "title_only",
+    "closing": "title_slide"
+  },
+  "background_images": {
+    "title_slide": {
+      "path": "Background/image1.jpeg",
+      "description": "Light beige background for title slides",
+      "fallback_color": "#F5F0E8"
+    },
+    "section_header_dark": {
+      "path": "Background/image2.jpeg",
+      "description": "Dark teal background for section headers",
+      "fallback_color": "#01415C"
+    },
+    "section_header_green": {
+      "path": "Background/image3.jpeg",
+      "description": "Green background for section headers",
+      "fallback_color": "#B1D8BE"
+    },
+    "section_header_orange": {
+      "path": "Background/image4.jpeg",
+      "description": "Orange background for section headers",
+      "fallback_color": "#E09059"
+    },
+    "agenda_slide": {
+      "path": "Background/image5.jpeg",
+      "description": "Split background for agenda - cream left for content, dark teal right with logo",
+      "fallback_color": "#FFFDED"
+    },
+    "content_slide": {
+      "path": "Background/image7.jpeg",
+      "description": "Light background for content slides",
+      "fallback_color": "#FFFDED"
+    },
+    "table_slide": {
+      "path": "Background/image8.jpeg",
+      "description": "Background for table slides",
+      "fallback_color": "#FFFDED"
+    },
+    "chart_slide": {
+      "path": "Background/image9.jpeg",
+      "description": "Background for chart slides - DARK",
+      "fallback_color": "#0D2026"
+    },
+    "four_boxes": {
+      "path": "Background/image10.jpeg",
+      "description": "Background for four boxes layout",
+      "fallback_color": "#F5F0E8"
+    },
+    "closing_slide": {
+      "path": "Background/image11.png",
+      "description": "Background for closing/thank you slide",
+      "fallback_color": "#01415C"
+    }
+  },
+  "page_numbering": {
+    "enabled": true,
+    "skip_title_slide": true,
+    "skip_section_headers": false,
+    "style": "diamond",
+    "position": {
+      "horizontal": "left",
+      "vertical": "bottom",
+      "offset_x": 0.2,
+      "offset_y": 6.8
+    },
+    "shape": {
+      "type": "diamond",
+      "width": 0.4,
+      "height": 0.4,
+      "fill_color": "#C6C3BE",
+      "text_color": "#FFFCEC"
+    },
+    "font": {
+      "name": "Cairo",
+      "size": 14,
+      "bold": false
+    }
+  },
+  "branding": {
+    "logo": {
+      "enabled": true,
+      "path": "logo.png",
+      "position": {
+        "horizontal": "right",
+        "vertical": "top",
+        "left": 11.5,
+        "top": 0.5
+      },
+      "size": {
+        "width": 1.5,
+        "height": 0.8
+      },
+      "slides": [
+        "title",
+        "content"
+      ]
+    },
+    "watermark": {
+      "enabled": false,
+      "text": "Confidential",
+      "opacity": 0.1,
+      "position": "center"
+    }
+  },
+  "default_styles": {
+    "title": {
+      "font_size": 44,
+      "font_name": "Cairo",
+      "bold": true,
+      "color": "#FFFCEC",
+      "alignment": "center"
+    },
+    "heading_1": {
+      "font_size": 36,
+      "font_name": "Cairo",
+      "bold": true,
+      "color": "#0D2026"
+    },
+    "heading_2": {
+      "font_size": 32,
+      "font_name": "Cairo",
+      "bold": true,
+      "color": "#0D2026"
+    },
+    "heading_3": {
+      "font_size": 28,
+      "font_name": "Tajawal",
+      "bold": true,
+      "color": "#0D2026"
+    },
+    "body": {
+      "font_size": 18,
+      "font_name": "Tajawal",
+      "bold": false,
+      "color": "#0D2026",
+      "line_spacing": 1.5
+    },
+    "caption": {
+      "font_size": 14,
+      "font_name": "Tajawal",
+      "bold": false,
+      "color": "#6B6B6B"
+    }
+  },
+  "bullet_styles": {
+    "level_1": {
+      "bullet_char": "●",
+      "font_size": 18,
+      "bold": true,
+      "color": "#01415C",
+      "indent": 0.5
+    },
+    "level_2": {
+      "bullet_char": "○",
+      "font_size": 16,
+      "bold": false,
+      "color": "#0D2026",
+      "indent": 1.0
+    },
+    "level_3": {
+      "bullet_char": "▪",
+      "font_size": 14,
+      "bold": false,
+      "color": "#0D2026",
+      "indent": 1.5
+    }
+  },
+  "table_styles": {
+    "default": {
+      "header": {
+        "background_color": "#01415C",
+        "text_color": "#FFFCEC",
+        "font_name": "Cairo",
+        "font_size": 16,
+        "bold": true
+      },
+      "body": {
+        "font_name": "Tajawal",
+        "font_size": 14,
+        "text_color": "#0D2026",
+        "alternate_row_color": "#F7F4E7"
+      },
+      "border": {
+        "color": "#C6C3BE",
+        "width": 1
+      }
+    }
+  },
+  "chart_styles": {
+    "default": {
+      "color_palette": [
+        "#F9D462",
+        "#B1D8BE",
+        "#E09059",
+        "#C6C3BE",
+        "#FFFCEC"
+      ],
+      "font": {
+        "name": "Tajawal",
+        "size": 12,
+        "color": "#FFFCEC"
+      },
+      "legend": {
+        "position": "bottom",
+        "font_size": 12
+      },
+      "grid": {
+        "enabled": true,
+        "color": "#5C6F7A",
+        "style": "solid"
+      }
+    }
+  },
+  "content_boxes": {
+    "box_colors": {
+      "box1": "#B1D8BE",
+      "box2": "#F9D462",
+      "box3": "#C6C3BE",
+      "box4": "#E09059"
+    },
+    "text_color": "#0D2026",
+    "padding": 0.3,
+    "border_radius": 0.1,
+    "max_text_length": 120
+  },
+  "constraints": {
+    "slide": {
+      "max_slides": 100,
+      "min_slides": 1
+    },
+    "text": {
+      "max_title_length": 100,
+      "max_subtitle_length": 150,
+      "max_bullet_length": 200,
+      "max_paragraph_length": 1000
+    },
+    "bullets": {
+      "max_bullets_per_slide": 6,
+      "max_sub_bullets_per_bullet": 3,
+      "max_bullet_depth": 2
+    },
+    "table": {
+      "max_rows": 20,
+      "max_columns": 8,
+      "min_rows": 2,
+      "min_columns": 2
+    },
+    "chart": {
+      "max_data_points": 50,
+      "max_series": 8,
+      "min_data_points": 2
+    }
+  },
+  "layout_margins": {
+    "content_slides": {
+      "left": 1.0,
+      "right": 1.0,
+      "top": 1.5,
+      "bottom": 1.0
+    },
+    "title_slide": {
+      "left": 1.5,
+      "right": 1.5,
+      "top": 2.0,
+      "bottom": 2.0
+    },
+    "section_header": {
+      "left": 2.0,
+      "right": 2.0,
+      "top": 3.0,
+      "bottom": 3.0
+    }
+  },
+  "animation": {
+    "enabled": false,
+    "default_transition": "none",
+    "transition_duration": 0.5
+  },
+  "export_options": {
+    "default_format": "pptx",
+    "compression": "medium",
+    "image_quality": "high",
+    "embed_fonts": false
+  },
+  "features": {
+    "auto_fit_text": true,
+    "auto_number_slides": true,
+    "auto_detect_language": true,
+    "smart_layout_selection": true,
+    "icon_integration": true,
+    "chart_generation": true,
+    "table_generation": true
+  },
+  "validation": {
+    "strict_mode": false,
+    "warn_on_long_text": true,
+    "warn_on_too_many_bullets": true,
+    "auto_truncate": false
+  },
+  "metadata": {
+    "company": "Arweqah Alreyadah",
+    "template_category": "Professional",
+    "supported_languages": [
+      "Arabic",
+      "English",
+      "French"
+    ],
+    "color_scheme": "Warm Earth Tones",
+    "best_for": [
+      "Business",
+      "Reports",
+      "Proposals",
+      "Presentations"
+    ]
+  }
+}

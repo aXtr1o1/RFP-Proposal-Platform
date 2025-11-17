@@ -1,0 +1,53 @@
+{
+  "layout": {
+    "margin_left": 1.0,
+    "margin_right": 1.0,
+    "margin_top": 0.5,
+    "margin_bottom": 0.5,
+    "content_area_width": 11.33,
+    "content_area_height": 6.5,
+    "max_content_height": 5.5,
+    "safe_zone_padding": 0.5
+  },
+  "text": {
+    "max_title_length": 100,
+    "max_subtitle_length": 150,
+    "max_bullet_length": 200,
+    "max_paragraph_length": 500
+  },
+  "bullets": {
+    "max_bullets_per_slide": 6,
+    "max_sub_bullets_per_bullet": 3,
+    "max_bullet_depth": 2,
+    "indent_per_level": 0.5
+  },
+  "table": {
+    "max_rows": 20,
+    "max_columns": 8,
+    "header_bg": "#01415C",
+    "header_text": "#FFFCEC",
+    "alternate_row_bg": "#F7F4E7",
+    "border_color": "#C6C3BE",
+    "text": "#0D2026",
+    "rtl_support": true
+  },
+  "chart": {
+    "max_data_points": 50,
+    "max_series": 8,
+    "default_width": 11.33,
+    "default_height": 5.0,
+    "color_palette": [
+      "#01415C",
+      "#B1D8BE",
+      "#F9D462",
+      "#E09059",
+      "#C6C3BE"
+    ]
+  },
+  "images": {
+    "max_width": 11.33,
+    "max_height": 6.5,
+    "quality": "high",
+    "compression": "medium"
+  }
+}

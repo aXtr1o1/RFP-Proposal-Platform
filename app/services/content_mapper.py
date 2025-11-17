@@ -67,7 +67,7 @@ class ContentMapper:
             title=title,
             subtitle=subtitle,
             slides=slides,
-            template_id="standard"
+            template_id="arweqah"
         )
     
     def _create_content_slide(self, title: str, content: List[Dict]) -> SlideContent:

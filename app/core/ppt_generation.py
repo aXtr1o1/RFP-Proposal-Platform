@@ -121,8 +121,7 @@ async def run_initial_generation(
         # PptxGenerator will load local template from app/templates/{template_id}/
         generator = PptxGenerator(template_id=template_id)
         output_path = generator.generate(
-            presentation_data,
-            generate_images=True
+            presentation_data
         )
         
         logger.info(f"PPTX generated: {output_path}")

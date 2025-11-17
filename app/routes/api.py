@@ -18,7 +18,7 @@ class PPTInitialGenRequest(BaseModel):
     gen_id: str
     language: str = Field(..., pattern="^(English|Arabic)$")
     template_id: str = Field(
-        default="standard", 
+        default="arweqah", 
         description="Template identifier (e.g., 'standard'). Corresponds to app/templates/{template_id}/"
     )
     user_preference: str = Field(default="", description="User preferences")
@@ -43,7 +43,7 @@ class PPTRegenRequest(BaseModel):
     ppt_genid: str
     language: str = Field(..., pattern="^(English|Arabic)$")
     template_id: str = Field(
-        default="standard",
+        default="arweqah",
         description="Template identifier to use for regeneration"
     )
     regen_comments: list[RegenComment]

@@ -12,10 +12,10 @@ class TemplateService:
     def _load_templates(self):
         """Load all template configurations with error handling"""
         try:
-            if not self.templates_dir.exists():
-                print(f"  Templates directory not found: {self.templates_dir}")
-                self._create_default_template()
-                return
+            # if not self.templates_dir.exists():
+            #     print(f"  Templates directory not found: {self.templates_dir}")
+            #     self._create_default_template()
+            #     return
             
             for template_dir in self.templates_dir.iterdir():
                 if template_dir.is_dir():
@@ -41,59 +41,59 @@ class TemplateService:
                     except Exception as e:
                         print(f"Failed to load template {template_dir.name}: {e}")
             
-            if not self.templates:
-                print("  No templates loaded, creating default...")
-                self._create_default_template()
+    #         if not self.templates:
+    #             print("  No templates loaded, creating default...")
+    #             self._create_default_template()
         
         except Exception as e:
             print(f"Template loading error: {e}")
             self._create_default_template()
     
-    def _create_default_template(self):
-        """Create minimal default template in memory"""
-        self.templates['standard'] = {
-            'config': {
-                'template_id': 'standard',
-                'name': 'Standard',
-                'theme': {
-                    'primary': '#3B82F6',
-                    'secondary': '#10B981',
-                    'accent': '#F59E0B',
-                    'background': '#FFFFFF',
-                    'text': '#1F2937'
-                },
-                'typography': {
-                    'title_font': 'Calibri',
-                    'body_font': 'Calibri',
-                    'title_size': 44,
-                    'heading_size': 32,
-                    'body_size': 18
-                },
-                'slide_dimensions': {
-                    'width': 10,
-                    'height': 5.625
-                }
-            },
-            'layouts': {
-                'title_slide': {
-                    'layout_type': 'title',
-                    'elements': []
-                },
-                'content_slide': {
-                    'layout_type': 'content',
-                    'elements': []
-                }
-            }
-        }
-        print("Default template created in memory")
+    # def _create_default_template(self):
+    #     """Create minimal default template in memory"""
+    #     self.templates['arweqah'] = {
+    #         'config': {
+    #             'template_id': 'arweqah',
+    #             'name': 'arweqah',
+    #             'theme': {
+    #                 'primary': '#3B82F6',
+    #                 'secondary': '#10B981',
+    #                 'accent': '#F59E0B',
+    #                 'background': '#FFFFFF',
+    #                 'text': '#1F2937'
+    #             },
+    #             'typography': {
+    #                 'title_font': 'Calibri',
+    #                 'body_font': 'Calibri',
+    #                 'title_size': 44,
+    #                 'heading_size': 32,
+    #                 'body_size': 18
+    #             },
+    #             'slide_dimensions': {
+    #                 'width': 10,
+    #                 'height': 5.625
+    #             }
+    #         },
+    #         'layouts': {
+    #             'title_slide': {
+    #                 'layout_type': 'title',
+    #                 'elements': []
+    #             },
+    #             'content_slide': {
+    #                 'layout_type': 'content',
+    #                 'elements': []
+    #             }
+    #         }
+    #     }
+    #     print("Default template created in memory")
     
     def get_template(self, template_id: str) -> Dict[str, Any]:
         """Get template configuration"""
         if template_id not in self.templates:
             print(f"  Template '{template_id}' not found, using 'standard'")
-            template_id = 'standard'
+            template_id = 'arweqah'
         
-        return self.templates.get(template_id, self.templates.get('standard'))
+        return self.templates.get(template_id, self.templates.get('arweqah'))
     
     def get_theme(self, template_id: str) -> Dict[str, str]:
         """Get color theme"""

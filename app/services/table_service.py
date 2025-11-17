@@ -12,7 +12,7 @@ from config import settings
 class TableService:
     """Table generation with styling from constraints.json."""
 
-    def __init__(self, template_id="standard"):
+    def __init__(self, template_id="arweqah"):
         constraints = self._load_constraints(template_id)
         tbl = constraints["table"]
 
