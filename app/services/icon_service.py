@@ -3,27 +3,23 @@ import logging
 from io import BytesIO
 from typing import Optional, Dict, List
 from pathlib import Path
-from functools import lru_cache
+from difflib import SequenceMatcher
 
 import cairosvg
 from config import settings
 
 logger = logging.getLogger("icon_service")
 
-# FIXED: Cache size limit to prevent memory leak
-MAX_CACHE_SIZE = 100  # Max 100 rendered icons in memory
+MAX_CACHE_SIZE = 100
 
 
 class IconService:
     """
-    Icon service for handling presentation icons
-    Supports SVG icons from assets with inline text rendering
+    Enhanced Icon service with fuzzy matching for better icon selection
     """
     
-    def __init__(self, template_id: str = "standard"):
-        """
-        Initialize icon service with template awareness
-        """
+    def __init__(self, template_id: str = "arweqah"):
+        """Initialize icon service with template awareness"""
         self.template_id = template_id
         
         # Load icons data
@@ -42,11 +38,11 @@ class IconService:
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in icons.json: {e}")
         
-        # FIXED: Load theme from specified template (not hardcoded 'standard')
+        # Load theme
         theme_path = Path(settings.TEMPLATES_DIR) / template_id / "theme.json"
         
         if not theme_path.exists():
-            logger.warning(f" Theme file not found: {theme_path}, using default icon mapping")
+            logger.warning(f"Theme file not found: {theme_path}, using default icon mapping")
             self.theme = {"icons": {"keyword_to_icon_map": {}}}
         else:
             try:
@@ -60,47 +56,130 @@ class IconService:
         # Get icon mapping
         self.icon_mapping = self.theme.get("icons", {}).get("keyword_to_icon_map", {})
         
-        # FIXED: Cache with size limit (LRU eviction)
+        # Cache with LRU
         self.cache: Dict[str, bytes] = {}
-        self.cache_order: List[str] = []  # Track access order for LRU
+        self.cache_order: List[str] = []
         
-        # Unicode fallback mapping
-        self.unicode_fallback = {
-            'briefcase': '💼',
-            'rocket-launch': '🚀',
-            'target': '🎯',
-            'bullseye': '🎯',
-            'trophy': '🏆',
-            'package': '📦',
-            'file-text': '📄',
-            'certificate': '📜',
-            'list-checks': '✅',
-            'users-three': '👥',
-            'graduation-cap': '🎓',
-            'steps': '📊',
-            'flow-arrow': '➡️',
-            'gear': '⚙️',
-            'calendar-check': '📅',
-            'clock': '⏰',
-            'currency-dollar': '💵',
-            'shield-check': '🛡️',
-            'check-circle': '✅',
-            'circle': '⭕',
-            'default': '●'
+        # Enhanced keyword to icon mapping
+        self.enhanced_keywords = {
+            # Greetings
+            'thank you': 'hand-waving',
+            'thanks': 'hand-waving',
+            'goodbye': 'hand-waving',
+            'hello': 'hand-waving',
+            'welcome': 'hand-waving',
+            
+            # Business
+            'executive': 'briefcase',
+            'summary': 'file-text',
+            'introduction': 'users-three',
+            'company': 'buildings',
+            'about': 'info',
+            
+            # Planning
+            'timeline': 'calendar-check',
+            'schedule': 'calendar',
+            'deadline': 'clock',
+            'milestone': 'flag-banner',
+            
+            # Team
+            'team': 'users-three',
+            'people': 'users',
+            'staff': 'user-circle',
+            'roles': 'user-gear',
+            
+            # Money
+            'budget': 'currency-dollar',
+            'pricing': 'coins',
+            'cost': 'money',
+            'investment': 'chart-line-up',
+            
+            # Goals
+            'objective': 'target',
+            'goal': 'bullseye',
+            'target': 'crosshair',
+            'strategy': 'chess-knight',
+            
+            # Process
+            'methodology': 'flow-arrow',
+            'approach': 'map-trifold',
+            'process': 'gear',
+            'workflow': 'arrows-split',
+            
+            # Results
+            'deliverable': 'package',
+            'outcome': 'check-circle',
+            'result': 'trophy',
+            'success': 'medal',
+            
+            # Analysis
+            'data': 'chart-bar',
+            'analytics': 'chart-pie-slice',
+            'metrics': 'gauge',
+            'kpi': 'trendline-up',
+            
+            # Technical
+            'architecture': 'blueprint',
+            'design': 'pencil-ruler',
+            'development': 'code',
+            'implementation': 'hammer',
+            
+            # Risk
+            'risk': 'warning',
+            'security': 'shield-check',
+            'compliance': 'clipboard-check',
+            'quality': 'seal-check',
+            
+            # Documents
+            'document': 'file-text',
+            'report': 'newspaper',
+            'proposal': 'file-doc',
+            'contract': 'file-contract'
         }
         
         logger.info(f"IconService initialized (template: {template_id}, mappings: {len(self.icon_mapping)})")
     
-    def get_icon(self, name: str) -> Optional[Dict]:
+    def fuzzy_match(self, text: str, keywords: List[str], threshold: float = 0.6) -> Optional[str]:
         """
-        Get icon by exact name
+        Fuzzy match text against keywords using similarity ratio
         
         Args:
-            name: Icon identifier
+            text: Text to match
+            keywords: List of keywords to match against
+            threshold: Minimum similarity ratio (0.0 to 1.0)
             
         Returns:
-            Optional[Dict]: Icon data or None
+            Optional[str]: Best matching keyword or None
         """
+        text_lower = text.lower()
+        best_match = None
+        best_ratio = 0.0
+        
+        for keyword in keywords:
+            # Check exact substring match first (highest priority)
+            if keyword in text_lower:
+                return keyword
+            
+            # Check fuzzy similarity
+            ratio = SequenceMatcher(None, text_lower, keyword).ratio()
+            
+            # Check word-level matching
+            text_words = set(text_lower.split())
+            keyword_words = set(keyword.split())
+            word_overlap = len(text_words.intersection(keyword_words))
+            
+            if word_overlap > 0:
+                # Boost ratio if there's word overlap
+                ratio = max(ratio, 0.7 + (word_overlap * 0.1))
+            
+            if ratio > best_ratio and ratio >= threshold:
+                best_ratio = ratio
+                best_match = keyword
+        
+        return best_match
+    
+    def get_icon(self, name: str) -> Optional[Dict]:
+        """Get icon by exact name"""
         if not name:
             return None
         
@@ -111,68 +190,54 @@ class IconService:
         logger.debug(f"Icon not found: {name}")
         return None
     
-    def get_unicode_icon(self, icon_name: str) -> str:
+    def search_by_tags(self, text: str) -> Optional[str]:
         """
-        Get Unicode character for icon (fallback for inline text rendering)
+        Search icon by matching text against icon tags
         
         Args:
-            icon_name: Icon identifier (e.g., 'briefcase', 'package')
+            text: Text to search
             
         Returns:
-            str: Unicode character or default bullet
+            Optional[str]: Icon name or None
         """
-        if not icon_name:
-            return '●'
+        text_lower = text.lower()
         
-        icon_name = icon_name.lower().strip()
-        
-        # Check Unicode fallback mapping
-        if icon_name in self.unicode_fallback:
-            return self.unicode_fallback[icon_name]
-        
-        # Check if icon exists in SVG library
-        if self.get_icon(icon_name):
-            return self.unicode_fallback.get(icon_name, '●')
-        
-        # Keyword-based fallback
-        for keyword, mapped_icon in self.icon_mapping.items():
-            if keyword in icon_name:
-                return self.unicode_fallback.get(mapped_icon, '●')
-        
-        return '●'
-    
-    def search_by_keyword(self, keyword: str) -> str:
-        """
-        Search icon by keyword in tags
-        
-        Args:
-            keyword: Search keyword
-            
-        Returns:
-            str: Icon name or 'circle' as fallback
-        """
-        if not keyword:
-            return 'circle'
-        
-        keyword = keyword.lower()
-        
-        # First check theme mapping
-        if keyword in self.icon_mapping:
-            return self.icon_mapping[keyword]
-        
-        # Then search in icon tags
+        # Try exact tag match first
         for icon in self.icons_data['icons']:
             tags = icon.get('tags', '').lower()
-            if keyword in tags or keyword in icon.get('name', ''):
-                return icon['name']
+            if not tags:
+                continue
+            
+            tag_list = [t.strip() for t in tags.split(',')]
+            
+            for tag in tag_list:
+                if tag and tag in text_lower:
+                    return icon['name']
         
-        logger.debug(f"No icon found for keyword: {keyword}")
-        return 'circle'
+        # Try fuzzy matching on tags
+        all_tags = []
+        tag_to_icon = {}
+        
+        for icon in self.icons_data['icons']:
+            tags = icon.get('tags', '').lower()
+            if tags:
+                for tag in tags.split(','):
+                    tag = tag.strip()
+                    if tag and len(tag) > 2:  # Skip very short tags
+                        all_tags.append(tag)
+                        tag_to_icon[tag] = icon['name']
+        
+        # Fuzzy match against all tags
+        matched_tag = self.fuzzy_match(text_lower, all_tags, threshold=0.65)
+        
+        if matched_tag and matched_tag in tag_to_icon:
+            return tag_to_icon[matched_tag]
+        
+        return None
     
     def auto_select_icon(self, title: str, content: str = "") -> str:
         """
-        Intelligently select icon based on title and content
-        Uses comprehensive keyword mapping from theme.json
+        Intelligently select icon with enhanced fuzzy matching
         
         Args:
             title: Slide title
@@ -186,24 +251,48 @@ class IconService:
         
         text = f"{title} {content}".lower()
         
-        # Check each keyword in theme mapping
+        # 1. Check enhanced keywords with exact match
+        for keyword, icon_name in self.enhanced_keywords.items():
+            if keyword in text:
+                if self.get_icon(icon_name):
+                    logger.debug(f"✅ Exact keyword match: '{keyword}' → {icon_name}")
+                    return icon_name
+        
+        # 2. Fuzzy match against enhanced keywords
+        matched_keyword = self.fuzzy_match(text, list(self.enhanced_keywords.keys()), threshold=0.7)
+        if matched_keyword:
+            icon_name = self.enhanced_keywords[matched_keyword]
+            if self.get_icon(icon_name):
+                logger.debug(f"✅ Fuzzy keyword match: '{matched_keyword}' → {icon_name}")
+                return icon_name
+        
+        # 3. Search by icon tags
+        tag_match = self.search_by_tags(text)
+        if tag_match:
+            logger.debug(f"✅ Tag match: {tag_match}")
+            return tag_match
+        
+        # 4. Check theme mapping
         for keyword, icon_name in self.icon_mapping.items():
             if keyword in text:
-                # Verify icon exists
                 if self.get_icon(icon_name):
                     return icon_name
         
-        # Fallback: search by first word of title
+        # 5. Try first word of title
         first_word = title.split()[0].lower() if title else ""
-        if first_word in self.icon_mapping:
-            return self.icon_mapping[first_word]
+        if first_word and len(first_word) > 2:
+            # Fuzzy match first word
+            matched = self.fuzzy_match(first_word, list(self.enhanced_keywords.keys()), threshold=0.75)
+            if matched:
+                icon_name = self.enhanced_keywords[matched]
+                if self.get_icon(icon_name):
+                    return icon_name
         
-        # Check intelligent category keywords from theme
+        # 6. Intelligent category mapping
         intelligent = self.theme.get('icons', {}).get('intelligent_mapping', {})
         
         for category, keywords in intelligent.items():
             if any(kw in text for kw in keywords):
-                # Map category to default icon
                 category_icon_map = {
                     'strategy_keywords': 'target',
                     'finance_keywords': 'currency-dollar',
@@ -223,7 +312,8 @@ class IconService:
                 if self.get_icon(icon_name):
                     return icon_name
         
-        # Ultimate fallback
+        # 7. Ultimate fallback
+        logger.debug(f"⚠️  No match found for '{title[:30]}...', using circle")
         return 'circle'
     
     def render_to_png(
@@ -233,7 +323,7 @@ class IconService:
         color: str
     ) -> Optional[BytesIO]:
         """
-        Convert SVG icon to PNG with caching and size limit
+        Convert SVG icon to PNG with caching
         
         Args:
             icon_name: Icon identifier
@@ -244,7 +334,7 @@ class IconService:
             Optional[BytesIO]: PNG image data or None
         """
         if not icon_name:
-            logger.warning(" Empty icon name provided")
+            logger.warning("Empty icon name provided")
             return None
         
         cache_key = f"{icon_name}_{size}_{color}"
@@ -252,7 +342,6 @@ class IconService:
         # Check cache
         if cache_key in self.cache:
             logger.debug(f"Cache hit: {cache_key}")
-            # Update access order (LRU)
             self.cache_order.remove(cache_key)
             self.cache_order.append(cache_key)
             return BytesIO(self.cache[cache_key])
@@ -260,8 +349,7 @@ class IconService:
         # Get icon
         icon = self.get_icon(icon_name)
         if not icon:
-            logger.warning(f" Icon not found: {icon_name}, trying fallback")
-            # Try fallback
+            logger.warning(f"Icon not found: {icon_name}, trying fallback")
             icon = self.get_icon('circle')
             if not icon:
                 logger.error("Fallback icon 'circle' not found")
@@ -280,18 +368,16 @@ class IconService:
         try:
             png_data = cairosvg.svg2png(
                 bytestring=svg_content.encode('utf-8'),
-                output_width=size * 4,  # 4x for ultra-high quality
+                output_width=size * 4,
                 output_height=size * 4
             )
             
-            # FIXED: Cache with size limit (LRU eviction)
+            # Cache with size limit (LRU eviction)
             if len(self.cache) >= MAX_CACHE_SIZE:
-                # Remove oldest entry
                 oldest_key = self.cache_order.pop(0)
                 del self.cache[oldest_key]
                 logger.debug(f"Evicted from cache: {oldest_key}")
             
-            # Add to cache
             self.cache[cache_key] = png_data
             self.cache_order.append(cache_key)
             
@@ -301,25 +387,6 @@ class IconService:
         except Exception as e:
             logger.error(f"SVG render error for {icon_name}: {e}")
             return None
-    
-    def render_inline_icon(
-        self, 
-        icon_name: str, 
-        size: int, 
-        color: str
-    ) -> Optional[BytesIO]:
-        """
-        Render small icon for inline text use
-        
-        Args:
-            icon_name: Icon identifier
-            size: Size in pixels (typically 20-24 for inline)
-            color: Hex color code
-            
-        Returns:
-            Optional[BytesIO]: PNG image data or None
-        """
-        return self.render_to_png(icon_name, size, color)
     
     def get_icon_suggestions(self, text: str, limit: int = 5) -> List[str]:
         """
@@ -338,70 +405,32 @@ class IconService:
         text_lower = text.lower()
         suggestions = []
         
-        # Check keyword mapping
-        for keyword, icon_name in self.icon_mapping.items():
+        # Check enhanced keywords
+        for keyword, icon_name in self.enhanced_keywords.items():
             if keyword in text_lower and icon_name not in suggestions:
                 suggestions.append(icon_name)
                 if len(suggestions) >= limit:
                     break
         
-        # Fill with search results if needed
+        # Fuzzy match if not enough suggestions
         if len(suggestions) < limit:
-            words = text_lower.split()
-            for word in words:
-                if len(word) > 3:  # Skip short words
-                    icon_name = self.search_by_keyword(word)
-                    if icon_name not in suggestions:
-                        suggestions.append(icon_name)
-                        if len(suggestions) >= limit:
-                            break
+            keywords = list(self.enhanced_keywords.keys())
+            matched = self.fuzzy_match(text_lower, keywords, threshold=0.6)
+            if matched:
+                icon_name = self.enhanced_keywords[matched]
+                if icon_name not in suggestions:
+                    suggestions.append(icon_name)
+        
+        # Search by tags
+        if len(suggestions) < limit:
+            tag_match = self.search_by_tags(text_lower)
+            if tag_match and tag_match not in suggestions:
+                suggestions.append(tag_match)
         
         return suggestions if suggestions else ['circle']
     
-    def add_icon_to_text(
-        self, 
-        text_frame, 
-        icon_name: str, 
-        text: str, 
-        size: int, 
-        color: str
-    ):
-        """
-        Add icon inline with text in a paragraph
-        
-        Args:
-            text_frame: PowerPoint text frame
-            icon_name: Icon identifier
-            text: Text to display after icon
-            size: Font/icon size in points
-            color: Hex color for icon and text
-        """
-        from pptx.util import Pt
-        from pptx.dml.color import RGBColor
-        
-        # Get Unicode fallback
-        icon_char = self.get_unicode_icon(icon_name)
-        
-        # Create paragraph with icon + text
-        p = text_frame.add_paragraph()
-        p.text = f"{icon_char}  {text}"
-        p.font.size = Pt(size)
-        p.font.bold = True
-        
-        # Parse color
-        if color.startswith('#'):
-            try:
-                r = int(color[1:3], 16)
-                g = int(color[3:5], 16)
-                b = int(color[5:7], 16)
-                p.font.color.rgb = RGBColor(r, g, b)
-            except ValueError as e:
-                logger.warning(f" Invalid color format: {color}, error: {e}")
-        
-        return p
-    
     def clear_cache(self) -> None:
-        """Clear the icon cache (useful for memory management)"""
+        """Clear the icon cache"""
         cache_size = len(self.cache)
         self.cache.clear()
         self.cache_order.clear()

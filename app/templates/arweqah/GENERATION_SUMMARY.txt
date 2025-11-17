@@ -1,0 +1,186 @@
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ARWEQAH TEMPLATE JSON GENERATION                          ║
+║                              COMPLETE SUMMARY                                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+TEMPLATE INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Template ID:    arweqah
+  Name:           Arweqah Horizontal Professional Theme
+  Version:        1.0.0
+  Description:    Professional bilingual (Arabic/English) template with teal,
+                  cream, and warm accent colors
+  Dimensions:     13.33" × 7.5" (16:9 widescreen)
+
+COLOR PALETTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Primary Colors:
+    • Dark Teal      #01415C  ████████  (dk1 - main brand color)
+    • Very Dark Teal #0D2026  ████████  (dk2 - text color)
+    • Medium Teal    #40697A  ████████  (accent4 - secondary text)
+
+  Secondary Colors:
+    • Sage Green     #84BA93  ████████  (lt2 - success, growth)
+    • Mint Green     #B1D8BE  ████████  (accent2 - subtle accents)
+
+  Accent Colors:
+    • Rust Orange    #C26325  ████████  (accent1 - call-to-action)
+    • Golden Yellow  #F9D462  ████████  (accent3 - warning, emphasis)
+
+  Background Colors:
+    • Cream          #FFFDED  ████████  (master background)
+    • Ivory          #FFFCEC  ████████  (light areas, dark bg text)
+    • Warm Taupe     #C6C3BE  ████████  (neutral backgrounds)
+    • Off-white      #F7F4E7  ████████  (alternate rows, subtle)
+
+TYPOGRAPHY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Arabic Fonts:
+    • Tajawal (regular, bold)
+    • TajawalMedium (regular, bold)
+    • TajawalExtraBold (bold)
+
+  English Fonts:
+    • Montserrat SemiBold (regular, bold, italic, bold-italic)
+
+  Font Sizes:
+    Title:        44pt    Heading:      32pt
+    Subheading:   28pt    Body:         18pt
+    Sub-bullet:   16pt    Caption:      14pt
+    Table Header: 16pt    Table Body:   14pt
+
+  Features:
+    ✓ RTL (Right-to-Left) support
+    ✓ Bilingual mode (Arabic/English)
+    ✓ Automatic font switching
+
+LAYOUTS (11 Total)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. TITLE SLIDE 1 [title]
+   Background: Split (35% teal image + 65% cream)
+   Use Cases:  Presentation opening, cover slides
+   Elements:   Title, subtitle, decorative image
+   Special:    Bilingual support, visual impact
+
+2. TITLE AND CONTENT [content]
+   Background: Cream solid (#FFFDED)
+   Use Cases:  Bullet points, text-heavy content, general information
+   Elements:   Title, content bullets (max 5)
+   Special:    Supports tables (6 cols × 8 rows)
+
+3. SECTION HEADER 2 [section]
+   Background: Mint green (#84BA93)
+   Use Cases:  Gentle section breaks, growth topics
+   Elements:   Centered title with dashed placeholder box
+   Special:    Large readable text, nature/growth theme
+
+4. SECTION HEADER 1 [section]
+   Background: Dark teal (#01415C)
+   Use Cases:  Major section breaks, corporate dividers
+   Elements:   Centered title with dashed placeholder box
+   Special:    High contrast, professional corporate feel
+
+5. SECTION HEADER 3 [section]
+   Background: Rust orange (#C26325)
+   Use Cases:  Action sections, call-to-action dividers
+   Elements:   Centered title with dashed placeholder box
+   Special:    Warm energetic feel, eye-catching
+
+6. TWO CONTENT [two_column]
+   Background: Cream solid (#FFFDED)
+   Use Cases:  Comparisons, side-by-side content
+   Elements:   Title, left column, right column
+   Special:    Equal-width columns (48% each)
+
+7. TITLE ONLY [content]
+   Background: Cream solid (#FFFDED)
+   Use Cases:  Large charts/tables, custom graphics
+   Elements:   Title only
+   Special:    Maximum content flexibility (5.7" height available)
+
+8. BLANK [blank]
+   Background: Very dark teal (#0D2026)
+   Use Cases:  Full-screen images, dramatic transitions
+   Elements:   None
+   Special:    Complete creative freedom, dark aesthetic
+
+9. BLANK (LIGHT) [blank]
+   Background: Cream solid (#FFFDED)
+   Use Cases:  Custom layouts, clean canvas
+   Elements:   None
+   Special:    Light background, flexible positioning
+
+10. CUSTOM LAYOUT [content]
+    Background: Cream solid (#FFFDED)
+    Use Cases:  Unique arrangements, mixed media
+    Elements:   Optional title, optional decorative image
+    Special:    Flexible design, supports artistic content
+
+11. 4_BLANK [blank]
+    Background: Warm gray (#C6C3BE)
+    Use Cases:  Subtle transitions, neutral content
+    Elements:   None
+    Special:    Sophisticated neutral tone
+
+LAYOUT METADATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Each layout includes:
+  ✓ suitable_for        - Array of ideal use cases
+  ✓ content_structure   - Detailed positioning specs
+  ✓ table_support       - Max rows/cols, styling guidelines
+  ✓ chart_support       - Size constraints, recommendations
+  ✓ visual_elements     - Description of design elements
+  ✓ constraints         - Precise positioning coordinates
+
+TABLE CONFIGURATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Header Background:    #01415C (Dark Teal)
+  Header Text:          #FFFCEC (Cream)
+  Body Text:            #0D2026 (Very Dark Teal)
+  Alternate Rows:       #F7F4E7 (Off-white Beige)
+  Border Color:         #84BA93 (Sage Green)
+  Border Width:         1pt
+  Rounded Corners:      Disabled
+  Max Rows:             8
+  Max Columns:          6
+  RTL Support:          Enabled
+  Text Alignment:       Right (for RTL)
+
+CHART COLORS (In Order)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. #01415C  Dark Teal       ████████
+  2. #C26325  Rust Orange     ████████
+  3. #84BA93  Sage Green      ████████
+  4. #F9D462  Golden Yellow   ████████
+  5. #40697A  Medium Teal     ████████
+  6. #B1D8BE  Mint Green      ████████
+  7. #0D2026  Very Dark Teal  ████████
+  8. #C6C3BE  Warm Gray       ████████
+
+CONTENT LIMITS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Max Bullets/Slide:     5
+  Max Title Length:      80 characters
+  Max Bullet Length:     120 characters
+  Max Sub-bullets:       3 per main bullet
+  Max Table Rows:        8
+  Max Table Columns:     6
+  Max Chart Points:      8
+  Auto-pagination:       Enabled
+  RTL Text Support:      Enabled
+
+SPECIAL FEATURES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✓ Right-to-Left (RTL) text rendering
+  ✓ Bilingual font switching (Arabic/English)
+  ✓ Cultural sensitivity in design
+  ✓ Professional color scheme
+  ✓ 11 versatile layout options
+  ✓ Embedded custom fonts
+  ✓ AI-powered content optimization
+  ✓ Smart layout selection
+  ✓ Automatic icon selection
+  ✓ Visual data detection
+  ✓ Image generation support

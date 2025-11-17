@@ -87,8 +87,8 @@ class OpenAIService:
                         {"role": "user", "content": user_prompt},
                     ],
                     response_format=PresentationData,
-                    temperature=0.3,
-                    max_tokens=8000,
+                    # temperature=0.4,
+                    # max_tokens=8000,
                 )
                 
                 elapsed = (datetime.now() - start_time).total_seconds()
@@ -203,6 +203,7 @@ class OpenAIService:
 
         print("\n\n" + "="*100)
         print(f" Streaming Complete - {len(full_response)} characters")
+        print(full_response)
         print("="*100 + "\n")
     
     def get_stats(self) -> dict:

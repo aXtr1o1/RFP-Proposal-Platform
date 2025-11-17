@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import Literal
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict, field_validator
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 logger = logging.getLogger("config")
 
@@ -31,7 +34,7 @@ class Settings(BaseSettings):
     # Application Settings
     APP_NAME: str = "RFP Presentation Generator"
     DEBUG: bool = False
-    DEFAULT_TEMPLATE: str = "standard"
+    DEFAULT_TEMPLATE: str = "arweqah"
     
     # FIXED: Path resolution that works from any directory
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
