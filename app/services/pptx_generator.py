@@ -163,17 +163,45 @@ class PptxGenerator:
     # ========================================================================
 
     def get_layout_for_content(self, content_type: str, slide_data=None) -> Dict:
-        """Select correct layout based on content type"""
+        """Select correct layout with proper detection - works with config.json mappings"""
         content_mapping = self.config.get('content_type_mapping', {})
         layout_name = None
 
+        # Get layout hint from slide data
         layout_hint = self._get_layout_hint(slide_data)
         
-        if layout_hint == 'agenda':
-            layout_name = 'agenda_slide'
-        elif layout_hint:
-            layout_name = content_mapping.get(layout_hint)
+        # STEP 1: Try to map layout_hint directly
+        if layout_hint:
+            hint_lower = layout_hint.lower().strip().replace('_', '').replace('-', '')
+            
+            # Try exact match first (with normalization)
+            if layout_hint in content_mapping:
+                layout_name = content_mapping[layout_hint]
+                logger.debug(f"   Exact match: {layout_hint} -> {layout_name}")
+            # Try normalized match
+            elif hint_lower in ['chartslide', 'chart']:
+                layout_name = 'chart_slide'
+                logger.debug(f"   Chart layout from hint: {layout_hint}")
+            elif hint_lower in ['tableslide', 'table']:
+                layout_name = 'table_slide'
+                logger.debug(f"   Table layout from hint: {layout_hint}")
+            elif hint_lower in ['agenda', 'agendaslide']:
+                layout_name = 'agenda_slide'
+                logger.debug(f"   Agenda layout from hint: {layout_hint}")
+            elif 'fourbox' in hint_lower:
+                if 'icon' in hint_lower:
+                    layout_name = 'four_box_with_icons'
+                else:
+                    layout_name = 'four_boxes'
+                logger.debug(f"   Four-box layout from hint: {layout_hint}")
+            elif hint_lower in ['contentparagraph', 'paragraph']:
+                layout_name = 'content_paragraph'
+                logger.debug(f"   Paragraph layout from hint: {layout_hint}")
+            elif hint_lower in ['twocontent', 'twocolumn', 'comparison']:
+                layout_name = 'two_content'
+                logger.debug(f"   Two-content layout from hint: {layout_hint}")
 
+        # STEP 2: If no layout from hint, use content_type
         if not layout_name:
             if content_type == 'section':
                 section_layouts = content_mapping.get('section', ['section_header_dark'])
@@ -182,16 +210,33 @@ class PptxGenerator:
                     self.section_header_counter += 1
                 else:
                     layout_name = section_layouts
+                logger.debug(f"   Section layout (rotating): {layout_name}")
             else:
-                layout_name = content_mapping.get(content_type, 'title_and_content')
+                # Try direct lookup in content_mapping
+                layout_name = content_mapping.get(content_type)
+                if layout_name:
+                    logger.debug(f"   Content type mapping: {content_type} -> {layout_name}")
+                else:
+                    # Fallback based on content type
+                    if content_type == 'chart':
+                        layout_name = 'chart_slide'
+                    elif content_type == 'table':
+                        layout_name = 'table_slide'
+                    elif content_type == 'agenda':
+                        layout_name = 'agenda_slide'
+                    else:
+                        layout_name = 'title_and_content'
+                    logger.debug(f"   Fallback for {content_type}: {layout_name}")
 
+        # STEP 3: Get layout config from layouts.json
         layout_config = self.layouts.get(layout_name)
 
         if not layout_config:
-            logger.warning(f"⚠️  Layout '{layout_name}' not found, using title_and_content")
+            logger.warning(f"⚠️  Layout '{layout_name}' not found in layouts.json, using title_and_content")
             layout_config = self.layouts.get('title_and_content', {})
+            layout_name = 'title_and_content'
 
-        logger.debug(f"   Selected layout: {layout_name} for type: {content_type}")
+        logger.info(f"   ✓ Layout selected: '{layout_name}' (hint={layout_hint}, type={content_type})")
         return layout_config
 
     # ========================================================================
@@ -199,6 +244,7 @@ class PptxGenerator:
     # ========================================================================
 
     def _get_layout_hint(self, slide_data) -> Optional[str]:
+        """Extract layout hint with better detection"""
         if slide_data is None:
             return None
 
@@ -209,7 +255,24 @@ class PptxGenerator:
             hint = getattr(slide_data, 'layout_hint', None)
 
         if isinstance(hint, str):
-            return hint.strip().lower()
+            hint_clean = hint.strip().lower()
+            
+            # Normalize common variations
+            if 'agenda' in hint_clean:
+                return 'agenda'
+            elif 'four' in hint_clean and 'box' in hint_clean:
+                if 'icon' in hint_clean:
+                    return 'four_box_with_icons'
+                return 'four_boxes'
+            elif 'table' in hint_clean:
+                return 'table_slide'
+            elif 'chart' in hint_clean:
+                return 'chart_slide'
+            elif 'two' in hint_clean and ('column' in hint_clean or 'content' in hint_clean):
+                return 'two_content'
+            
+            return hint_clean
+        
         return None
 
     def _get_data_value(self, data, key: Optional[str]):
@@ -483,25 +546,26 @@ class PptxGenerator:
     # ========================================================================
 
     def _create_title_slide_dynamic(self, presentation_data: PresentationData) -> None:
-        """Create title slide with dynamic text sizing to prevent collision"""
+        """Create title slide without 'None' in subtitle"""
         layout_config = self.layouts.get('title_slide', {})
         slide_layout = self._get_slide_layout(layout_config)
         slide = self.prs.slides.add_slide(slide_layout)
         self._clear_default_placeholders(slide)
 
-        # Background
         bg_config = layout_config.get('background', {})
         if bg_config.get('type') == 'image':
             self._add_background(slide, bg_config)
 
-        # Logo
         elements = layout_config.get('elements', [])
         for element in elements:
             if element.get('type') == 'image' and element.get('id') == 'logo':
                 self._add_logo(slide, element)
 
-        # Title with dynamic sizing
+        # Title
         title = presentation_data.title or "Untitled Presentation"
+        if len(title) > 80:
+            title = title[:77] + "..."
+        
         title_element = next((e for e in elements if e.get('id') == 'title'), None)
         
         if title_element:
@@ -509,18 +573,24 @@ class PptxGenerator:
             size = title_element.get('size', {})
             style = title_element.get('style', {})
 
-            # Calculate dynamic font size
             base_font_size = style.get('font_size', 44)
-            dynamic_font_size = self._get_dynamic_font_size(title, base_font_size, max_length=80)
+            if len(title) > 60:
+                font_size = 36
+            elif len(title) > 40:
+                font_size = 40
+            else:
+                font_size = base_font_size
 
-            # Calculate height needed
-            estimated_height = self._calculate_text_height(title, dynamic_font_size, size.get('width', 10))
+            char_per_line = 50 if font_size >= 40 else 60
+            lines = max(1, len(title) / char_per_line)
+            required_height = lines * 0.6
+            actual_height = max(size.get('height', 1.5), required_height)
             
             textbox = slide.shapes.add_textbox(
                 Inches(pos.get('left', 1.5)),
                 Inches(pos.get('top', 2.8)),
                 Inches(size.get('width', 10.33)),
-                Inches(max(size.get('height', 1.5), estimated_height))
+                Inches(actual_height)
             )
 
             tf = textbox.text_frame
@@ -530,15 +600,22 @@ class PptxGenerator:
 
             p = tf.paragraphs[0]
             p.text = title
-            p.font.size = Pt(dynamic_font_size)
+            p.font.size = Pt(font_size)
             p.font.name = style.get('font', self.get_font('heading_font'))
-            p.font.bold = style.get('bold', True)
+            p.font.bold = True
             p.font.color.rgb = RGBColor(*self.hex_to_rgb(style.get('color', '#FFFCEC')))
             p.alignment = PP_ALIGN.CENTER
-            p.line_spacing = style.get('line_spacing', 1.2)
+            p.line_spacing = 1.15
 
-        # Subtitle with dynamic positioning
-        subtitle = f"{presentation_data.subtitle}\n{presentation_data.author}".strip()
+        # Subtitle - CRITICAL FIX: Remove "None"
+        subtitle_parts = []
+        if presentation_data.subtitle and presentation_data.subtitle != "None":
+            subtitle_parts.append(presentation_data.subtitle)
+        if presentation_data.author and presentation_data.author != "None":
+            subtitle_parts.append(presentation_data.author)
+        
+        subtitle = "\n".join(subtitle_parts).strip()
+        
         subtitle_element = next((e for e in elements if e.get('id') == 'subtitle'), None)
         
         if subtitle_element and subtitle:
@@ -546,10 +623,9 @@ class PptxGenerator:
             size = subtitle_element.get('size', {})
             style = subtitle_element.get('style', {})
 
-            # Adjust position based on title height
             subtitle_top = pos.get('top', 4.5)
-            if estimated_height > 1.5:
-                subtitle_top += (estimated_height - 1.5) * 0.8
+            if lines > 1.5:
+                subtitle_top += 0.3
 
             textbox = slide.shapes.add_textbox(
                 Inches(pos.get('left', 2.0)),
@@ -569,102 +645,142 @@ class PptxGenerator:
             p.font.color.rgb = RGBColor(*self.hex_to_rgb(style.get('color', '#FFFCEC')))
             p.alignment = PP_ALIGN.CENTER
 
+
     # ========================================================================
     # ENHANCED AGENDA SLIDE WITH DECORATIVE LINE
     # ========================================================================
 
     def _create_agenda_slide_enhanced(self, slide, layout_config: Dict, data) -> None:
-            """
-            Enhanced agenda slide using BACKGROUND IMAGE from layouts.json
-            Background has 'Topics' on left and 'Agenda' on right built-in
-            """
-            # Use background IMAGE (not split colors)
-            bg_config = layout_config.get('background', {})
-            if bg_config.get('type') == 'image':
-                self._add_background(slide, bg_config)
-            
-            # Add logo (bottom right)
-            logo_path = self.template_dir / "logo.png"
-            if logo_path.exists():
-                try:
-                    slide.shapes.add_picture(
-                        str(logo_path),
-                        Inches(11.5),
-                        Inches(6.3),
-                        width=Inches(1.5),
-                        height=Inches(0.8)
-                    )
-                except:
-                    pass
-            
-            # Content bullets (left side) - MAX 8 ITEMS with proper bullet symbols
-            bullets = self._extract_bullet_items(data, 'content')
-            
-            if bullets:
-                # Trim to max 8 for agenda
-                bullets = bullets[:8]
-                
-                textbox = slide.shapes.add_textbox(
-                    Inches(0.7),
-                    Inches(1.8),
-                    Inches(5.0),
-                    Inches(5.2)
+        """Enhanced agenda with LARGER font and PERFECT icon alignment"""
+        # Background
+        bg_config = layout_config.get('background', {})
+        if bg_config.get('type') == 'image':
+            self._add_background(slide, bg_config)
+        
+        # Add "Agenda" text on dark side (centered)
+        agenda_textbox = slide.shapes.add_textbox(
+            Inches(7.5),
+            Inches(3.0),
+            Inches(4.5),
+            Inches(1.5)
+        )
+        
+        tf = agenda_textbox.text_frame
+        tf.clear()
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        
+        p = tf.paragraphs[0]
+        p.text = "Agenda"
+        p.font.size = Pt(54)  # Larger
+        p.font.name = self.get_font('heading_font')
+        p.font.bold = True
+        p.font.color.rgb = RGBColor(*self.hex_to_rgb('#FFFCEC'))
+        p.alignment = PP_ALIGN.CENTER
+        
+        # Logo (bottom right)
+        logo_path = self.template_dir / "logo.png"
+        if logo_path.exists():
+            try:
+                slide.shapes.add_picture(
+                    str(logo_path),
+                    Inches(11.5),
+                    Inches(6.3),
+                    width=Inches(1.5),
+                    height=Inches(0.8)
                 )
-                
-                tf = textbox.text_frame
-                tf.clear()
-                tf.word_wrap = True
-                tf.margin_left = tf.margin_right = Inches(0.1)
-                tf.vertical_anchor = MSO_ANCHOR.TOP
-                
-                text_color = '#0D2026'
-                text_rgb = self.hex_to_rgb(text_color)
-                font_name = self.get_font('body_font')
-                
-                for idx, bullet in enumerate(bullets):
-                    paragraph = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-                    
-                    # Add icon inline
-                    if self.icon_service:
-                        icon_name = self.icon_service.auto_select_icon(bullet.text or "", "")
-                        try:
-                            icon_data = self.icon_service.render_to_png(
-                                icon_name,
-                                size=48,
-                                color=text_color
-                            )
-                            if icon_data:
-                                icon_left = Inches(0.15)
-                                icon_top = Inches(1.8 + (idx * 0.65))
-                                
-                                slide.shapes.add_picture(
-                                    icon_data,
-                                    icon_left,
-                                    icon_top,
-                                    width=Inches(0.35),
-                                    height=Inches(0.35)
-                                )
-                        except:
-                            pass
-                    
-                    # Add text with indent for icon
-                    paragraph.text = f"    {(bullet.text or '').strip()}"
-                    paragraph.font.size = Pt(16)
-                    paragraph.font.name = font_name
-                    paragraph.font.color.rgb = RGBColor(*text_rgb)
-                    paragraph.alignment = self.get_text_alignment()
-                    paragraph.line_spacing = 1.8
-                    paragraph.space_before = Pt(8)
-                    paragraph.space_after = Pt(8)
-                
-                logger.info(f"✅ Agenda created with {len(bullets)} items")
+            except:
+                pass
+        
+        # Content bullets (left side) - MAX 5 ITEMS
+        bullets = self._extract_bullet_items(data, 'content')
+        
+        if not bullets:
+            bullets = self._extract_bullet_items(data, 'bullets')
+        
+        if not bullets:
+            logger.warning("⚠️  Agenda slide has no content")
+            return
+        
+        # Limit to 5 items
+        bullets = bullets[:5]
+        
+        # Calculate vertical centering
+        num_items = len(bullets)
+        item_height = 0.85  # Increased spacing
+        total_height = num_items * item_height
+        start_y = (7.5 - total_height) / 2
+        
+        text_color = '#0D2026'
+        text_rgb = self.hex_to_rgb(text_color)
+        font_name = self.get_font('body_font')
+        
+        # Render each agenda item with icon
+        for idx, bullet in enumerate(bullets):
+            # Calculate Y position for this item
+            item_y = start_y + (idx * item_height)
+            
+            # Add icon (PERFECT alignment)
+            if self.icon_service:
+                icon_name = self.icon_service.auto_select_icon(bullet.text or "", "")
+                try:
+                    icon_data = self.icon_service.render_to_png(
+                        icon_name,
+                        size=56,  # Larger icon
+                        color=text_color
+                    )
+                    if icon_data:
+                        icon_left = Inches(0.8)
+                        icon_top = Inches(item_y + 0.15)
+                        
+                        slide.shapes.add_picture(
+                            icon_data,
+                            icon_left,
+                            icon_top,
+                            width=Inches(0.45),
+                            height=Inches(0.45)
+                        )
+                except Exception as e:
+                    logger.debug(f"Icon skip: {e}")
+            
+            # Add text (aligned with icon)
+            text_box = slide.shapes.add_textbox(
+                Inches(1.4),  # Start after icon
+                Inches(item_y),
+                Inches(4.8),
+                Inches(0.7)
+            )
+            
+            tf = text_box.text_frame
+            tf.clear()
+            tf.word_wrap = True
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.margin_left = tf.margin_right = Inches(0.05)
+            
+            p = tf.paragraphs[0]
+            p.text = (bullet.text or "").strip()
+            p.font.size = Pt(20)  # LARGER FONT
+            p.font.name = font_name
+            p.font.color.rgb = RGBColor(*text_rgb)
+            p.font.bold = False
+            p.alignment = PP_ALIGN.LEFT
+            p.line_spacing = 1.3
+        
+        logger.info(f"✅ Agenda created with {len(bullets)} items (larger font, centered)")
 
     # ========================================================================
     # SLIDE CREATION FROM JSON WITH ICONS
     # ========================================================================
 
     def _create_slide_from_json(self, content_type: str, data, page_num: int = None) -> None:
-        """Create slide from JSON layout with all enhancements"""
+        """FIXED: Create slide with ALL content types rendering correctly"""
+        
+        # Get layout hint
+        layout_hint = self._get_layout_hint(data)
+        
+        # Check for agenda
+        if layout_hint and 'agenda' in layout_hint.lower():
+            content_type = 'agenda'
+            logger.info(f"   Detected AGENDA slide from layout_hint: {layout_hint}")
         
         layout_config = self.get_layout_for_content(content_type, data)
         slide_layout = self._get_slide_layout(layout_config)
@@ -676,9 +792,8 @@ class PptxGenerator:
         if bg_config.get('type') == 'image':
             self._add_background(slide, bg_config)
         
-        # Special handling for agenda
-        layout_hint = self._get_layout_hint(data)
-        if layout_hint == 'agenda':
+        # Special: Agenda
+        if content_type == 'agenda' or (layout_hint and 'agenda' in layout_hint.lower()):
             self._create_agenda_slide_enhanced(slide, layout_config, data)
             if page_num:
                 self.add_page_number(slide, page_num)
@@ -686,13 +801,15 @@ class PptxGenerator:
         
         elements = layout_config.get('elements', [])
         
-        # **SECTION HEADERS: Icon centered above title**
+        # Special: Section headers
         if content_type == 'section':
             title_text = self._extract_text_value(data, 'title')
             
-            # Add centered icon above title
+            if len(title_text) > 60:
+                title_text = title_text[:57] + "..."
+                data.title = title_text
+            
             if self.icon_service and title_text:
-                # Special icon for Thank You
                 if any(word in title_text.lower() for word in ['thank', 'thanks', 'شكر']):
                     icon_name = 'hand-waving'
                 else:
@@ -700,17 +817,45 @@ class PptxGenerator:
                 
                 self._add_centered_section_icon(slide, icon_name, title_text, layout_config)
             
-            # Add title (no icon beside it)
             for element in elements:
                 if element.get('type') == 'text' and element.get('id') == 'title':
                     self._add_text_master(slide, element, data, content_type)
             
-            # Section headers have NO page numbers
             return
         
-        # **STANDARD CONTENT SLIDES**
+        # ========================================================================
+        # CRITICAL FIX: DETECT CONTENT TYPE FROM DATA
+        # ========================================================================
+        
+        has_chart = False
+        has_table = False
+        has_paragraph = False
+        has_bullets = False
+        
+        chart_data = getattr(data, 'chart_data', None) or getattr(data, 'chart', None)
+        table_data = getattr(data, 'table_data', None) or getattr(data, 'table', None)
+        content_text = getattr(data, 'content', None)
+        bullets = getattr(data, 'bullets', None)
+        
+        if chart_data:
+            has_chart = True
+            logger.info(f"   → Chart slide detected")
+        if table_data:
+            has_table = True
+            logger.info(f"   → Table slide detected")
+        if content_text and len(str(content_text).strip()) > 0:
+            has_paragraph = True
+            logger.info(f"   → Paragraph slide detected")
+        if bullets and len(bullets) > 0:
+            has_bullets = True
+            logger.info(f"   → Bullets slide detected")
+        
+        # ========================================================================
+        # PROCESS ELEMENTS - FIXED RENDERING LOGIC
+        # ========================================================================
+        
         title_element = None
-        has_title_line = False
+        content_rendered = False
         
         for element in elements:
             try:
@@ -721,62 +866,204 @@ class PptxGenerator:
                 if element_type == 'image' and element_id == 'logo':
                     self._add_logo(slide, element)
                 
-                # Title with icon beside
+                # Title with icon
                 elif element_type == 'text' and element_id == 'title':
                     title_element = element
                     title_text = self._extract_text_value(data, 'title')
                     
-                    # Add icon to left of title
-                    if self.icon_service and title_text:
+                    if len(title_text) > 80:
+                        title_text = title_text[:77] + "..."
+                        data.title = title_text
+                    
+                    if self.icon_service and title_text and not (has_chart or has_table):
                         icon_name = self.icon_service.auto_select_icon(title_text, "")
                         self._add_icon_to_title(slide, icon_name, element)
                     
                     self._add_text_master(slide, element, data, content_type)
                 
-                # **Title underline (NEW)**
+                # Title underline
                 elif element_type == 'line' and element_id == 'title_line':
                     if title_element:
                         self._add_title_underline(slide, title_element)
-                        has_title_line = True
                 
-                # Text paragraph
-                elif element_type == 'text_paragraph':
+                # ========================================================================
+                # CRITICAL FIX: RENDER BASED ON DATA, NOT JUST ELEMENT TYPE
+                # ========================================================================
+                
+                # CHART: Render if we detected chart data AND this is a chart element
+                elif element_type == 'chart' and has_chart and not content_rendered:
+                    logger.info(f"   → Rendering CHART")
+                    
+                    position = element.get('position', {'left': 1.5, 'top': 2.0})
+                    size = element.get('size', {'width': 10.33, 'height': 5.0})
+                    style = element.get('style', {})
+                    
+                    bg_color = style.get('background_color', '#0D2026')
+                    bg_rgb = self.hex_to_rgb(bg_color)
+                    
+                    # Convert chart_data to dict
+                    if hasattr(chart_data, 'dict'):
+                        chart_dict = chart_data.dict()
+                    elif isinstance(chart_data, dict):
+                        chart_dict = chart_data
+                    else:
+                        chart_dict = chart_data.__dict__
+                    
+                    # Ensure visible text - use style colors with fallbacks
+                    chart_dict['font_color'] = style.get('font_color', '#FFFFFF')
+                    chart_dict['data_label_color'] = style.get('data_label_color', '#FFFFFF')
+                    chart_dict['axis_color'] = style.get('axis_color', '#FFFFFF')
+                    chart_dict['axis_label_color'] = style.get('axis_label_color', '#FFFFFF')
+                    chart_dict['grid_color'] = style.get('grid_color', '#5C6F7A')
+                    chart_dict['legend_font_color'] = style.get('legend_font_color', '#FFFFFF')
+                    
+                    # Call ChartService
+                    if self.chart_service:
+                        self.chart_service.add_native_chart(
+                            slide=slide,
+                            chart_data=chart_dict,
+                            position=position,
+                            size=size,
+                            background_rgb=bg_rgb
+                        )
+                        content_rendered = True
+                        logger.info(f"   ✅ Chart rendered")
+                    else:
+                        logger.warning(f"   ⚠️ ChartService not available")
+                
+                # TABLE: Render if we detected table data AND this is a table element
+                elif element_type == 'table' and has_table and not content_rendered:
+                    logger.info(f"   → Rendering TABLE")
+                    self._add_table_master(slide, element, data)
+                    content_rendered = True
+                    logger.info(f"   ✅ Table rendered")
+                
+                # PARAGRAPH: Render if we have paragraph content
+                elif element_type == 'text_paragraph' and has_paragraph and not content_rendered:
+                    logger.info(f"   → Rendering PARAGRAPH")
                     self._add_paragraph_text(slide, element, data)
+                    content_rendered = True
+                    logger.info(f"   ✅ Paragraph rendered")
                 
-                # Bullets
-                elif element_type == 'bullets' or element_type == 'text_bullets':
+                # BULLETS: Render if we have bullets (or if element type is bullets/text_bullets)
+                elif (element_type in ['bullets', 'text_bullets'] or element_id == 'content') and has_bullets and not content_rendered:
+                    logger.info(f"   → Rendering BULLETS")
                     self._add_bullets_master(slide, element, data)
+                    content_rendered = True
+                    logger.info(f"   ✅ Bullets rendered")
+                
+                # FOUR-BOX: Render if layout indicates boxes
+                elif element_type == 'boxes' and element_id == 'content_boxes':
+                    logger.info(f"   → Rendering FOUR-BOX")
+                    self._add_content_box_with_icon_enhanced(slide, element, data)
+                    content_rendered = True
                 
                 # Shapes
                 elif element_type == 'shape':
                     self._add_shape_element(slide, element)
                 
-                # Icons (standalone)
-                elif element_type == 'icon':
+                # Standalone icons
+                elif element_type == 'icon' and element_id != 'icon':  # Skip title icon
                     self._add_icon_master(slide, element, data)
                 
                 # Content boxes
                 elif element_type == 'content_box':
                     self._add_content_box_master(slide, element, data)
-                
-                # **Four-box with icons INSIDE (FIXED)**
-                elif element_type == 'boxes' and element_id == 'content_boxes':
-                    self._add_content_box_with_icon_enhanced(slide, element, data)
-                
-                # Tables
-                elif element_type == 'table':
-                    self._add_table_master(slide, element, data)
-                
-                # Charts
-                elif element_type == 'chart':
-                    self._add_chart_master(slide, element, data)
             
             except Exception as e:
                 logger.warning(f"⚠️  Element '{element_id}' error: {e}")
+                import traceback
+                traceback.print_exc()
         
-        # Add page number (except for section headers)
-        if page_num and content_type != 'section':
+        # ========================================================================
+        # FALLBACK: If content detected but not rendered, try generic rendering
+        # ========================================================================
+        if not content_rendered:
+            if has_chart and chart_data:
+                logger.warning(f"⚠️  Chart detected but not rendered - attempting fallback")
+                # Find any chart element
+                chart_element = next((e for e in elements if e.get('type') == 'chart'), None)
+                if chart_element:
+                    try:
+                        position = chart_element.get('position', {'left': 1.5, 'top': 2.0})
+                        size = chart_element.get('size', {'width': 10.33, 'height': 5.0})
+                        style = chart_element.get('style', {})
+                        
+                        bg_color = style.get('background_color', '#0D2026')
+                        bg_rgb = self.hex_to_rgb(bg_color)
+                        
+                        if hasattr(chart_data, 'dict'):
+                            chart_dict = chart_data.dict()
+                        elif isinstance(chart_data, dict):
+                            chart_dict = chart_data
+                        else:
+                            chart_dict = chart_data.__dict__
+                        
+                        chart_dict['font_color'] = style.get('font_color', '#FFFFFF')
+                        chart_dict['data_label_color'] = style.get('data_label_color', '#FFFFFF')
+                        chart_dict['axis_color'] = style.get('axis_color', '#FFFFFF')
+                        chart_dict['axis_label_color'] = style.get('axis_label_color', '#FFFFFF')
+                        chart_dict['grid_color'] = style.get('grid_color', '#5C6F7A')
+                        chart_dict['legend_font_color'] = style.get('legend_font_color', '#FFFFFF')
+                        
+                        if self.chart_service:
+                            self.chart_service.add_native_chart(
+                                slide=slide,
+                                chart_data=chart_dict,
+                                position=position,
+                                size=size,
+                                background_rgb=bg_rgb
+                            )
+                            content_rendered = True
+                            logger.info(f"   ✅ Chart rendered (fallback)")
+                    except Exception as e:
+                        logger.error(f"   ❌ Chart fallback failed: {e}")
+            
+            elif has_table and table_data:
+                logger.warning(f"⚠️  Table detected but not rendered - attempting fallback")
+                # Find any table element
+                table_element = next((e for e in elements if e.get('type') == 'table'), None)
+                if table_element:
+                    try:
+                        self._add_table_master(slide, table_element, data)
+                        content_rendered = True
+                        logger.info(f"   ✅ Table rendered (fallback)")
+                    except Exception as e:
+                        logger.error(f"   ❌ Table fallback failed: {e}")
+            
+            elif has_paragraph and content_text:
+                logger.warning(f"⚠️  Paragraph detected but not rendered - attempting fallback")
+                # Find any text_paragraph or content element
+                para_element = next((e for e in elements if e.get('type') in ['text_paragraph', 'text_bullets'] or e.get('id') == 'content'), None)
+                if para_element:
+                    try:
+                        self._add_paragraph_text(slide, para_element, data)
+                        content_rendered = True
+                        logger.info(f"   ✅ Paragraph rendered (fallback)")
+                    except Exception as e:
+                        logger.error(f"   ❌ Paragraph fallback failed: {e}")
+            
+            elif has_bullets and bullets:
+                logger.warning(f"⚠️  Bullets detected but not rendered - attempting fallback")
+                # Find any bullets or content element
+                bullets_element = next((e for e in elements if e.get('type') in ['bullets', 'text_bullets'] or e.get('id') == 'content'), None)
+                if bullets_element:
+                    try:
+                        self._add_bullets_master(slide, bullets_element, data)
+                        content_rendered = True
+                        logger.info(f"   ✅ Bullets rendered (fallback)")
+                    except Exception as e:
+                        logger.error(f"   ❌ Bullets fallback failed: {e}")
+        
+        # Final warning if still not rendered
+        if not content_rendered and (has_chart or has_table or has_paragraph or has_bullets):
+            logger.error(f"❌ CONTENT NOT RENDERED! has_chart={has_chart}, has_table={has_table}, has_paragraph={has_paragraph}, has_bullets={has_bullets}")
+            logger.error(f"   Available elements: {[e.get('id') + ':' + e.get('type') for e in elements]}")
+        
+        # Add page number
+        if page_num:
             self.add_page_number(slide, page_num)
+
 
 
     # ========================================================================
@@ -1094,13 +1381,20 @@ class PptxGenerator:
             logger.debug(f"Shape render skipped: {exc}")
 
     def _add_text_master(self, slide, element: Dict, data, content_type: str) -> None:
-        """Add text with CORRECT colors and alignment"""
+        """Add text with support for 'content' field"""
         pos = element.get('position', {})
         size = element.get('size', {})
         style = element.get('style', {})
         element_id = element.get('id', '')
 
-        text = self._extract_text_value(data, element_id)
+        # CRITICAL: Extract from both 'title' and 'content' fields
+        if element_id == 'title':
+            text = self._extract_text_value(data, 'title')
+        elif element_id == 'content':
+            text = self._extract_text_value(data, 'content')
+        else:
+            text = self._extract_text_value(data, element_id)
+
         if not text:
             return
 
@@ -1162,56 +1456,64 @@ class PptxGenerator:
             paragraph.alignment = alignment
 
     def _add_paragraph_text(self, slide, element: Dict, data) -> None:
-        """Render long-form paragraph content"""
+        """FIXED: Render paragraph content"""
         pos = element.get('position', {})
         size = element.get('size', {})
         style = element.get('style', {})
 
-        text = self._extract_text_value(data, element.get('id', 'content'))
-        if not text and hasattr(data, 'bullets') and data.bullets:
-            text = "\n\n".join(b.text for b in data.bullets if getattr(b, 'text', None))
+        # Get text from 'content' field
+        text = getattr(data, 'content', None)
+        
+        if not text or len(str(text).strip()) == 0:
+            if hasattr(data, 'bullets') and data.bullets:
+                text = "\n\n".join(b.text for b in data.bullets if getattr(b, 'text', None))
 
         text = (text or "").strip()
         if not text:
+            logger.warning(f"⚠️  No paragraph text found")
             return
 
+        logger.info(f"   → Paragraph text: {len(text)} chars")
+
         textbox = slide.shapes.add_textbox(
-            Inches(pos.get('left', 0)),
-            Inches(pos.get('top', 0)),
-            Inches(size.get('width', 5)),
-            Inches(size.get('height', 3))
+            Inches(pos.get('left', 1.5)),
+            Inches(pos.get('top', 2.0)),
+            Inches(size.get('width', 10.33)),
+            Inches(size.get('height', 4.8))
         )
 
         tf = textbox.text_frame
         tf.word_wrap = True
         tf.clear()
         tf.vertical_anchor = MSO_ANCHOR.TOP
-        tf.margin_left = tf.margin_right = Inches(style.get('padding', 0.2))
+        tf.margin_left = tf.margin_right = Inches(0.2)
 
-        paragraphs = [p.strip() for p in re.split(r'\n\s*\n', text) if p.strip()]
+        # Split into paragraphs
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        if not paragraphs:
+            paragraphs = [p.strip() for p in text.split('. ') if p.strip()]
         if not paragraphs:
             paragraphs = [text]
 
-        line_spacing = max(style.get('line_spacing', 1.6), 1.5)
-        alignment = self._resolve_alignment_from_style(style, default_alignment='justify')
         font_name = style.get('font', self.get_font('body_font'))
-        text_color = style.get('color', self.theme.get('colors', {}).get('text_primary', '#0D2026'))
+        text_color = style.get('color', '#0D2026')
 
         for idx, chunk in enumerate(paragraphs):
             paragraph = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
             paragraph.text = chunk
-            paragraph.font.size = Pt(style.get('font_size', 18))
+            paragraph.font.size = Pt(18)
             paragraph.font.name = font_name
-            paragraph.line_spacing = line_spacing
-            paragraph.space_after = Pt(style.get('space_after', 8))
-            paragraph.alignment = alignment
+            paragraph.line_spacing = 1.6
+            paragraph.space_after = Pt(12)
+            paragraph.alignment = PP_ALIGN.LEFT
 
-            if text_color:
-                rgb = self.hex_to_rgb(text_color)
-                paragraph.font.color.rgb = RGBColor(*rgb)
+            rgb = self.hex_to_rgb(text_color)
+            paragraph.font.color.rgb = RGBColor(*rgb)
+        
+        logger.info(f"   ✅ Paragraph added: {len(paragraphs)} blocks")
 
     def _add_bullets_master(self, slide, element: Dict, data) -> None:
-        """Add bullets with MASTER alignment"""
+        """Add bullets with VISIBLE bullet symbols"""
         element_id = element.get('id')
         bullets = self._extract_bullet_items(data, element_id)
         if not bullets:
@@ -1237,15 +1539,22 @@ class PptxGenerator:
         font_size = style.get('font_size', 18)
         line_spacing = max(style.get('line_spacing', 1.75), 1.5)
         
-        font_name = style.get('font') or self.get_font('body_font') or 'Tajawal'
+        font_name = style.get('font') or self.get_font('body_font')
         text_color = style.get('color', '#0D2026')
         text_rgb = self.hex_to_rgb(text_color)
         text_alignment = self._resolve_alignment_from_style(style)
         
+        # Get bullet character
+        bullet_char = bullet_style_cfg.get('bullet_char', '●')
+        
         for idx, bullet in enumerate(bullets[:6]):
             paragraph = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-            paragraph.text = (bullet.text or "").replace("**", "").strip()
-            paragraph.font.bold = style.get('bold', True)
+            
+            # CRITICAL: Add bullet symbol manually
+            bullet_text = (bullet.text or "").replace("**", "").strip()
+            paragraph.text = f"{bullet_char}  {bullet_text}"
+            
+            paragraph.font.bold = style.get('bold', False)
             paragraph.font.size = Pt(font_size)
             paragraph.font.name = font_name
             paragraph.font.color.rgb = RGBColor(*text_rgb)
@@ -1254,57 +1563,91 @@ class PptxGenerator:
             paragraph.space_before = Pt(bullet_style_cfg.get('spacing_before', 6))
             paragraph.space_after = Pt(bullet_style_cfg.get('spacing_after', 6))
             
+            # Sub-bullets
             if getattr(bullet, 'sub_bullets', None):
+                sub_bullet_char = bullet_style_cfg.get('sub_bullet_char', '○')
                 for sub in bullet.sub_bullets[:3]:
                     sp = tf.add_paragraph()
-                    sp.text = str(sub)
-                    sp.font.size = Pt(max(font_size - 2, 10))
+                    sub_text = str(sub).strip()
+                    sp.text = f"    {sub_bullet_char}  {sub_text}"
+                    sp.font.size = Pt(max(font_size - 2, 14))
                     sp.font.name = font_name
                     sp.font.color.rgb = RGBColor(*text_rgb)
                     sp.alignment = text_alignment
-                    sp.level = 1
                     sp.line_spacing = line_spacing
 
     def _add_icon_master(self, slide, element: Dict, data) -> None:
-        """Add icon ABOVE box (not inside)"""
+        """
+        FIXED:
+        - Supports standalone icons (id == "icon")
+        - Avoids int() conversion on IDs
+        - Auto-selects icon based on slide title or box content
+        """
+
         if not self.icon_service:
             return
-        
-        box_id = element.get('id', '').replace('_icon', '')
-        pos = element.get('position', {})
-        size = element.get('size', {})
-        
+
+        element_id = element.get("id", "")
+        pos = element.get("position", {})
+        size = element.get("size", {})
+
+        # -------------------------------
+        # 1) Determine the text to derive icon from
+        # -------------------------------
         content = ""
-        if isinstance(data, dict):
-            content = data.get(box_id, '')
-        elif hasattr(data, 'bullets') and data.bullets:
-            box_num = int(box_id.replace('box', '')) - 1
-            if box_num < len(data.bullets):
-                content = data.bullets[box_num].text
-        
+
+        # Case A: Standalone icon → use slide title
+        if element_id == "icon":
+            if hasattr(data, "title") and data.title:
+                content = data.title
+
+        # Case B: Box icons like box1_icon, box2_icon
+        elif element_id.endswith("_icon"):
+            box_id = element_id.replace("_icon", "")
+            if hasattr(data, "bullets") and data.bullets:
+                try:
+                    idx = int(box_id.replace("box", "")) - 1
+                    if 0 <= idx < len(data.bullets):
+                        content = data.bullets[idx].text
+                except:
+                    # Fallback: use title
+                    content = getattr(data, "title", "")
+
+        # Fallback safeguard
         if not content:
+            content = getattr(data, "title", "") or ""
+
+        if not content.strip():
             return
-        
+
+        # -------------------------------
+        # 2) Resolve icon
+        # -------------------------------
         icon_name = self.icon_service.auto_select_icon(content, "")
-        
+
         try:
             icon_data = self.icon_service.render_to_png(
                 icon_name,
-                size=120,
-                color="#0D2026"
+                size=int(size.get("width", 0.6) * 96),
+                color=element.get("color", "#0D2026")
             )
-            
-            if icon_data:
-                slide.shapes.add_picture(
-                    icon_data,
-                    Inches(pos.get('left', 0)),
-                    Inches(pos.get('top', 0)),
-                    width=Inches(size.get('width', 0.6)),
-                    height=Inches(size.get('height', 0.6))
-                )
-                logger.debug(f"✅ Icon added above box: {icon_name}")
+
+            if not icon_data:
+                return
+
+            slide.shapes.add_picture(
+                icon_data,
+                Inches(pos.get("left", 0)),
+                Inches(pos.get("top", 0)),
+                width=Inches(size.get("width", 0.6)),
+                height=Inches(size.get("height", 0.6))
+            )
+
+            logger.debug(f"✅ Icon added: {icon_name} (content='{content[:30]}...')")
+
         except Exception as e:
-            logger.warning(f"⚠️  Icon render failed: {e}")
+            logger.warning(f"⚠️ Icon render failed: {e}")
+
 
     def _add_content_box_master(self, slide, element: Dict, data) -> None:
         """Add colored content box (text only, icon separate)"""
@@ -1366,37 +1709,51 @@ class PptxGenerator:
         p.font.color.rgb = RGBColor(*self.hex_to_rgb(text_color))
 
     def _add_table_master(self, slide, element: Dict, data) -> None:
-        """Add table with visible centered text"""
-        if not hasattr(data, 'table_data') or not data.table_data:
+        """Add table - FIXED"""
+        table_data_obj = getattr(data, 'table_data', None) or getattr(data, 'table', None)
+        
+        if not table_data_obj:
+            logger.warning(f"⚠️  No table_data found")
             return
         
         pos = element.get('position', {})
         size = element.get('size', {})
         style = element.get('style', {})
         
-        table_dict = data.table_data.dict() if hasattr(data.table_data, "dict") else data.table_data
+        # Convert to dict
+        if hasattr(table_data_obj, 'dict'):
+            table_dict = table_data_obj.dict()
+        elif isinstance(table_data_obj, dict):
+            table_dict = table_data_obj
+        else:
+            table_dict = table_data_obj.__dict__
+        
         headers = table_dict.get("headers", [])
         rows = table_dict.get("rows", [])
         
         if not headers or not rows:
+            logger.warning(f"⚠️  Table has no data")
             return
         
+        logger.info(f"   → Table: {len(headers)} cols, {len(rows)} rows")
+        
         num_cols = len(headers)
-        num_rows = len(rows) + 1
+        num_rows = len(rows) + 1  # +1 for header
         
         table_shape = slide.shapes.add_table(
             num_rows, num_cols,
-            Inches(pos.get('left', 1)),
-            Inches(pos.get('top', 2)),
-            Inches(size.get('width', 10)),
-            Inches(size.get('height', 4))
+            Inches(pos.get('left', 1.0)),
+            Inches(pos.get('top', 2.0)),
+            Inches(size.get('width', 11.33)),
+            Inches(size.get('height', 4.5))
         )
         
         table = table_shape.table
         
+        # Header styling
         header_bg = style.get('header_bg', '#01415C')
         header_text = style.get('header_text', '#FFFCEC')
-        header_alignment = self._alignment_enum(style.get('header_alignment', 'center'), style.get('rtl_support', False))
+        header_alignment = PP_ALIGN.CENTER
         header_font = style.get('header_font', self.get_font('heading_font'))
         
         for col_idx, header in enumerate(headers):
@@ -1407,13 +1764,14 @@ class PptxGenerator:
             
             for paragraph in cell.text_frame.paragraphs:
                 paragraph.font.bold = True
-                paragraph.font.size = Pt(style.get('header_font_size', 18))
+                paragraph.font.size = Pt(16)
                 paragraph.font.color.rgb = RGBColor(*self.hex_to_rgb(header_text))
                 paragraph.font.name = header_font
                 paragraph.alignment = header_alignment
         
+        # Body rows
         body_text = style.get('body_text', '#0D2026')
-        body_alignment = self._alignment_enum(style.get('body_alignment', 'center'), style.get('rtl_support', False))
+        body_alignment = PP_ALIGN.LEFT
         body_font = style.get('body_font', self.get_font('body_font'))
         alt_bg = style.get('alternate_row_bg', '#E8E3D8')
         
@@ -1427,14 +1785,23 @@ class PptxGenerator:
                     cell.fill.fore_color.rgb = RGBColor(*self.hex_to_rgb(alt_bg))
                 
                 for paragraph in cell.text_frame.paragraphs:
-                    paragraph.font.size = Pt(style.get('body_font_size', 16))
+                    paragraph.font.size = Pt(14)
                     paragraph.font.color.rgb = RGBColor(*self.hex_to_rgb(body_text))
                     paragraph.font.name = body_font
                     paragraph.alignment = body_alignment
+        
+        logger.info(f"✅ Table rendered successfully")
 
     def _add_chart_master(self, slide, element: Dict, data) -> None:
-        """Add chart with VISIBLE text on dark background"""
-        if not self.chart_service or not hasattr(data, 'chart_data'):
+        """Add chart with VISIBLE text - FIXED"""
+        if not self.chart_service:
+            logger.warning("⚠️  ChartService not available")
+            return
+        
+        chart_data_obj = getattr(data, 'chart_data', None) or getattr(data, 'chart', None)
+        
+        if not chart_data_obj:
+            logger.warning(f"⚠️  No chart_data found")
             return
         
         pos = element.get('position', {})
@@ -1442,22 +1809,26 @@ class PptxGenerator:
         style = element.get('style', {})
         
         try:
-            chart_data = data.chart_data.dict() if hasattr(data.chart_data, "dict") else data.chart_data
+            # Convert to dict
+            if hasattr(chart_data_obj, 'dict'):
+                chart_data = chart_data_obj.dict()
+            elif isinstance(chart_data_obj, dict):
+                chart_data = chart_data_obj
+            else:
+                chart_data = chart_data_obj.__dict__
             
-            # CRITICAL FIX: Ensure all text is VISIBLE on dark background
-            chart_data['font_color'] = '#FFFCEC'  # Cream/white
+            logger.info(f"   → Chart type: {chart_data.get('chart_type')}")
+            logger.info(f"   → Categories: {chart_data.get('categories')}")
+            logger.info(f"   → Series: {chart_data.get('series')}")
+            
+            # Ensure text is visible on dark background
+            chart_data['font_color'] = '#FFFCEC'
             chart_data['data_label_color'] = '#FFFCEC'
             chart_data['axis_color'] = '#FFFCEC'
             chart_data['axis_label_color'] = '#FFFCEC'
-            chart_data['grid_color'] = '#5C6F7A'  # Lighter grid
+            chart_data['grid_color'] = '#5C6F7A'
             chart_data['legend_font_color'] = '#FFFCEC'
             chart_data['title_color'] = '#FFFCEC'
-            
-            # Override any existing colors
-            if 'font_color' in style:
-                chart_data['font_color'] = style['font_color']
-            if 'data_label_color' in style:
-                chart_data['data_label_color'] = style['data_label_color']
             
             bg_color = style.get('background_color', '#0D2026')
             bg_rgb = self.hex_to_rgb(bg_color)
@@ -1465,14 +1836,15 @@ class PptxGenerator:
             self.chart_service.add_native_chart(
                 slide=slide,
                 chart_data=chart_data,
-                position={"left": pos.get('left', 1), "top": pos.get('top', 2)},
-                size={"width": size.get('width', 10), "height": size.get('height', 4)},
+                position={"left": pos.get('left', 1.5), "top": pos.get('top', 2.0)},
+                size={"width": size.get('width', 10.33), "height": size.get('height', 5.0)},
                 background_rgb=bg_rgb
             )
             
-            logger.info(f"✅ Chart added with visible text colors")
+            logger.info(f"✅ Chart rendered successfully")
         except Exception as e:
-            logger.warning(f"⚠️  Chart error: {e}")
+            logger.error(f"❌ Chart error: {e}")
+            logger.exception(e)
 
     def _get_output_path(self, title: str) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
