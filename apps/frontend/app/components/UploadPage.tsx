@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
 import { saveAllComments } from "./utils";
 
-const DEFAULT_API_BASE_URL = "http://20.28.48.139:8000/api"; 
+const DEFAULT_API_BASE_URL = "http://localhost:8000/api"; 
 const resolveApiBaseUrl = () => {
   const raw = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
   if (!raw) {
@@ -93,6 +93,23 @@ type SseHandlers = {
   onResult?: (payload: Record<string, any> | string) => void;
   onError?: (payload: Record<string, any> | string) => void;
   onEvent?: (eventType: string, rawData: string) => void;
+};
+
+type PptSlide = {
+  title?: string;
+  content?: any[];
+  notes?: string;
+  layout_type?: string;
+  layout_index?: number;
+  chart_data?: {
+    type?: string;
+    title?: string;
+    data?: {
+      labels?: any[];
+      values?: any[];
+    };
+  };
+  image_path?: string;
 };
 
 const extractFileNameFromUrl = (url: string | null | undefined): string => {
@@ -454,6 +471,153 @@ export const OutputDocumentDisplay = React.memo(
     JSON.stringify(prev.docConfig) === JSON.stringify(next.docConfig)
 );
 
+type PptPreviewProps = {
+  slides: PptSlide[];
+  selectedIndex: number;
+  onSelectSlide: (index: number) => void;
+  isLoading: boolean;
+  error: string | null;
+};
+
+const PptPreview: React.FC<PptPreviewProps> = ({
+  slides,
+  selectedIndex,
+  onSelectSlide,
+  isLoading,
+  error,
+}) => {
+  const hasSlides = slides.length > 0;
+  const safeIndex = Math.min(Math.max(selectedIndex, 0), Math.max(slides.length - 1, 0));
+  const activeSlide = hasSlides ? slides[safeIndex] : null;
+
+  const renderContentText = (item: any) => {
+    if (typeof item === "string") {
+      return item;
+    }
+    if (Array.isArray(item)) {
+      return item.join(", ");
+    }
+    if (item && typeof item === "object") {
+      try {
+        return JSON.stringify(item);
+      } catch {
+        return String(item);
+      }
+    }
+    return String(item ?? "");
+  };
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <Loader className="animate-spin" size={18} />
+          <span>Loading PPT preview…</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex overflow-hidden">
+      <div className="w-64 border-r border-gray-100 bg-gray-50 overflow-y-auto p-3 space-y-3">
+        {hasSlides ? (
+          slides.map((slide, index) => {
+            const snippet = slide.content && slide.content.length ? renderContentText(slide.content[0]) : "";
+            const isActive = index === safeIndex;
+            return (
+              <button
+                key={index}
+                type="button"
+                onClick={() => onSelectSlide(index)}
+                className={`w-full text-left rounded-md border px-3 py-2 transition-colors duration-150 ${
+                  isActive
+                    ? "bg-white border-blue-500 shadow-sm"
+                    : "bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm"
+                }`}
+              >
+                <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1">
+                  <span className="font-semibold text-gray-700">Slide {index + 1}</span>
+                  {typeof slide.layout_index === "number" && (
+                    <span className="text-gray-400">Layout {slide.layout_index}</span>
+                  )}
+                </div>
+                <p className="text-sm font-medium text-gray-800 truncate">{slide.title || "Untitled slide"}</p>
+                {snippet && <p className="text-xs text-gray-500 truncate mt-1">{snippet}</p>}
+              </button>
+            );
+          })
+        ) : (
+          <div className="text-xs text-gray-500 text-center px-2 py-6 border border-dashed border-gray-200 rounded-md">
+            No slides available yet.
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 p-6 overflow-auto">
+        {error && (
+          <div className="mb-4 px-3 py-2 rounded border border-red-200 bg-red-50 text-xs text-red-700">
+            {error}
+          </div>
+        )}
+
+        {activeSlide ? (
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 min-h-[420px] flex flex-col">
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>
+                Slide {safeIndex + 1} of {slides.length}
+              </span>
+              {activeSlide.layout_type && (
+                <span className="uppercase tracking-wide font-semibold text-gray-600">
+                  {activeSlide.layout_type}
+                </span>
+              )}
+            </div>
+            <div className="mt-4 flex-1 overflow-auto">
+              <h3 className="text-2xl font-semibold text-gray-900 mb-4">{activeSlide.title || "Untitled slide"}</h3>
+              {activeSlide.content && activeSlide.content.length > 0 ? (
+                <ul className="list-disc pl-5 space-y-2 text-gray-800">
+                  {activeSlide.content.map((item, idx) => (
+                    <li key={idx} className="text-sm leading-relaxed">
+                      {renderContentText(item)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-500">No bullet content provided for this slide.</p>
+              )}
+
+              {activeSlide.chart_data && (
+                <div className="mt-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+                  <div className="font-semibold text-gray-800 mb-1">{activeSlide.chart_data.title || "Chart"}</div>
+                  <p>Type: {activeSlide.chart_data.type || "N/A"}</p>
+                  {activeSlide.chart_data.data && (
+                    <p className="mt-1">
+                      Labels: {(activeSlide.chart_data.data.labels || []).join(", ")} | Values:{" "}
+                      {(activeSlide.chart_data.data.values || []).join(", ")}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {activeSlide.notes && (
+                <div className="mt-4 rounded border border-gray-200 bg-slate-50 p-3 text-xs text-gray-700">
+                  <div className="font-semibold text-gray-800 mb-1">Notes</div>
+                  <p className="leading-relaxed whitespace-pre-wrap">{activeSlide.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center text-sm text-gray-500">
+            {error || "Select a version to load PPT slides."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 interface UploadPageProps {}
 
 const UploadPage: React.FC<UploadPageProps> = () => {
@@ -503,6 +667,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [selectedUseCase, setSelectedUseCase] = useState<string | null>(null);
   const [selectedGenId, setSelectedGenId] = useState<string | null>(null);
   const [deletingGenId, setDeletingGenId] = useState<string | null>(null);
+  const [pptSlides, setPptSlides] = useState<PptSlide[]>([]);
+  const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
+  const [pptLoading, setPptLoading] = useState(false);
+  const [pptError, setPptError] = useState<string | null>(null);
+  const [pptPreviewUrl, setPptPreviewUrl] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<"word" | "ppt">("word");
   const pendingRegenCommentsRef = useRef<CommentItem[]>([]);
   const versionLanguageRef = useRef<Record<string, string>>({});
   const [currentVersionLanguage, setCurrentVersionLanguage] = useState<string>('arabic');
@@ -719,6 +889,80 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     [findGenerationRecord]
   );
 
+  const parsePptSlides = (raw: any): PptSlide[] => {
+    if (!raw) {
+      return [];
+    }
+    try {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed.map((slide) => ({
+        title: slide?.title || "",
+        content: Array.isArray(slide?.content) ? slide.content : [],
+        notes: slide?.notes || "",
+        layout_type: slide?.layout_type,
+        layout_index: slide?.layout_index,
+        chart_data: slide?.chart_data,
+        image_path: slide?.image_path,
+      }));
+    } catch (err) {
+      console.error("Failed to parse PPT content", err);
+      return [];
+    }
+  };
+
+  const loadPptSlidesForGen = useCallback(
+    async (uuid: string, genId: string) => {
+      if (!supabase) {
+        setPptSlides([]);
+        setPptPreviewUrl(null);
+        setPptError("Supabase is not configured for PPT preview.");
+        return;
+      }
+      setPptLoading(true);
+      setPptError(null);
+      setSelectedSlideIndex(0);
+      try {
+        const { data, error } = await supabase
+          .from("ppt_gen")
+          .select("generated_content, ppt_genid, proposal_ppt, created_at")
+          .eq("uuid", uuid)
+          .eq("gen_id", genId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (error) {
+          throw error;
+        }
+
+        const row = data?.[0];
+        if (!row) {
+          setPptSlides([]);
+          setPptPreviewUrl(null);
+          setPptError("No PPT found for this version yet.");
+          return;
+        }
+
+        const slides = parsePptSlides(row.generated_content);
+        setPptSlides(slides);
+        setPptPreviewUrl(row.proposal_ppt || null);
+        if (!slides.length) {
+          setPptError("Slides are not ready yet for this version.");
+        }
+      } catch (err) {
+        console.error("Failed to load PPT preview", err);
+        setPptSlides([]);
+        setPptPreviewUrl(null);
+        setPptError("Unable to load PPT preview.");
+      } finally {
+        setPptLoading(false);
+      }
+    },
+    [supabase]
+  );
+
   const persistGenerationRecord = useCallback(
     async (snapshot: GenerationSnapshotInput) => {
       const record = buildParsedRecord(snapshot);
@@ -924,6 +1168,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       (a, b) => toTimestamp(b.latestCreatedAt) - toTimestamp(a.latestCreatedAt)
     );
   }, [useCaseEntries]);
+
+  useEffect(() => {
+    if (selectedUseCase && selectedGenId) {
+      loadPptSlidesForGen(selectedUseCase, selectedGenId);
+      return;
+    }
+    setPptSlides([]);
+    setPptPreviewUrl(null);
+    setPptError(null);
+  }, [selectedUseCase, selectedGenId, loadPptSlidesForGen]);
 
   const toggleUseCaseExpansion = useCallback((uuid: string) => {
     setExpandedUseCases(prev => ({
@@ -1442,6 +1696,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return;
     }
 
+    setPreviewMode("word");
+    setPptSlides([]);
+    setPptPreviewUrl(null);
+    setPptError(null);
+    setSelectedSlideIndex(0);
     setMarkdownContent(null);
     setIsUploading(true);
     setUploadProgress(0);
@@ -1588,6 +1847,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return;
     }
 
+    setPreviewMode("word");
+    setPptSlides([]);
+    setPptPreviewUrl(null);
+    setPptError(null);
+    setSelectedSlideIndex(0);
     const progressInterval = simulateProgress();
     setIsUploading(true);
     setIsRegenerating(true);
@@ -1685,6 +1949,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return;
     }
 
+    setPreviewMode("word");
+    setPptSlides([]);
+    setPptPreviewUrl(null);
+    setPptError(null);
+    setSelectedSlideIndex(0);
     try {
       pendingRegenCommentsRef.current = commentsSnapshot;
       setIsUploading(true);
@@ -2152,6 +2421,15 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     return () => window.cancelAnimationFrame(rafId);
   }, [markdownContent, isStreamingContent]);
 
+  useEffect(() => {
+    const hasWord = Boolean(markdownContent);
+    const hasPpt = pptSlides.length > 0;
+
+    if (previewMode === "word" && hasPpt && !hasWord) {
+      setPreviewMode("ppt");
+    }
+  }, [markdownContent, pptSlides.length, previewMode]);
+
   const isProcessLocked = isUploading || isPdfConverting || deletingGenId !== null;
 
   useEffect(() => {
@@ -2599,8 +2877,60 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
           {/* Center Panel - Loading/Output Display */}
           <div className="flex-1 h-full p-6 min-w-0 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between mb-4 gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-gray-800">Preview</span>
+                {processingStage && (
+                  <span className="text-xs text-gray-500 truncate max-w-[260px]" title={processingStage}>
+                    {processingStage}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {pptPreviewUrl && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(pptPreviewUrl, "_blank")}
+                    className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                  >
+                    Download PPT
+                  </button>
+                )}
+                <div className="bg-gray-100 rounded-full p-1 flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode("word")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      previewMode === "word" ? "bg-white shadow text-gray-900" : "text-gray-600"
+                    }`}
+                    aria-pressed={previewMode === "word"}
+                  >
+                    Word
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!pptSlides.length && !pptLoading && !pptError}
+                    onClick={() => setPreviewMode("ppt")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      previewMode === "ppt" ? "bg-white shadow text-gray-900" : "text-gray-600"
+                    } ${!pptSlides.length && !pptLoading && !pptError ? "opacity-50 cursor-not-allowed" : ""}`}
+                    aria-pressed={previewMode === "ppt"}
+                  >
+                    PPT
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="flex-1 min-h-0">
-              {isUploading && !markdownContent ? (
+              {previewMode === "ppt" ? (
+                <PptPreview
+                  slides={pptSlides}
+                  selectedIndex={selectedSlideIndex}
+                  onSelectSlide={setSelectedSlideIndex}
+                  isLoading={pptLoading}
+                  error={pptError}
+                />
+              ) : isUploading && !markdownContent ? (
                 <LoadingDisplay />
               ) : !isUploading && !markdownContent ? (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
@@ -2612,7 +2942,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                     </p>
                   </div>
                 </div>
-                
               ) : (
                 <OutputDocumentDisplay
                   generatedDocument={generatedDocument}
@@ -2809,7 +3138,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               </div>
             </ConfigSection>)}
             {/* Comments ConfigSection */}
-            {markdownContent && (<ConfigSection
+            {(previewMode === "ppt" || markdownContent) && (<ConfigSection
               title="Comments"
               icon={Text}
               isExpanded={true}
