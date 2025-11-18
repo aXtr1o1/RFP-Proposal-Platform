@@ -1,0 +1,92 @@
+{
+  "title_slide": {
+    "layout_type": "title",
+    "background": "title_slide",
+    "elements": [
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0, "top": 0}, "size": {"width": 10, "height": 0.12}, "fill_color": "#F97316", "z_index": 1 },
+      { "type": "icon", "position": {"left": 4.3, "top": 1.5}, "size": 80, "color": "#FFFFFF", "z_index": 2 },
+      { "type": "text", "placeholder": "title", "position": {"left": 0.8, "top": 2.6}, "size": {"width": 8.4, "height": 1.4}, "font_size": 44, "alignment": "center", "bold": true, "color": "#FFFFFF", "z_index": 2 },
+      { "type": "text", "placeholder": "subtitle", "position": {"left": 1.5, "top": 4.1}, "size": {"width": 7, "height": 0.6}, "font_size": 20, "alignment": "center", "color": "#D1D5DB", "z_index": 2 },
+      { "type": "shape", "shape_type": "circle", "position": {"left": 8.2, "top": 1.0}, "size": {"width": 1.5, "height": 1.5}, "fill_color": "#06B6D4", "opacity": 0.3, "z_index": 0 },
+      { "type": "shape", "shape_type": "circle", "position": {"left": 8.5, "top": 4.3}, "size": {"width": 1.0, "height": 1.0}, "fill_color": "#FFFFFF", "opacity": 0.15, "z_index": 0 }
+    ]
+  },
+
+  "content_slide": {
+    "layout_type": "content",
+    "background": "content_slide",
+    "elements": [
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0, "top": 0}, "size": {"width": 0.15, "height": 5.625}, "fill_color": "#1E293B", "z_index": 0 },
+      { "type": "icon", "position": {"left": 0.35, "top": 0.4}, "size": 36, "color": "#06B6D4", "z_index": 2 },
+      { "type": "text", "placeholder": "title", "position": {"left": 0.95, "top": 0.38}, "size": {"width": 8.5, "height": 0.55}, "font_size": 28, "bold": true, "color": "#1F2937", "z_index": 2 },
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0.35, "top": 1.0}, "size": {"width": 9.4, "height": 0.02}, "fill_color": "#06B6D4", "z_index": 1 },
+      { "type": "text_bullets", "placeholder": "content", "position": {"left": 0.85, "top": 1.35}, "size": {"width": 8.5, "height": 3.7}, "font_size": 16, "color": "#1F2937", "z_index": 2 }
+    ]
+  },
+
+  "content_with_image": {
+    "layout_type": "content",
+    "background": "content_slide",
+    "elements": [
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0, "top": 0}, "size": {"width": 0.15, "height": 5.625}, "fill_color": "#1E293B", "z_index": 0 },
+      { "type": "icon", "position": {"left": 0.35, "top": 0.4}, "size": 36, "color": "#06B6D4", "z_index": 2 },
+      { "type": "text", "placeholder": "title", "position": {"left": 0.95, "top": 0.38}, "size": {"width": 4.5, "height": 0.55}, "font_size": 28, "bold": true, "color": "#1F2937", "z_index": 2 },
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0.35, "top": 1.0}, "size": {"width": 9.4, "height": 0.02}, "fill_color": "#06B6D4", "z_index": 1 },
+      { "type": "text_bullets", "placeholder": "content", "position": {"left": 0.85, "top": 1.35}, "size": {"width": 4.6, "height": 3.7}, "font_size": 16, "color": "#1F2937", "z_index": 2 },
+      { "type": "shape", "shape_type": "rounded_rectangle", "position": {"left": 5.8, "top": 1.2}, "size": {"width": 3.8, "height": 3.95}, "fill_color": "#FFFFFF", "border_color": "#E5E7EB", "border_width": 1, "corner_radius": 0.1, "z_index": 1 },
+      { "type": "image", "placeholder": "generated_image", "position": {"left": 5.9, "top": 1.3}, "size": {"width": 3.6, "height": 3.0}, "corner_radius": 0.08, "z_index": 2 },
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 5.8, "top": 4.9}, "size": {"width": 3.8, "height": 0.15}, "fill_color": "#F97316", "z_index": 3 },
+      { "type": "text", "placeholder": "image_caption", "position": {"left": 5.9, "top": 4.35}, "size": {"width": 3.6, "height": 0.5}, "font_size": 11, "alignment": "center", "bold": true, "color": "#374151", "z_index": 2 }
+    ]
+  },
+
+  "section_header": {
+    "layout_type": "section",
+    "background": "section_header",
+    "elements": [
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0, "top": 0}, "size": {"width": 10, "height": 0.15}, "fill_color": "#F97316", "z_index": 1 },
+      { "type": "icon", "position": {"left": 3.8, "top": 2.0}, "size": 72, "color": "#FFFFFF", "z_index": 2, "centered_with_title": true },
+      { "type": "text", "placeholder": "title", "position": {"left": 1.5, "top": 2.8}, "size": {"width": 7.0, "height": 1.0}, "font_size": 40, "alignment": "center", "bold": true, "color": "#FFFFFF", "z_index": 2 },
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 3.35, "top": 3.9}, "size": {"width": 3.3, "height": 0.05}, "fill_color": "#FFFFFF", "opacity": 0.7, "z_index": 1 }
+    ]
+  },
+
+  "two_column": {
+    "layout_type": "two_column",
+    "background": "content_slide",
+    "elements": [
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0, "top": 0}, "size": {"width": 0.15, "height": 5.625}, "fill_color": "#1E293B", "z_index": 0 },
+      { "type": "icon", "position": {"left": 0.35, "top": 0.4}, "size": 36, "color": "#06B6D4", "z_index": 2 },
+      { "type": "text", "placeholder": "title", "position": {"left": 0.95, "top": 0.38}, "size": {"width": 8.5, "height": 0.55}, "font_size": 28, "bold": true, "color": "#1F2937", "z_index": 2 },
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0.35, "top": 1.0}, "size": {"width": 9.4, "height": 0.02}, "fill_color": "#06B6D4", "z_index": 1 },
+      { "type": "shape", "shape_type": "rounded_rectangle", "position": {"left": 0.85, "top": 1.45}, "size": {"width": 4.0, "height": 3.5}, "fill_color": "#FFFFFF", "border_color": "#E5E7EB", "border_width": 2, "z_index": 1 },
+      { "type": "text_bullets", "placeholder": "left_content", "position": {"left": 1.05, "top": 1.7}, "size": {"width": 3.6, "height": 3.0}, "font_size": 15, "color": "#1F2937", "z_index": 2 },
+      { "type": "shape", "shape_type": "rounded_rectangle", "position": {"left": 5.15, "top": 1.45}, "size": {"width": 4.0, "height": 3.5}, "fill_color": "#FFFFFF", "border_color": "#E5E7EB", "border_width": 2, "z_index": 1 },
+      { "type": "text_bullets", "placeholder": "right_content", "position": {"left": 5.35, "top": 1.7}, "size": {"width": 3.6, "height": 3.0}, "font_size": 15, "color": "#1F2937", "z_index": 2 }
+    ]
+  },
+
+  "content_with_chart": {
+    "layout_type": "content",
+    "background": "content_slide",
+    "elements": [
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0, "top": 0}, "size": {"width": 0.15, "height": 5.625}, "fill_color": "#1E293B", "z_index": 0 },
+      { "type": "icon", "position": {"left": 0.35, "top": 0.4}, "size": 36, "color": "#06B6D4", "z_index": 2 },
+      { "type": "text", "placeholder": "title", "position": {"left": 0.95, "top": 0.38}, "size": {"width": 8.5, "height": 0.55}, "font_size": 28, "bold": true, "color": "#1F2937", "z_index": 2 },
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0.35, "top": 1.0}, "size": {"width": 9.4, "height": 0.02}, "fill_color": "#06B6D4", "z_index": 1 },
+      { "type": "chart", "placeholder": "chart", "position": {"left": 0.85, "top": 1.3}, "size": {"width": 8.5, "height": 3.75}, "z_index": 2 }
+    ]
+  },
+
+  "content_with_table": {
+    "layout_type": "content",
+    "background": "content_slide",
+    "elements": [
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0, "top": 0}, "size": {"width": 0.15, "height": 5.625}, "fill_color": "#1E293B", "z_index": 0 },
+      { "type": "icon", "position": {"left": 0.35, "top": 0.4}, "size": 36, "color": "#06B6D4", "z_index": 2 },
+      { "type": "text", "placeholder": "title", "position": {"left": 0.95, "top": 0.38}, "size": {"width": 8.5, "height": 0.55}, "font_size": 28, "bold": true, "color": "#1F2937", "z_index": 2 },
+      { "type": "shape", "shape_type": "rectangle", "position": {"left": 0.35, "top": 1.0}, "size": {"width": 9.4, "height": 0.02}, "fill_color": "#06B6D4", "z_index": 1 },
+      { "type": "table", "placeholder": "table", "position": {"left": 0.85, "top": 1.3}, "size": {"width": 8.5, "height": 3.7}, "z_index": 2 }
+    ]
+  }
+}

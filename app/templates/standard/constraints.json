@@ -1,0 +1,33 @@
+{
+  "table": {
+    "header_bg": "#10B981",
+    "header_text": "#FFFFFF",
+    "alternate_row_bg": "#F8F9FA",
+    "text": "#1F2937",
+    "border": "#E5E7EB",
+    "border_width": 1,
+    "rounded_corners": true,
+    "corner_radius": 8000
+  },
+  "chart": {
+    "bar_colors": [
+      "#06B6D4", "#F97316", "#8B5CF6", "#10B981",
+      "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#14B8A6", "#84CC16"
+    ],
+    "pie_colors": [
+      "#10B981", "#F59E0B", "#3B82F6",
+      "#8B5CF6", "#EF4444", "#06B6D4", "#EC4899", "#14B8A6", "#F97316", "#84CC16"
+    ],
+    "line_colors": [
+      "#F97316", "#06B6D4"
+    ],
+    "font": "Calibri",
+    "font_size": 12
+  },
+  "layout": {
+    "min_content_height": 1.0,
+    "max_content_height": 3.5,
+    "margin_top": 0.7,
+    "margin_bottom": 0.55
+  }
+}

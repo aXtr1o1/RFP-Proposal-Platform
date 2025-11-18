@@ -11,6 +11,10 @@ package-lock.json
 # C extensions
 *.so
 
+# Output folder
+/output/
+
+
 #.env
 .venv
 
