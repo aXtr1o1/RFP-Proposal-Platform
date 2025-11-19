@@ -6,7 +6,7 @@ from datetime import datetime
 
 from supabase import Client, create_client
 from postgrest.exceptions import APIError
-from config import settings
+from apps.app.config import settings
 
 logger = logging.getLogger("supabase_service")
 
