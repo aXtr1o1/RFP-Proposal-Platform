@@ -13,11 +13,11 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.oxml import parse_xml
 from pptx.util import Inches, Pt
 
-from config import settings
-from models.presentation import PresentationData, SlideContent, TableData, BulletPoint
-from services.chart_service import ChartService
-from services.icon_service import IconService
-from utils.content_validator import validate_presentation
+from apps.app.config import settings
+from apps.app.models.presentation import PresentationData, SlideContent, TableData, BulletPoint
+from apps.app.services.chart_service import ChartService
+from apps.app.services.icon_service import IconService
+from apps.app.utils.content_validator import validate_presentation
 
 logger = logging.getLogger("pptx_generator")
 
@@ -1626,7 +1626,7 @@ class PptxGenerator:
         style = element.get('style', {})
         
         # *** FIX: Import and initialize TableService with language ***
-        from services.table_service import TableService
+        from apps.app.services.table_service import TableService
         
         try:
             # Initialize TableService with template and language

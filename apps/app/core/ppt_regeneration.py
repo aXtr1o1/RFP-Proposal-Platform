@@ -5,12 +5,12 @@ from uuid import uuid4
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from services.pptx_generator import PptxGenerator
-from services.openai_service import get_openai_service
-from core.supabase_service import SupabaseService
-from core.ppt_prompts import get_system_prompt, get_regeneration_prompt
-from config import settings
-from models.presentation import PresentationData
+from apps.app.services.pptx_generator import PptxGenerator
+from apps.app.services.openai_service import get_openai_service
+from apps.app.core.supabase_service import SupabaseService
+from apps.app.core.ppt_prompts import get_system_prompt, get_regeneration_prompt
+from apps.app.config import settings
+from apps.app.models.presentation import PresentationData
 
 logger = logging.getLogger("ppt_regeneration")
 
@@ -121,7 +121,7 @@ async def run_regeneration(
         logger.info(f"   Total slides: {len(presentation_data.slides)}")
         
         # Calculate stats (reuse from ppt_generation)
-        from core.ppt_generation import _calculate_presentation_stats
+        from apps.app.core.ppt_generation import _calculate_presentation_stats
         stats = _calculate_presentation_stats(presentation_data)
         
         logger.info(f"   • Section headers: {stats['sections']}")
@@ -176,7 +176,7 @@ async def run_regeneration(
         logger.info(f"Record saved: {new_ppt_genid}")
         
         # STEP 8: Cleanup (FIXED: delete local PPTX file after upload)
-        from core.ppt_generation import _cleanup_temp_file
+        from apps.app.core.ppt_generation import _cleanup_temp_file
         _cleanup_temp_file(output_path)
         
         logger.info("\n" + "="*80)
@@ -199,6 +199,6 @@ async def run_regeneration(
         
         # ROLLBACK: Cleanup on failure
         if output_path:
-            from core.ppt_generation import _cleanup_temp_file
+            from apps.app.core.ppt_generation import _cleanup_temp_file
             _cleanup_temp_file(output_path)
 

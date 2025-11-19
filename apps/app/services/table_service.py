@@ -7,7 +7,7 @@ from pptx.oxml.xmlchemy import OxmlElement
 from typing import Dict, Union, Tuple
 from pathlib import Path
 
-from config import settings
+from apps.app.config import settings
 
 class TableService:
     """Table generation with multilingual RTL/LTR support - fully dynamic from constraints.json"""

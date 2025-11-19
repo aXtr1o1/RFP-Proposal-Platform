@@ -8,7 +8,7 @@ from pathlib import Path
 import logging
 import json
 
-from config import settings
+from apps.app.config import settings
 
 logger = logging.getLogger("chart_service")
 
