@@ -5,10 +5,13 @@ from typing import Optional, Dict, List
 from pathlib import Path
 from difflib import SequenceMatcher
 
+
 import cairosvg
 from config import settings
 
+
 logger = logging.getLogger("icon_service")
+
 
 MAX_CACHE_SIZE = 100
 
@@ -190,6 +193,94 @@ class IconService:
         logger.debug(f"Icon not found: {name}")
         return None
     
+    def fuzzy_match_icon_name(self, icon_name: str) -> Optional[str]:
+        """
+        Fuzzy match icon_name against available icons in icons.json
+        
+        This handles cases where icon_name from LLM doesn't exactly match
+        available icon names (e.g., "timeline-schedule" → "calendar-check")
+        
+        Args:
+            icon_name: Icon name to match (e.g., "presentation-agenda", "timeline-schedule")
+            
+        Returns:
+            Optional[str]: Best matching icon name from icons.json or None
+        """
+        if not icon_name:
+            return None
+        
+        # Normalize icon_name
+        icon_name_clean = icon_name.lower().strip()
+        
+        # 1. Try exact match first
+        if self.get_icon(icon_name_clean):
+            logger.debug(f"✅ Exact icon_name match: {icon_name_clean}")
+            return icon_name_clean
+        
+        # 2. Try replacing hyphens with underscores and vice versa
+        variants = [
+            icon_name_clean.replace('-', '_'),
+            icon_name_clean.replace('_', '-'),
+            icon_name_clean.replace('-', ''),
+            icon_name_clean.replace('_', '')
+        ]
+        
+        for variant in variants:
+            if self.get_icon(variant):
+                logger.debug(f"✅ Icon variant match: {icon_name_clean} → {variant}")
+                return variant
+        
+        # 3. Extract keywords from icon_name and match against available icons
+        # e.g., "timeline-schedule" → ["timeline", "schedule"]
+        icon_keywords = icon_name_clean.replace('-', ' ').replace('_', ' ').split()
+        
+        available_icons = [icon['name'] for icon in self.icons_data['icons']]
+        best_match_name = None
+        best_match_score = 0.0
+        
+        for available_icon in available_icons:
+            # Calculate match score based on:
+            # - Fuzzy string similarity
+            # - Keyword overlap
+            
+            # String similarity
+            similarity = SequenceMatcher(None, icon_name_clean, available_icon).ratio()
+            
+            # Keyword overlap
+            available_keywords = available_icon.replace('-', ' ').replace('_', ' ').split()
+            overlap = len(set(icon_keywords).intersection(set(available_keywords)))
+            keyword_score = overlap / max(len(icon_keywords), len(available_keywords)) if icon_keywords and available_keywords else 0
+            
+            # Combined score (weighted)
+            combined_score = (similarity * 0.6) + (keyword_score * 0.4)
+            
+            if combined_score > best_match_score:
+                best_match_score = combined_score
+                best_match_name = available_icon
+        
+        # Return match if score is above threshold
+        if best_match_score >= 0.5:
+            logger.debug(f"✅ Fuzzy icon_name match: {icon_name_clean} → {best_match_name} (score: {best_match_score:.2f})")
+            return best_match_name
+        
+        # 4. Try matching icon_name keywords against enhanced_keywords mapping
+        for keyword in icon_keywords:
+            if keyword in self.enhanced_keywords:
+                matched_icon = self.enhanced_keywords[keyword]
+                if self.get_icon(matched_icon):
+                    logger.debug(f"✅ Icon keyword match: {keyword} → {matched_icon}")
+                    return matched_icon
+        
+        # 5. Try matching against icon tags
+        for keyword in icon_keywords:
+            tag_match = self.search_by_tags(keyword)
+            if tag_match:
+                logger.debug(f"✅ Icon tag match: {keyword} → {tag_match}")
+                return tag_match
+        
+        logger.debug(f"⚠️  No fuzzy match found for icon_name: {icon_name_clean}")
+        return None
+    
     def search_by_tags(self, text: str) -> Optional[str]:
         """
         Search icon by matching text against icon tags
@@ -235,36 +326,58 @@ class IconService:
         
         return None
     
-    def auto_select_icon(self, title: str, content: str = "") -> str:
+    def auto_select_icon(self, title: str, content: str = "", icon_name: Optional[str] = None) -> str:
         """
         Intelligently select icon with enhanced fuzzy matching
+        
+        NEW: Now accepts icon_name parameter from LLM output and tries to match it first
         
         Args:
             title: Slide title
             content: Slide content
+            icon_name: Icon name from LLM output (e.g., "presentation-agenda", "timeline-schedule")
             
         Returns:
             str: Icon name
         """
+        # ============================================
+        # STEP 0: Check icon_name parameter (NEW!)
+        # ============================================
+        if icon_name and icon_name.strip():
+            logger.debug(f"🎯 Attempting to match icon_name: {icon_name}")
+            
+            # Try fuzzy matching icon_name against available icons
+            matched_icon = self.fuzzy_match_icon_name(icon_name)
+            
+            if matched_icon:
+                logger.info(f"✅ Using icon from icon_name: {icon_name} → {matched_icon}")
+                return matched_icon
+            else:
+                logger.warning(f"⚠️  icon_name '{icon_name}' not matched, falling back to text matching")
+        
+        # ============================================
+        # EXISTING LOGIC (fallback when icon_name doesn't match)
+        # ============================================
+        
         if not title:
             return 'circle'
         
         text = f"{title} {content}".lower()
         
         # 1. Check enhanced keywords with exact match
-        for keyword, icon_name in self.enhanced_keywords.items():
+        for keyword, icon_name_mapped in self.enhanced_keywords.items():
             if keyword in text:
-                if self.get_icon(icon_name):
-                    logger.debug(f"✅ Exact keyword match: '{keyword}' → {icon_name}")
-                    return icon_name
+                if self.get_icon(icon_name_mapped):
+                    logger.debug(f"✅ Exact keyword match: '{keyword}' → {icon_name_mapped}")
+                    return icon_name_mapped
         
         # 2. Fuzzy match against enhanced keywords
         matched_keyword = self.fuzzy_match(text, list(self.enhanced_keywords.keys()), threshold=0.7)
         if matched_keyword:
-            icon_name = self.enhanced_keywords[matched_keyword]
-            if self.get_icon(icon_name):
-                logger.debug(f"✅ Fuzzy keyword match: '{matched_keyword}' → {icon_name}")
-                return icon_name
+            icon_name_mapped = self.enhanced_keywords[matched_keyword]
+            if self.get_icon(icon_name_mapped):
+                logger.debug(f"✅ Fuzzy keyword match: '{matched_keyword}' → {icon_name_mapped}")
+                return icon_name_mapped
         
         # 3. Search by icon tags
         tag_match = self.search_by_tags(text)
@@ -273,10 +386,10 @@ class IconService:
             return tag_match
         
         # 4. Check theme mapping
-        for keyword, icon_name in self.icon_mapping.items():
+        for keyword, icon_name_mapped in self.icon_mapping.items():
             if keyword in text:
-                if self.get_icon(icon_name):
-                    return icon_name
+                if self.get_icon(icon_name_mapped):
+                    return icon_name_mapped
         
         # 5. Try first word of title
         first_word = title.split()[0].lower() if title else ""
@@ -284,9 +397,9 @@ class IconService:
             # Fuzzy match first word
             matched = self.fuzzy_match(first_word, list(self.enhanced_keywords.keys()), threshold=0.75)
             if matched:
-                icon_name = self.enhanced_keywords[matched]
-                if self.get_icon(icon_name):
-                    return icon_name
+                icon_name_mapped = self.enhanced_keywords[matched]
+                if self.get_icon(icon_name_mapped):
+                    return icon_name_mapped
         
         # 6. Intelligent category mapping
         intelligent = self.theme.get('icons', {}).get('intelligent_mapping', {})
@@ -308,9 +421,9 @@ class IconService:
                     'data_keywords': 'chart-pie-slice'
                 }
                 
-                icon_name = category_icon_map.get(category, 'circle')
-                if self.get_icon(icon_name):
-                    return icon_name
+                icon_name_mapped = category_icon_map.get(category, 'circle')
+                if self.get_icon(icon_name_mapped):
+                    return icon_name_mapped
         
         # 7. Ultimate fallback
         logger.debug(f"⚠️  No match found for '{title[:30]}...', using circle")

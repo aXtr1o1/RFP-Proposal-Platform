@@ -13,7 +13,11 @@
         "id": "logo",
         "type": "image",
         "path": "logo.png",
-        "position": {
+        "position_ar": {
+          "left": 0.5,
+          "top": 0.5
+        },
+        "position_en": {
           "left": 11.5,
           "top": 0.5
         },
@@ -41,7 +45,9 @@
           "bold": true,
           "color": "#FFFCEC",
           "alignment": "center",
-          "vertical_align": "middle"
+          "vertical_align": "middle",
+          "line_spacing": 1.15,
+          "rtl_support": true
         }
       },
       {
@@ -62,14 +68,368 @@
           "bold": false,
           "color": "#FFFCEC",
           "alignment": "center",
-          "vertical_align": "top"
+          "vertical_align": "top",
+          "line_spacing": 1.3,
+          "rtl_support": true
         }
       }
     ]
   },
-  "section_header_dark": {
+  
+  "agenda_slide": {
+    "name": "Agenda Slide",
+    "description": "Split agenda slide with language-specific layout",
+    "master_layout": "blank",
+    "background": {
+      "type": "image",
+      "path": "Background/image2.jpeg",
+      "fit": "fill"
+    },
+    "elements": [
+      {
+        "id": "logo",
+        "type": "image",
+        "path": "logo.png",
+        "position_ar": {
+          "left": 0.5,
+          "top": 6.3
+        },
+        "position_en": {
+          "left": 11.5,
+          "top": 6.3
+        },
+        "size": {
+          "width": 1.5,
+          "height": 0.8
+        },
+        "optional": true
+      },
+      {
+        "id": "agenda_title",
+        "type": "text",
+        "placeholder": "agenda_title",
+        "position_ar": {
+          "left": 7.5,
+          "top": 3.0
+        },
+        "position_en": {
+          "left": 7.5,
+          "top": 3.0
+        },
+        "size": {
+          "width": 4.5,
+          "height": 1.5
+        },
+        "style": {
+          "font": "Cairo",
+          "font_size": 54,
+          "bold": true,
+          "color": "#FFFCEC",
+          "alignment": "center",
+          "vertical_align": "middle",
+          "rtl_support": true,
+          "use_localized_text": true,
+          "localized_key": "agenda_title"
+        }
+      },
+      {
+      "id": "content",
+      "type": "text_bullets",
+      "placeholder": "content",
+      "position_ar": {
+        "left": 1.0,
+        "top": 1.8
+      },
+      "position_en": {
+        "left": 0.7,
+        "top": 1.8
+      },
+      "size": {
+        "width": 5.8,
+        "height": 5.2
+      },
+      "style": {
+        "font": "Tajawal",
+        "font_size": 20,
+        "bold": false,
+        "color": "#0D2026",
+        "alignment_ar": "right",
+        "alignment_en": "left",
+        "line_spacing": 1.8,
+        "padding": 0.1,
+        "max_items": 5,
+        "rtl_support": true
+      },
+      "bullet_style": {
+        "bullet_char": "custom_icon",
+        "bullet_color": "#01415C",
+        "indent_ar": 10.5,
+        "indent_en": 0.3,
+        "spacing_before": 8,
+        "spacing_after": 8,
+        "icon_size": 0.45,
+        "icon_position_ar": "right",
+        "icon_position_en": "left",
+        "icon_offset_ar": 1.2,
+        "icon_offset_en": 0.3
+      }
+      }
+    ]
+  },
+  
+  "title_and_content": {
+    "name": "Title and Content",
+    "description": "Standard content slide with title, underline, and bullets",
+    "master_layout": "title_and_content",
+    "background": {
+      "type": "image",
+      "path": "Background/image8.jpeg",
+      "fit": "fill"
+    },
+    "elements": [
+      {
+        "id": "logo",
+        "type": "image",
+        "path": "logo.png",
+        "position_ar": {
+          "left": 0.5,
+          "top": 0.5
+        },
+        "position_en": {
+          "left": 11.5,
+          "top": 0.5
+        },
+        "size": {
+          "width": 1.5,
+          "height": 0.8
+        },
+        "optional": true
+      },
+      {
+        "id": "icon",
+        "type": "icon",
+        "position_ar": {
+          "left": 11.83,
+          "top": 0.65
+        },
+        "position_en": {
+          "left": 1.0,
+          "top": 0.65
+        },
+        "size": {
+          "width": 0.5,
+          "height": 0.5
+        },
+        "style": {
+          "color": "#01415C",
+          "auto_select": true
+        }
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "placeholder": "title",
+        "position_ar": {
+          "left": 1.7,
+          "top": 0.6
+        },
+        "position_en": {
+          "left": 1.7,
+          "top": 0.6
+        },
+        "size": {
+          "width": 9.6,
+          "height": 0.8
+        },
+        "style": {
+          "font": "Cairo",
+          "font_size": 32,
+          "bold": true,
+          "color": "#0D2026",
+          "alignment_ar": "right",
+          "alignment_en": "left",
+          "vertical_align": "middle",
+          "line_spacing": 1.2,
+          "rtl_support": true
+        }
+      },
+      {
+        "id": "title_line",
+        "type": "line",
+        "position": {
+          "left": 1.0,
+          "top": 1.5
+        },
+        "size": {
+          "width": 11.33,
+          "height": 0.02
+        },
+        "style": {
+          "color": "#01415C",
+          "thickness": 2
+        }
+      },
+      {
+        "id": "content",
+        "type": "text_bullets",
+        "placeholder": "content",
+        "position_ar": {
+          "left": 1.0,
+          "top": 1.55
+        },
+        "position_en": {
+          "left": 1.0,
+          "top": 1.55
+        },
+        "size": {
+          "width": 11.33,
+          "height": 5.2
+        },
+        "style": {
+          "font": "Tajawal",
+          "font_size": 18,
+          "bold": false,
+          "color": "#0D2026",
+          "alignment_ar": "right",
+          "alignment_en": "left",
+          "line_spacing": 1.75,
+          "rtl_support": true,
+          "max_items": 4,
+          "support_paragraphs": true
+        },
+        "bullet_style": {
+          "bullet_char": "●",
+          "bullet_color": "#01415C",
+          "indent_ar": 11.33,
+          "indent_en": 0.5,
+          "sub_bullet_char": "○",
+          "sub_bullet_indent_ar": 10.83,
+          "sub_bullet_indent_en": 1.0,
+          "spacing_before": 6,
+          "spacing_after": 6
+        }
+      }
+    ]
+  },
+  
+  "content_paragraph": {
+    "name": "Content Paragraph",
+    "description": "Content slide with paragraph text (no bullets)",
+    "master_layout": "title_and_content",
+    "background": {
+      "type": "image",
+      "path": "Background/image8.jpeg",
+      "fit": "fill"
+    },
+    "elements": [
+      {
+        "id": "logo",
+        "type": "image",
+        "path": "logo.png",
+        "position_ar": {
+          "left": 0.5,
+          "top": 0.5
+        },
+        "position_en": {
+          "left": 11.5,
+          "top": 0.5
+        },
+        "size": {
+          "width": 1.5,
+          "height": 0.8
+        },
+        "optional": true
+      },
+      {
+        "id": "icon",
+        "type": "icon",
+        "position_ar": {
+          "left": 11.83,
+          "top": 0.65
+        },
+        "position_en": {
+          "left": 1.0,
+          "top": 0.65
+        },
+        "size": {
+          "width": 0.5,
+          "height": 0.5
+        },
+        "style": {
+          "color": "#01415C",
+          "auto_select": true
+        }
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "placeholder": "title",
+        "position_ar": {
+          "left": 1.7,
+          "top": 0.6
+        },
+        "position_en": {
+          "left": 1.7,
+          "top": 0.6
+        },
+        "size": {
+          "width": 9.6,
+          "height": 0.8
+        },
+        "style": {
+          "font": "Cairo",
+          "font_size": 32,
+          "bold": true,
+          "color": "#0D2026",
+          "alignment_ar": "right",
+          "alignment_en": "left",
+          "line_spacing": 1.2,
+          "rtl_support": true
+        }
+      },
+      {
+        "id": "title_line",
+        "type": "line",
+        "position": {
+          "left": 1.0,
+          "top": 1.5
+        },
+        "size": {
+          "width": 11.33,
+          "height": 0.02
+        },
+        "style": {
+          "color": "#01415C",
+          "thickness": 2
+        }
+      },
+      {
+        "id": "content",
+        "type": "text_paragraph",
+        "placeholder": "content",
+        "position": {
+          "left": 1.5,
+          "top": 1.0
+        },
+        "size": {
+          "width": 10.33,
+          "height": 4.8
+        },
+        "style": {
+          "font": "Tajawal",
+          "font_size": 18,
+          "color": "#0D2026",
+          "alignment_ar": "right",
+          "alignment_en": "left",
+          "line_spacing": 1.7,
+          "rtl_support": true
+        }
+      }
+    ]
+  },
+    "section_header_dark": {
     "name": "Section Header - Dark",
-    "description": "Section divider with dark teal background - ICON CENTERED ABOVE TITLE",
+    "description": "Section divider with dark teal background",
     "master_layout": "section_header",
     "background": {
       "type": "image",
@@ -112,14 +472,15 @@
           "color": "#FFFCEC",
           "alignment": "center",
           "line_spacing": 1.1,
-          "vertical_align": "middle"
+          "vertical_align": "middle",
+          "rtl_support": true
         }
       }
     ]
   },
-  "section_header_green": {
+    "section_header_green": {
     "name": "Section Header - Green",
-    "description": "Section divider with green background - ICON CENTERED ABOVE TITLE",
+    "description": "Section divider with Green background",
     "master_layout": "section_header",
     "background": {
       "type": "image",
@@ -139,7 +500,7 @@
           "height": 1.2
         },
         "style": {
-          "color": "#0D2026",
+          "color": "#FFFCEC",
           "auto_select": true
         }
       },
@@ -159,17 +520,19 @@
           "font": "Cairo",
           "font_size": 36,
           "bold": true,
-          "color": "#0D2026",
+          "color": "#FFFCEC",
           "alignment": "center",
           "line_spacing": 1.1,
-          "vertical_align": "middle"
+          "vertical_align": "middle",
+          "rtl_support": true
         }
       }
     ]
   },
+  
   "section_header_orange": {
     "name": "Section Header - Orange",
-    "description": "Section divider with orange background - ICON CENTERED ABOVE TITLE",
+    "description": "Section divider with orange background",
     "master_layout": "section_header",
     "background": {
       "type": "image",
@@ -189,7 +552,7 @@
           "height": 1.2
         },
         "style": {
-          "color": "#0D2026",
+          "color": "#FFFCEC",
           "auto_select": true
         }
       },
@@ -209,188 +572,19 @@
           "font": "Cairo",
           "font_size": 36,
           "bold": true,
-          "color": "#0D2026",
+          "color": "#FFFCEC",
           "alignment": "center",
           "line_spacing": 1.1,
-          "vertical_align": "middle"
-        }
-      }
-    ]
-  },
-  "agenda_slide": {
-    "name": "Agenda Slide",
-    "description": "Split agenda slide - NO LINE, MAX 5 ITEMS - Background has 'Topics' on left and 'Agenda' on right",
-    "master_layout": "blank",
-    "background": {
-      "type": "image",
-      "path": "Background/image2.jpeg",
-      "fit": "fill"
-    },
-    "elements": [
-      {
-        "id": "logo",
-        "type": "image",
-        "path": "logo.png",
-        "position": {
-          "left": 11.5,
-          "top": 6.3
-        },
-        "size": {
-          "width": 1.5,
-          "height": 0.8
-        },
-        "optional": true
-      },
-      {
-        "id": "content",
-        "type": "text_bullets",
-        "placeholder": "content",
-        "position": {
-          "left": 0.7,
-          "top": 1.8
-        },
-        "size": {
-          "width": 5.8,
-          "height": 5.2
-        },
-        "style": {
-          "font": "Tajawal",
-          "font_size": 16,
-          "bold": false,
-          "color": "#0D2026",
-          "alignment": "left",
-          "line_spacing": 1.8,
-          "padding": 0.1,
-          "max_items": 5
-        },
-        "bullet_style": {
-          "bullet_char": "custom_icon",
-          "bullet_color": "#01415C",
-          "indent": 0.3,
-          "spacing_before": 8,
-          "spacing_after": 8,
-          "icon_size": 0.35
-        }
-      }
-    ]
-  },
-  "title_and_content": {
-    "name": "Title and Content",
-    "description": "Standard content slide with title, underline, and bullets (max 4) - CREAM BACKGROUND",
-    "master_layout": "title_and_content",
-    "background": {
-      "type": "image",
-      "path": "Background/image8.jpeg",
-      "fit": "fill"
-    },
-    "elements": [
-      {
-        "id": "logo",
-        "type": "image",
-        "path": "logo.png",
-        "position": {
-          "left": 11.5,
-          "top": 0.5
-        },
-        "size": {
-          "width": 1.5,
-          "height": 0.8
-        },
-        "optional": true
-      },
-      {
-        "id": "icon",
-        "type": "icon",
-        "position": {
-          "left": 1.0,
-          "top": 0.65
-        },
-        "size": {
-          "width": 0.5,
-          "height": 0.5
-        },
-        "style": {
-          "color": "#01415C",
-          "auto_select": true
-        }
-      },
-      {
-        "id": "title",
-        "type": "text",
-        "placeholder": "title",
-        "position": {
-          "left": 1.7,
-          "top": 0.6
-        },
-        "size": {
-          "width": 9.6,
-          "height": 0.8
-        },
-        "style": {
-          "font": "Cairo",
-          "font_size": 32,
-          "bold": true,
-          "color": "#0D2026",
-          "alignment": "left",
           "vertical_align": "middle",
-          "line_spacing": 1.2,
           "rtl_support": true
-        }
-      },
-      {
-        "id": "title_line",
-        "type": "line",
-        "position": {
-          "left": 1.0,
-          "top": 1.5
-        },
-        "size": {
-          "width": 11.33,
-          "height": 0.02
-        },
-        "style": {
-          "color": "#01415C",
-          "thickness": 2
-        }
-      },
-      {
-        "id": "content",
-        "type": "text_bullets",
-        "placeholder": "content",
-        "position": {
-          "left": 1.0,
-          "top": 1.8
-        },
-        "size": {
-          "width": 11.33,
-          "height": 5.2
-        },
-        "style": {
-          "font": "Tajawal",
-          "font_size": 18,
-          "bold": false,
-          "color": "#0D2026",
-          "alignment": "left",
-          "line_spacing": 1.75,
-          "rtl_support": true,
-          "max_items": 4,
-          "support_paragraphs": true
-        },
-        "bullet_style": {
-          "bullet_char": "●",
-          "bullet_color": "#01415C",
-          "indent": 0.5,
-          "sub_bullet_char": "○",
-          "sub_bullet_indent": 1.0,
-          "spacing_before": 6,
-          "spacing_after": 6
         }
       }
     ]
   },
-  "content_paragraph": {
-    "name": "Content Paragraph",
-    "description": "Content slide with paragraph text (no bullets), title with icon and underline - CREAM BACKGROUND",
+  
+  "table_slide": {
+    "name": "Table Slide",
+    "description": "Slide with table content with RTL support",
     "master_layout": "title_and_content",
     "background": {
       "type": "image",
@@ -402,7 +596,11 @@
         "id": "logo",
         "type": "image",
         "path": "logo.png",
-        "position": {
+        "position_ar": {
+          "left": 0.5,
+          "top": 0.5
+        },
+        "position_en": {
           "left": 11.5,
           "top": 0.5
         },
@@ -415,7 +613,11 @@
       {
         "id": "icon",
         "type": "icon",
-        "position": {
+        "position_ar": {
+          "left": 11.83,
+          "top": 0.65
+        },
+        "position_en": {
           "left": 1.0,
           "top": 0.65
         },
@@ -432,7 +634,11 @@
         "id": "title",
         "type": "text",
         "placeholder": "title",
-        "position": {
+        "position_ar": {
+          "left": 1.7,
+          "top": 0.6
+        },
+        "position_en": {
           "left": 1.7,
           "top": 0.6
         },
@@ -445,8 +651,8 @@
           "font_size": 32,
           "bold": true,
           "color": "#0D2026",
-          "alignment": "left",
-          "line_spacing": 1.2,
+          "alignment_ar": "right",
+          "alignment_en": "left",
           "rtl_support": true
         }
       },
@@ -467,318 +673,152 @@
         }
       },
       {
-        "id": "content",
-        "type": "text_paragraph",
-        "placeholder": "content",
+        "id": "table",
+        "type": "table",
+        "placeholder": "table",
+        "position": {
+          "left": 1.0,
+          "top": 1.8
+        },
+        "size": {
+          "width": 11.33,
+          "height": 5.2
+        },
+        "style": {
+          "header_bg": "#01415C",
+          "header_text": "#FFFCEC",
+          "header_font": "Cairo",
+          "header_font_size": 16,
+          "header_alignment": "center",
+          "body_font": "Tajawal",
+          "body_font_size": 14,
+          "body_text": "#0D2026",
+          "body_alignment_ar": "right",
+          "body_alignment_en": "left",
+          "alternate_row_bg": "#F7F4E7",
+          "border_color": "#C6C3BE",
+          "cell_padding": 0.1,
+          "rtl_support": true,
+          "max_rows": 6
+        }
+      }
+    ]
+  },
+  
+  "chart_slide": {
+    "name": "Chart Slide",
+    "description": "Slide with chart content - dark background",
+    "master_layout": "title_and_content",
+    "background": {
+      "type": "image",
+      "path": "Background/image9.jpeg",
+      "fit": "fill"
+    },
+    "elements": [
+      {
+        "id": "logo",
+        "type": "image",
+        "path": "logo.png",
+        "position_ar": {
+          "left": 0.5,
+          "top": 0.5
+        },
+        "position_en": {
+          "left": 11.5,
+          "top": 0.5
+        },
+        "size": {
+          "width": 1.5,
+          "height": 0.8
+        },
+        "optional": true
+      },
+      {
+        "id": "icon",
+        "type": "icon",
+        "position_ar": {
+          "left": 11.83,
+          "top": 0.65
+        },
+        "position_en": {
+          "left": 1.0,
+          "top": 0.65
+        },
+        "size": {
+          "width": 0.5,
+          "height": 0.5
+        },
+        "style": {
+          "color": "#FFFCEC",
+          "auto_select": true
+        }
+      },
+      {
+        "id": "title",
+        "type": "text",
+        "placeholder": "title",
+        "position_ar": {
+          "left": 1.7,
+          "top": 0.6
+        },
+        "position_en": {
+          "left": 1.7,
+          "top": 0.6
+        },
+        "size": {
+          "width": 9.6,
+          "height": 0.8
+        },
+        "style": {
+          "font": "Cairo",
+          "font_size": 32,
+          "bold": true,
+          "color": "#FFFCEC",
+          "alignment_ar": "right",
+          "alignment_en": "left",
+          "rtl_support": true
+        }
+      },
+      {
+        "id": "chart",
+        "type": "chart",
+        "placeholder": "chart",
         "position": {
           "left": 1.5,
-          "top": 2.0
+          "top": 1.8
         },
         "size": {
           "width": 10.33,
-          "height": 4.8
+          "height": 5.0
         },
         "style": {
+          "color_palette": [
+            "#F9D462",
+            "#B1D8BE",
+            "#E09059",
+            "#C6C3BE",
+            "#FFFCEC"
+          ],
           "font": "Tajawal",
-          "font_size": 18,
-          "color": "#0D2026",
-          "alignment": "left",
-          "line_spacing": 1.7,
+          "font_size": 12,
+          "legend_position": "bottom",
+          "grid_lines": true,
+          "font_color": "#FFFFFF",
+          "data_label_color": "#FFFFFF",
+          "axis_color": "#FFFFFF",
+          "axis_label_color": "#FFFFFF",
+          "grid_color": "#5C6F7A",
+          "legend_font_color": "#FFFFFF",
+          "series_color": "#F9D462",
           "rtl_support": true
         }
       }
     ]
   },
-  "two_content": {
-    "name": "Two Content Columns",
-    "description": "Side-by-side content layout with title icon and underline - CREAM BACKGROUND",
-    "master_layout": "two_content",
-    "background": {
-      "type": "image",
-      "path": "Background/image8.jpeg",
-      "fit": "fill"
-    },
-    "elements": [
-      {
-        "id": "logo",
-        "type": "image",
-        "path": "logo.png",
-        "position": {
-          "left": 11.5,
-          "top": 0.5
-        },
-        "size": {
-          "width": 1.5,
-          "height": 0.8
-        },
-        "optional": true
-      },
-      {
-        "id": "icon",
-        "type": "icon",
-        "position": {
-          "left": 1.0,
-          "top": 0.65
-        },
-        "size": {
-          "width": 0.5,
-          "height": 0.5
-        },
-        "style": {
-          "color": "#01415C",
-          "auto_select": true
-        }
-      },
-      {
-        "id": "title",
-        "type": "text",
-        "placeholder": "title",
-        "position": {
-          "left": 1.7,
-          "top": 0.6
-        },
-        "size": {
-          "width": 9.6,
-          "height": 0.8
-        },
-        "style": {
-          "font": "Cairo",
-          "font_size": 32,
-          "bold": true,
-          "color": "#0D2026",
-          "alignment": "left",
-          "rtl_support": true
-        }
-      },
-      {
-        "id": "title_line",
-        "type": "line",
-        "position": {
-          "left": 1.0,
-          "top": 1.5
-        },
-        "size": {
-          "width": 11.33,
-          "height": 0.02
-        },
-        "style": {
-          "color": "#01415C",
-          "thickness": 2
-        }
-      },
-      {
-        "id": "left_content",
-        "type": "text_bullets",
-        "placeholder": "left_content",
-        "position": {
-          "left": 1.0,
-          "top": 1.8
-        },
-        "size": {
-          "width": 5.2,
-          "height": 5.2
-        },
-        "style": {
-          "font": "Tajawal",
-          "font_size": 16,
-          "color": "#0D2026",
-          "alignment": "left",
-          "line_spacing": 1.6,
-          "rtl_support": true
-        }
-      },
-      {
-        "id": "right_content",
-        "type": "text_bullets",
-        "placeholder": "right_content",
-        "position": {
-          "left": 7.1,
-          "top": 1.8
-        },
-        "size": {
-          "width": 5.2,
-          "height": 5.2
-        },
-        "style": {
-          "font": "Tajawal",
-          "font_size": 16,
-          "color": "#0D2026",
-          "alignment": "left",
-          "line_spacing": 1.6,
-          "rtl_support": true
-        }
-      }
-    ]
-  },
-  "four_boxes": {
-    "name": "Four Boxes Grid",
-    "description": "Four colored boxes in 2x2 grid (no icons) - CREAM BACKGROUND",
-    "master_layout": "blank",
-    "background": {
-      "type": "image",
-      "path": "Background/image10.jpeg",
-      "fit": "fill"
-    },
-    "elements": [
-      {
-        "id": "logo",
-        "type": "image",
-        "path": "logo.png",
-        "position": {
-          "left": 11.5,
-          "top": 0.5
-        },
-        "size": {
-          "width": 1.5,
-          "height": 0.8
-        },
-        "optional": true
-      },
-      {
-        "id": "icon",
-        "type": "icon",
-        "position": {
-          "left": 1.0,
-          "top": 0.65
-        },
-        "size": {
-          "width": 0.5,
-          "height": 0.5
-        },
-        "style": {
-          "color": "#01415C",
-          "auto_select": true
-        }
-      },
-      {
-        "id": "title",
-        "type": "text",
-        "placeholder": "title",
-        "position": {
-          "left": 1.7,
-          "top": 0.6
-        },
-        "size": {
-          "width": 9.6,
-          "height": 0.8
-        },
-        "style": {
-          "font": "Cairo",
-          "font_size": 32,
-          "bold": true,
-          "color": "#0D2026",
-          "alignment": "left"
-        }
-      },
-      {
-        "id": "title_line",
-        "type": "line",
-        "position": {
-          "left": 1.0,
-          "top": 1.5
-        },
-        "size": {
-          "width": 11.33,
-          "height": 0.02
-        },
-        "style": {
-          "color": "#01415C",
-          "thickness": 2
-        }
-      },
-      {
-        "id": "box1",
-        "type": "content_box",
-        "position": {
-          "left": 1.3,
-          "top": 2.0
-        },
-        "size": {
-          "width": 5.0,
-          "height": 2.3
-        },
-        "style": {
-          "background_color": "#B1D8BE",
-          "text_color": "#0D2026",
-          "font": "Tajawal",
-          "font_size": 16,
-          "padding": 0.4,
-          "border_radius": 0.1,
-          "text_alignment": "left",
-          "line_spacing": 1.45
-        }
-      },
-      {
-        "id": "box2",
-        "type": "content_box",
-        "position": {
-          "left": 7.0,
-          "top": 2.0
-        },
-        "size": {
-          "width": 5.0,
-          "height": 2.3
-        },
-        "style": {
-          "background_color": "#F9D462",
-          "text_color": "#0D2026",
-          "font": "Tajawal",
-          "font_size": 16,
-          "padding": 0.4,
-          "border_radius": 0.1,
-          "text_alignment": "left",
-          "line_spacing": 1.45
-        }
-      },
-      {
-        "id": "box3",
-        "type": "content_box",
-        "position": {
-          "left": 1.3,
-          "top": 4.5
-        },
-        "size": {
-          "width": 5.0,
-          "height": 2.3
-        },
-        "style": {
-          "background_color": "#C6C3BE",
-          "text_color": "#0D2026",
-          "font": "Tajawal",
-          "font_size": 16,
-          "padding": 0.4,
-          "border_radius": 0.1,
-          "text_alignment": "left",
-          "line_spacing": 1.45
-        }
-      },
-      {
-        "id": "box4",
-        "type": "content_box",
-        "position": {
-          "left": 7.0,
-          "top": 4.5
-        },
-        "size": {
-          "width": 5.0,
-          "height": 2.3
-        },
-        "style": {
-          "background_color": "#E09059",
-          "text_color": "#0D2026",
-          "font": "Tajawal",
-          "font_size": 16,
-          "padding": 0.4,
-          "border_radius": 0.1,
-          "text_alignment": "left",
-          "line_spacing": 1.45
-        }
-      }
-    ]
-  },
+  
   "four_box_with_icons": {
-    "name": "Four Boxes with Icons INSIDE",
-    "description": "Four colored boxes with icons INSIDE each box (top-center) - SIMPLIFIED STRUCTURE",
+    "name": "Four Boxes with Icons",
+    "description": "Four colored boxes with icons inside (RTL/LTR support)",
     "master_layout": "blank",
     "background": {
       "type": "image",
@@ -790,7 +830,11 @@
         "id": "logo",
         "type": "image",
         "path": "logo.png",
-        "position": {
+        "position_ar": {
+          "left": 0.5,
+          "top": 0.5
+        },
+        "position_en": {
           "left": 11.5,
           "top": 0.5
         },
@@ -803,7 +847,11 @@
       {
         "id": "icon",
         "type": "icon",
-        "position": {
+        "position_ar": {
+          "left": 11.83,
+          "top": 0.65
+        },
+        "position_en": {
           "left": 1.0,
           "top": 0.65
         },
@@ -820,7 +868,11 @@
         "id": "title",
         "type": "text",
         "placeholder": "title",
-        "position": {
+        "position_ar": {
+          "left": 1.7,
+          "top": 0.6
+        },
+        "position_en": {
           "left": 1.7,
           "top": 0.6
         },
@@ -833,7 +885,9 @@
           "font_size": 32,
           "bold": true,
           "color": "#0D2026",
-          "alignment": "left"
+          "alignment_ar": "right",
+          "alignment_en": "left",
+          "rtl_support": true
         }
       },
       {
@@ -880,304 +934,10 @@
           "icon_size": 0.6,
           "icon_top_padding": 0.25,
           "text_top_offset": 0.35,
-          "text_alignment": "center",
-          "line_spacing": 1.3
-        }
-      }
-    ]
-  },
-  "table_slide": {
-    "name": "Table Slide",
-    "description": "Slide with table content (max 6 rows) - CREAM BACKGROUND",
-    "master_layout": "title_and_content",
-    "background": {
-      "type": "image",
-      "path": "Background/image8.jpeg",
-      "fit": "fill"
-    },
-    "elements": [
-      {
-        "id": "logo",
-        "type": "image",
-        "path": "logo.png",
-        "position": {
-          "left": 11.5,
-          "top": 0.5
-        },
-        "size": {
-          "width": 1.5,
-          "height": 0.8
-        },
-        "optional": true
-      },
-      {
-        "id": "icon",
-        "type": "icon",
-        "position": {
-          "left": 1.0,
-          "top": 0.65
-        },
-        "size": {
-          "width": 0.5,
-          "height": 0.5
-        },
-        "style": {
-          "color": "#01415C",
-          "auto_select": true
-        }
-      },
-      {
-        "id": "title",
-        "type": "text",
-        "placeholder": "title",
-        "position": {
-          "left": 1.7,
-          "top": 0.6
-        },
-        "size": {
-          "width": 9.6,
-          "height": 0.8
-        },
-        "style": {
-          "font": "Cairo",
-          "font_size": 32,
-          "bold": true,
-          "color": "#0D2026",
-          "alignment": "left",
+          "text_alignment_ar": "center",
+          "text_alignment_en": "center",
+          "line_spacing": 1.3,
           "rtl_support": true
-        }
-      },
-      {
-        "id": "title_line",
-        "type": "line",
-        "position": {
-          "left": 1.0,
-          "top": 1.5
-        },
-        "size": {
-          "width": 11.33,
-          "height": 0.02
-        },
-        "style": {
-          "color": "#01415C",
-          "thickness": 2
-        }
-      },
-      {
-        "id": "table",
-        "type": "table",
-        "placeholder": "table",
-        "position": {
-          "left": 1.0,
-          "top": 1.8
-        },
-        "size": {
-          "width": 11.33,
-          "height": 5.2
-        },
-        "style": {
-          "header_bg": "#01415C",
-          "header_text": "#FFFCEC",
-          "header_font": "Cairo",
-          "header_font_size": 16,
-          "header_alignment": "center",
-          "body_font": "Tajawal",
-          "body_font_size": 14,
-          "body_text": "#0D2026",
-          "body_alignment": "left",
-          "alternate_row_bg": "#F7F4E7",
-          "border_color": "#C6C3BE",
-          "cell_padding": 0.1,
-          "rtl_support": true,
-          "max_rows": 6
-        }
-      }
-    ]
-  },
-  "chart_slide": {
-    "name": "Chart Slide",
-    "description": "Slide with chart content - DARK BACKGROUND WITH WHITE/VISIBLE TEXT",
-    "master_layout": "title_and_content",
-    "background": {
-      "type": "image",
-      "path": "Background/image9.jpeg",
-      "fit": "fill"
-    },
-    "elements": [
-      {
-        "id": "logo",
-        "type": "image",
-        "path": "logo.png",
-        "position": {
-          "left": 11.5,
-          "top": 0.5
-        },
-        "size": {
-          "width": 1.5,
-          "height": 0.8
-        },
-        "optional": true
-      },
-      {
-        "id": "icon",
-        "type": "icon",
-        "position": {
-          "left": 1.0,
-          "top": 0.65
-        },
-        "size": {
-          "width": 0.5,
-          "height": 0.5
-        },
-        "style": {
-          "color": "#FFFCEC",
-          "auto_select": true
-        }
-      },
-      {
-        "id": "title",
-        "type": "text",
-        "placeholder": "title",
-        "position": {
-          "left": 1.7,
-          "top": 0.6
-        },
-        "size": {
-          "width": 9.6,
-          "height": 0.8
-        },
-        "style": {
-          "font": "Cairo",
-          "font_size": 32,
-          "bold": true,
-          "color": "#FFFCEC",
-          "alignment": "left",
-          "rtl_support": true
-        }
-      },
-      {
-        "id": "chart",
-        "type": "chart",
-        "placeholder": "chart",
-        "position": {
-          "left": 1.5,
-          "top": 1.8
-        },
-        "size": {
-          "width": 10.33,
-          "height": 5.0
-        },
-        "style": {
-          "color_palette": [
-            "#F9D462",
-            "#B1D8BE",
-            "#E09059",
-            "#C6C3BE",
-            "#FFFCEC"
-          ],
-          "font": "Tajawal",
-          "font_size": 12,
-          "legend_position": "bottom",
-          "grid_lines": true,
-          "font_color": "#FFFFFF",
-          "data_label_color": "#FFFFFF",
-          "axis_color": "#FFFFFF",
-          "axis_label_color": "#FFFFFF",
-          "grid_color": "#5C6F7A",
-          "legend_font_color": "#FFFFFF",
-          "series_color": "#F9D462"
-        }
-      }
-    ]
-  },
-  "title_only": {
-    "name": "Title Only",
-    "description": "Title with large content area for images/media - CREAM BACKGROUND",
-    "master_layout": "title_only",
-    "background": {
-      "type": "image",
-      "path": "Background/image8.jpeg",
-      "fit": "fill"
-    },
-    "elements": [
-      {
-        "id": "logo",
-        "type": "image",
-        "path": "logo.png",
-        "position": {
-          "left": 11.5,
-          "top": 0.5
-        },
-        "size": {
-          "width": 1.5,
-          "height": 0.8
-        },
-        "optional": true
-      },
-      {
-        "id": "icon",
-        "type": "icon",
-        "position": {
-          "left": 1.0,
-          "top": 0.65
-        },
-        "size": {
-          "width": 0.5,
-          "height": 0.5
-        },
-        "style": {
-          "color": "#01415C",
-          "auto_select": true
-        }
-      },
-      {
-        "id": "title",
-        "type": "text",
-        "placeholder": "title",
-        "position": {
-          "left": 1.7,
-          "top": 0.6
-        },
-        "size": {
-          "width": 9.6,
-          "height": 0.8
-        },
-        "style": {
-          "font": "Cairo",
-          "font_size": 32,
-          "bold": true,
-          "color": "#0D2026",
-          "alignment": "left",
-          "rtl_support": true
-        }
-      },
-      {
-        "id": "title_line",
-        "type": "line",
-        "position": {
-          "left": 1.0,
-          "top": 1.5
-        },
-        "size": {
-          "width": 11.33,
-          "height": 0.02
-        },
-        "style": {
-          "color": "#01415C",
-          "thickness": 2
-        }
-      },
-      {
-        "id": "content_area",
-        "type": "content_area",
-        "placeholder": "content",
-        "position": {
-          "left": 1.0,
-          "top": 1.8
-        },
-        "size": {
-          "width": 11.33,
-          "height": 5.2
         }
       }
     ]
