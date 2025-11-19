@@ -119,7 +119,7 @@ async def run_initial_generation(
         ppt_genid = str(uuid4())
         
         # PptxGenerator will load local template from app/templates/{template_id}/
-        generator = PptxGenerator(template_id=template_id)
+        generator = PptxGenerator(template_id=template_id, language=language)
         output_path = generator.generate(
             presentation_data
         )
@@ -135,12 +135,10 @@ async def run_initial_generation(
         logger.info(f"\nSTEP 5: Saving generation record...")
         generated_content = {
             "title": presentation_data.title,
-            "subtitle": presentation_data.subtitle,
             "template_id": template_id,
-            "template_path": str(template_path),
             "language": language,
             "slides": [slide.model_dump() for slide in presentation_data.slides],
-            "stats": stats  # Use calculated stats (FIXED: no duplicate calculation)
+            "stats": stats 
         }
         
         await supabase.save_generation_record(
@@ -150,11 +148,12 @@ async def run_initial_generation(
             ppt_url=ppt_url,
             generated_content=generated_content,
             language=language,
-            user_preference=user_preference,
-            is_regeneration=False
+            template_id=template_id,  
+            user_preference=user_preference
         )
-        
+        logger.info("\n" + "="*80)
         logger.info(f"Record saved: {ppt_genid}")
+        logger.info("="*80)
         
         # STEP 6: Cleanup (FIXED: delete local PPTX file after upload)
         _cleanup_temp_file(output_path)

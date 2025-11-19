@@ -4,15 +4,58 @@ from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.oxml import parse_xml
 from typing import Dict, Tuple, Optional, List
+from pathlib import Path
 import logging
+import json
+
+from config import settings
 
 logger = logging.getLogger("chart_service")
 
 class ChartService:
-    """Service for creating native PowerPoint charts with dynamic data format support"""
+    """Service for creating native PowerPoint charts - fully dynamic from constraints.json"""
     
-    def __init__(self, template_id: str = "arweqah"):
+    def __init__(self, template_id: str = "arweqah", language: str = "en"):
         self.template_id = template_id
+        self.language = language
+        
+        # Load constraints dynamically
+        self.constraints = self._load_constraints(template_id)
+        
+        # Get chart configuration from constraints
+        self.chart_config = self.constraints.get('chart', {})
+        self.colors_config = self.constraints.get('colors', {})
+        self.typography_config = self.constraints.get('typography', {})
+        
+        # Get language-specific fonts
+        fonts = self.typography_config.get('fonts', {})
+        self.lang_fonts = fonts.get(language, fonts.get('en', {}))
+        
+        # Get chart-specific settings
+        self.color_palette = self.chart_config.get('color_palette', [
+            "#F9D462", "#B1D8BE", "#E09059", "#C6C3BE", "#FFFCEC"
+        ])
+        
+        self.default_font = self.lang_fonts.get('body', 'Tajawal')
+        self.font_size = self.chart_config.get('font_size', 12)
+        self.title_font_size = self.chart_config.get('title_font_size', 16)
+        
+        # Colors from constraints
+        self.font_color = self.chart_config.get('font_color', '#FFFFFF')
+        self.axis_color = self.chart_config.get('axis_color', '#FFFFFF')
+        self.axis_label_color = self.chart_config.get('axis_label_color', '#FFFFFF')
+        self.grid_color = self.chart_config.get('grid_color', '#5C6F7A')
+        self.legend_font_color = self.chart_config.get('legend_font_color', '#FFFFFF')
+        self.data_label_color = self.chart_config.get('data_label_color', '#FFFFFF')
+        self.background_color = self.chart_config.get('background_color', '#0D2026')
+        
+        logger.info(f"✅ ChartService initialized (template={template_id}, lang={language})")
+    
+    def _load_constraints(self, template_id: str) -> Dict:
+        """Load constraints.json from template directory"""
+        path = Path(settings.TEMPLATES_DIR) / template_id / "constraints.json"
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
     
     def add_native_chart(
         self,
@@ -22,28 +65,25 @@ class ChartService:
         size: Dict,
         background_rgb: Optional[Tuple[int, int, int]] = None
     ):
-        """Add native PowerPoint chart - supports both old and new data formats"""
+        """Add native PowerPoint chart - fully dynamic styling"""
         try:
             chart_type = chart_data.get('chart_type', 'column')
             title = chart_data.get('title', '')
             
-            # CRITICAL: Extract data dynamically
+            # Extract data dynamically
             categories, series_list = self._extract_chart_data(chart_data)
             
             if not categories or not series_list:
                 logger.error(f"❌ Chart data extraction failed!")
-                logger.error(f"   Raw data: {chart_data}")
                 return None
             
             if len(categories) == 0 or len(series_list) == 0:
-                logger.error(f"❌ Chart data empty! categories={len(categories)}, series={len(series_list)}")
+                logger.error(f"❌ Chart data empty!")
                 return None
             
             logger.info(f"✓ Creating {chart_type} chart")
             logger.info(f"   Categories: {categories}")
             logger.info(f"   Series count: {len(series_list)}")
-            for idx, s in enumerate(series_list):
-                logger.info(f"   Series {idx + 1}: {s['name']} = {s['values']}")
             
             # Map chart types
             chart_type_map = {
@@ -81,40 +121,40 @@ class ChartService:
             y_axis_label = chart_data.get('y_axis_label', '')
             unit = chart_data.get('unit', '')
 
-            # WHITE COLORS FOR DARK BACKGROUNDS
+            # Build color config from constraints
             color_config = {
-                "font_color": chart_data.get("font_color", "#FFFFFF"),
-                "data_label_color": chart_data.get("data_label_color", "#FFFFFF"),
-                "axis_color": chart_data.get("axis_color", "#FFFFFF"),
-                "axis_label_color": chart_data.get("axis_label_color", "#FFFFFF"),
-                "grid_color": chart_data.get("grid_color", "#5C6F7A"),
-                "legend_font_color": chart_data.get("legend_font_color", "#FFFFFF"),
-                "plot_background_color": chart_data.get("plot_background_color"),
-                "series_color": chart_data.get("series_color", "#F9D462")
+                "font_color": self.font_color,
+                "data_label_color": self.data_label_color,
+                "axis_color": self.axis_color,
+                "axis_label_color": self.axis_label_color,
+                "grid_color": self.grid_color,
+                "legend_font_color": self.legend_font_color,
+                "title_color": self.font_color
             }
             
-            # Apply modern styling with WHITE axis text
+            # Apply styling
             self._apply_modern_chart_style(chart, chart_type, background_rgb, color_config)
             
-            # Add data labels to all series
+            # Add data labels
             self._add_data_labels(chart, chart_type, unit, color_config)
             
             # Configure legend
             self._configure_legend(chart, chart_type, color_config)
             
-            # Add axis labels (WHITE text)
+            # Add axis labels
             self._add_axis_labels(chart, chart_type, x_axis_label, y_axis_label, unit, color_config)
             
             # Add title if provided
             if title:
                 chart.has_title = True
                 chart.chart_title.text_frame.text = title
-                chart.chart_title.text_frame.paragraphs[0].font.size = Pt(16)
+                chart.chart_title.text_frame.paragraphs[0].font.size = Pt(self.title_font_size)
                 chart.chart_title.text_frame.paragraphs[0].font.bold = True
-                title_color = self._get_rgb(color_config.get("font_color"), (255, 255, 255))
+                chart.chart_title.text_frame.paragraphs[0].font.name = self.default_font
+                title_color = self._get_rgb(color_config.get("font_color"))
                 chart.chart_title.text_frame.paragraphs[0].font.color.rgb = RGBColor(*title_color)
             
-            logger.info(f"✅ Chart created successfully: {title} ({chart_type}, {len(series_list)} series)")
+            logger.info(f"✅ Chart created: {title} ({chart_type})")
             return chart
             
         except Exception as e:
@@ -124,10 +164,7 @@ class ChartService:
             return None
     
     def _extract_chart_data(self, chart_data: Dict) -> Tuple[List, List[Dict]]:
-        """
-        Dynamically extract chart data from multiple formats
-        Returns: (categories, series_list)
-        """
+        """Dynamically extract chart data from multiple formats"""
         categories = []
         series_list = []
         
@@ -145,7 +182,7 @@ class ChartService:
                             series_list.append({'name': name, 'values': values})
                 
                 if categories and series_list:
-                    logger.info(f"   ✓ Using NEW format: {len(categories)} categories, {len(series_list)} series")
+                    logger.info(f"   ✓ NEW format: {len(categories)} categories, {len(series_list)} series")
                     return categories, series_list
         
         # FORMAT 2: OLD - labels + values (FALLBACK)
@@ -156,59 +193,53 @@ class ChartService:
             
             if categories and values:
                 series_list = [{'name': series_name, 'values': values}]
-                logger.info(f"   ✓ Using OLD format: {len(categories)} labels, 1 series")
+                logger.info(f"   ✓ OLD format: {len(categories)} labels, 1 series")
                 return categories, series_list
         
-        # FORMAT 3: LAST RESORT - categories only (try to extract from chart_data)
+        # FORMAT 3: LAST RESORT
         if 'categories' in chart_data and chart_data.get('categories'):
             categories = chart_data.get('categories', [])
-            # Try to find any numeric data
             for key in ['values', 'data', 'y']:
                 if key in chart_data and chart_data[key]:
                     values = chart_data[key]
                     series_list = [{'name': 'Values', 'values': values}]
-                    logger.info(f"   ✓ Using FALLBACK format: found data in '{key}'")
+                    logger.info(f"   ✓ FALLBACK format: found data in '{key}'")
                     return categories, series_list
         
-        logger.error(f"   ❌ Could not extract chart data from any format")
+        logger.error(f"   ❌ Could not extract chart data")
         return [], []
         
     def _add_axis_labels(self, chart, chart_type: str, x_axis_label: str, y_axis_label: str, unit: str, color_config: Dict):
-        """Add axis labels with WHITE text for visibility on dark backgrounds"""
+        """Add axis labels with dynamic colors from constraints"""
         try:
             if chart_type == 'pie':
                 return
             
-            # WHITE color for axis labels
-            axis_label_rgb = self._get_rgb(color_config.get("axis_label_color"), (255, 255, 255))
+            axis_label_rgb = self._get_rgb(color_config.get("axis_label_color"))
 
-            # Category axis (X-axis) label
+            # Category axis (X-axis)
             if x_axis_label:
                 try:
                     cat_axis = chart.category_axis
                     cat_axis.has_title = True
                     cat_axis.axis_title.text_frame.text = x_axis_label
                     
-                    # CRITICAL: Make title text WHITE and visible
                     for paragraph in cat_axis.axis_title.text_frame.paragraphs:
                         paragraph.font.size = Pt(14)
                         paragraph.font.bold = True
-                        paragraph.font.name = 'Calibri'
+                        paragraph.font.name = self.default_font
                         paragraph.font.color.rgb = RGBColor(*axis_label_rgb)
                     
-                    logger.info(f"  ✓ X-axis label (WHITE): {x_axis_label}")
+                    logger.info(f"  ✓ X-axis label: {x_axis_label}")
                 except Exception as e:
                     logger.error(f"❌ X-axis label error: {e}")
-                    import traceback
-                    traceback.print_exc()
             
-            # Value axis (Y-axis) label
+            # Value axis (Y-axis)
             if y_axis_label or unit:
                 try:
                     val_axis = chart.value_axis
                     val_axis.has_title = True
                     
-                    # Combine Y-axis label with unit
                     if y_axis_label and unit:
                         axis_title = f"{y_axis_label} ({unit})"
                     elif y_axis_label:
@@ -218,46 +249,43 @@ class ChartService:
                     
                     val_axis.axis_title.text_frame.text = axis_title
                     
-                    # CRITICAL: Make title text WHITE and visible
                     for paragraph in val_axis.axis_title.text_frame.paragraphs:
                         paragraph.font.size = Pt(14)
                         paragraph.font.bold = True
-                        paragraph.font.name = 'Calibri'
+                        paragraph.font.name = self.default_font
                         paragraph.font.color.rgb = RGBColor(*axis_label_rgb)
                     
-                    logger.info(f"  ✓ Y-axis label (WHITE): {axis_title}")
+                    logger.info(f"  ✓ Y-axis label: {axis_title}")
                 except Exception as e:
                     logger.error(f"❌ Y-axis label error: {e}")
-                    import traceback
-                    traceback.print_exc()
                     
         except Exception as e:
             logger.error(f"❌ Axis labels error: {e}")
-            import traceback
-            traceback.print_exc()
 
     def _add_data_labels(self, chart, chart_type: str, unit: str, color_config: Dict):
-        """Add data labels to chart series with WHITE text"""
+        """Add data labels with dynamic colors from constraints"""
         try:
             for series_idx, series in enumerate(chart.series):
                 series.has_data_labels = True
                 data_labels = series.data_labels
                 
-                data_label_rgb = self._get_rgb(color_config.get("data_label_color"), (255, 255, 255))
+                data_label_rgb = self._get_rgb(color_config.get("data_label_color"))
 
                 if chart_type == 'pie':
                     data_labels.number_format = '0%'
                     data_labels.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
                     data_labels.font.size = Pt(11)
                     data_labels.font.bold = True
+                    data_labels.font.name = self.default_font
                     # Pie labels outside - use dark color for visibility
-                    pie_label_rgb = self._get_rgb(color_config.get("data_label_color"), (13, 32, 38))
+                    pie_label_rgb = self._get_rgb(self.colors_config.get('text_primary', '#0D2026'))
                     data_labels.font.color.rgb = RGBColor(*pie_label_rgb)
                     
                 elif chart_type in ['column', 'bar']:
                     data_labels.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
                     data_labels.font.size = Pt(11)
                     data_labels.font.bold = True
+                    data_labels.font.name = self.default_font
                     data_labels.font.color.rgb = RGBColor(*data_label_rgb)
                     
                     if unit:
@@ -271,6 +299,7 @@ class ChartService:
                 elif chart_type == 'line':
                     data_labels.position = XL_DATA_LABEL_POSITION.ABOVE
                     data_labels.font.size = Pt(10)
+                    data_labels.font.name = self.default_font
                     data_labels.font.color.rgb = RGBColor(*data_label_rgb)
                     
                     if unit:
@@ -287,14 +316,15 @@ class ChartService:
             logger.warning(f"⚠️  Data labels error: {e}")
 
     def _configure_legend(self, chart, chart_type: str, color_config: Dict):
-        """Configure chart legend with WHITE text"""
+        """Configure chart legend with dynamic colors from constraints"""
         try:
-            legend_rgb = self._get_rgb(color_config.get("legend_font_color"), (255, 255, 255))
+            legend_rgb = self._get_rgb(color_config.get("legend_font_color"))
             
             if chart_type == 'pie':
                 chart.has_legend = True
                 chart.legend.position = XL_LEGEND_POSITION.RIGHT
                 chart.legend.font.size = Pt(11)
+                chart.legend.font.name = self.default_font
                 chart.legend.font.color.rgb = RGBColor(*legend_rgb)
                 chart.legend.include_in_layout = False
                 logger.debug("  ✓ Legend (right)")
@@ -304,6 +334,7 @@ class ChartService:
                     chart.has_legend = True
                     chart.legend.position = XL_LEGEND_POSITION.BOTTOM
                     chart.legend.font.size = Pt(10)
+                    chart.legend.font.name = self.default_font
                     chart.legend.font.color.rgb = RGBColor(*legend_rgb)
                     logger.debug("  ✓ Legend (bottom)")
                 else:
@@ -314,7 +345,7 @@ class ChartService:
             logger.warning(f"⚠️  Legend error: {e}")
     
     def _apply_modern_chart_style(self, chart, chart_type: str, background_rgb: Optional[Tuple], color_config: Dict):
-        """Apply styling with WHITE axis text for dark backgrounds"""
+        """Apply styling with dynamic colors from constraints"""
         try:
             # Set chart style
             try:
@@ -322,14 +353,8 @@ class ChartService:
             except:
                 pass
             
-            # Series styling - use different colors for multiple series
-            base_colors = [
-                (249, 212, 98),   # Yellow #F9D462
-                (177, 216, 190),  # Green #B1D8BE
-                (224, 144, 89),   # Orange #E09059
-                (198, 195, 190),  # Gray #C6C3BE
-                (255, 252, 236)   # Cream #FFFCEC
-            ]
+            # Get series colors from constraints
+            base_colors = [self._get_rgb(color) for color in self.color_palette]
             
             for series_idx, series in enumerate(chart.series):
                 # Cycle through colors for multiple series
@@ -362,74 +387,65 @@ class ChartService:
                 except Exception as e:
                     logger.debug(f"Series styling skipped: {e}")
             
-            # CRITICAL: WHITE AXIS TEXT (X and Y) - THIS IS THE MOST IMPORTANT PART
+            # Axis styling
             if chart_type != 'pie':
-                # Category axis (X-axis) - WHITE TEXT
+                # Category axis (X-axis)
                 try:
-                    axis_rgb = self._get_rgb(color_config.get("axis_color"), (255, 255, 255))
+                    axis_rgb = self._get_rgb(color_config.get("axis_color"))
                     cat_axis = chart.category_axis
                     cat_axis.visible = True
                     
-                    # Method 1: Try standard approach
-                    cat_axis.tick_labels.font.size = Pt(12)
+                    cat_axis.tick_labels.font.size = Pt(self.font_size)
                     cat_axis.tick_labels.font.bold = False
-                    cat_axis.tick_labels.font.name = 'Calibri'
+                    cat_axis.tick_labels.font.name = self.default_font
                     cat_axis.tick_labels.font.color.rgb = RGBColor(*axis_rgb)
                     
-                    # Method 2: Force with XML (more reliable)
-                    self._force_white_axis_text_xml(cat_axis)
+                    self._force_axis_text_xml(cat_axis, axis_rgb)
                     
-                    logger.info(f"  ✓ X-axis text: WHITE (forced via XML)")
+                    logger.info(f"  ✓ X-axis styled")
                 except Exception as e:
                     logger.error(f"❌ X-axis styling failed: {e}")
-                    import traceback
-                    traceback.print_exc()
                 
-                # Value axis (Y-axis) - WHITE TEXT
+                # Value axis (Y-axis)
                 try:
-                    axis_rgb = self._get_rgb(color_config.get("axis_color"), (255, 255, 255))
+                    axis_rgb = self._get_rgb(color_config.get("axis_color"))
                     val_axis = chart.value_axis
                     val_axis.visible = True
                     
-                    # Method 1: Try standard approach
-                    val_axis.tick_labels.font.size = Pt(12)
+                    val_axis.tick_labels.font.size = Pt(self.font_size)
                     val_axis.tick_labels.font.bold = False
-                    val_axis.tick_labels.font.name = 'Calibri'
+                    val_axis.tick_labels.font.name = self.default_font
                     val_axis.tick_labels.font.color.rgb = RGBColor(*axis_rgb)
                     
-                    # Method 2: Force with XML (more reliable)
-                    self._force_white_axis_text_xml(val_axis)
+                    self._force_axis_text_xml(val_axis, axis_rgb)
                     
                     # Gridlines
                     try:
                         if val_axis.has_major_gridlines:
-                            grid_rgb = self._get_rgb(color_config.get("grid_color"), (92, 111, 122))
+                            grid_rgb = self._get_rgb(color_config.get("grid_color"))
                             val_axis.major_gridlines.format.line.color.rgb = RGBColor(*grid_rgb)
                             val_axis.major_gridlines.format.line.width = Pt(0.75)
                     except:
                         pass
                     
-                    logger.info(f"  ✓ Y-axis text: WHITE (forced via XML)")
+                    logger.info(f"  ✓ Y-axis styled")
                 except Exception as e:
                     logger.error(f"❌ Y-axis styling failed: {e}")
-                    import traceback
-                    traceback.print_exc()
             
             logger.info("  ✅ Chart styling applied")
             
         except Exception as e:
             logger.error(f"❌ Chart styling error: {e}")
-            import traceback
-            traceback.print_exc()
 
-    def _force_white_axis_text_xml(self, axis):
-        """Force WHITE axis text using XML manipulation (fallback method)"""
+    def _force_axis_text_xml(self, axis, color_rgb: Tuple[int, int, int]):
+        """Force axis text color using XML manipulation"""
         try:
-            # Access the axis XML element
             axis_element = axis._element
             
-            # Create white color XML
-            white_color_xml = '''
+            # Convert RGB to hex
+            color_hex = '%02x%02x%02x' % color_rgb
+            
+            white_color_xml = f'''
             <c:txPr xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" 
                      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
                 <a:bodyPr/>
@@ -438,9 +454,9 @@ class ChartService:
                     <a:pPr>
                         <a:defRPr sz="1200" b="0">
                             <a:solidFill>
-                                <a:srgbClr val="FFFFFF"/>
+                                <a:srgbClr val="{color_hex.upper()}"/>
                             </a:solidFill>
-                            <a:latin typeface="Calibri"/>
+                            <a:latin typeface="{self.default_font}"/>
                         </a:defRPr>
                     </a:pPr>
                     <a:endParaRPr lang="en-US"/>
@@ -453,22 +469,20 @@ class ChartService:
             if existing_txPr is not None:
                 axis_element.remove(existing_txPr)
             
-            # Add new white color XML
+            # Add new XML
             txPr = parse_xml(white_color_xml)
             axis_element.append(txPr)
             
-            logger.info("  ✓ Forced WHITE axis text via XML")
+            logger.debug("  ✓ Forced axis text color via XML")
             return True
         except Exception as e:
             logger.debug(f"XML axis color failed: {e}")
             return False
     
-    def _get_rgb(self, hex_color: Optional[str], fallback: Optional[Tuple[int, int, int]] = None) -> Tuple[int, int, int]:
-        """Convert hex to RGB with WHITE fallback"""
-        if not hex_color:
-            return fallback or (255, 255, 255)
+    def _get_rgb(self, hex_color: str) -> Tuple[int, int, int]:
+        """Convert hex to RGB"""
         try:
             value = hex_color.lstrip("#")
             return tuple(int(value[i:i+2], 16) for i in (0, 2, 4))
         except Exception:
-            return fallback or (255, 255, 255)
+            return (255, 255, 255)  # Default to white
