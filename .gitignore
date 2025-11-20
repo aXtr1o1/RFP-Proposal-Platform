@@ -5,6 +5,8 @@ __pycache__/
 *$py.class
 package-lock.json
 
+ecosystem.config.js
+
 # .env file
 .env
 
