@@ -988,7 +988,7 @@ class PptxGenerator:
                 if self.icon_service and title_text:
                     is_thank_you = any(
                         word in title_text.lower() 
-                        for word in ['thank', 'thanks', 'شكر', 'شكراً', 'شكرا']
+                        for word in ['thank', 'thanks', 'شكر', 'شكراً', 'شكرا', 'thank you', 'conclusion']
                     )
                     
                     if is_thank_you:

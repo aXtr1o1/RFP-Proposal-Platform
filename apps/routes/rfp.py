@@ -118,6 +118,7 @@ async def regenerate(request: RegenRequest):
             "regen_gen_id": new_gen_id,
             "language": language,
             "wordLink": result.get("wordLink"),
+            "updated_markdown": result.get("update_markdown"),
         }
 
     except Exception as e:

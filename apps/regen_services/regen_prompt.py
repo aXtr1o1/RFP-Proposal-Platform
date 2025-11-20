@@ -207,6 +207,7 @@ def regenerate_markdown_with_comments(
             "gen_id": gen_id,
             "language": language,
             "wordLink": urls.get("proposal_word_url"),
+            "updated_markdown": updated_markdown
         }
 
     except Exception as e:
