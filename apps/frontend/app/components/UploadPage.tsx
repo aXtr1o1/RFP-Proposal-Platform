@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
 import { saveAllComments } from "./utils";
 
-const DEFAULT_API_BASE_URL = "http://localhost:8000"; 
+const DEFAULT_API_BASE_URL = "http://localhost:8000/api"; 
 const resolveApiBaseUrl = () => {
   const raw = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
   if (!raw) {
@@ -1783,6 +1783,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSavedRfpFiles(storedRfpFiles);
       setSavedSupportingFiles(storedSupportingFiles);
 
+      // Ensure Supabase has a row with our newly uploaded files before hitting the backend.
+      await persistGenerationRecord({
+        uuid,
+        genId,
+        rfpFiles: storedRfpFiles,
+        supportingFiles: storedSupportingFiles,
+        generalPreference: config,
+        regenComments: [],
+        proposalSnapshot: {
+          config,
+          language,
+          docConfig,
+        },
+        generatedMarkdown: null,
+      });
+
       setRfpFiles([]);
       setSupportingFiles([]);
 
@@ -1873,6 +1889,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       const newGenId = generateUUID();
       setSelectedGenId(newGenId);
+
+      // Pre-register the new generation so the backend can find the uploaded files.
+      await persistGenerationRecord({
+        uuid: jobUuid,
+        genId: newGenId,
+        rfpFiles: savedRfpFiles,
+        supportingFiles: savedSupportingFiles,
+        generalPreference: regenConfig,
+        regenComments: commentsSnapshot,
+        proposalSnapshot: {
+          config: regenConfig,
+          language: regenLanguage,
+          docConfig: regenDocConfig,
+        },
+        generatedMarkdown: null,
+      });
 
       const { docxShareUrl, proposalContent } = await postUuidConfig(jobUuid, regenConfig);
 

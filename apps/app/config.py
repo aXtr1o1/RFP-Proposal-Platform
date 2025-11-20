@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # OpenAI API
     OPENAI_API_KEY: str
-    OPENAI_MODEL: str 
+    OPENAI_MODEL: str = "gpt-4o-mini"
     
     # DALL-E Configuration
     DALL_E_MODEL: Literal["dall-e-2", "dall-e-3"] = "dall-e-3"
