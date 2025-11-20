@@ -2810,7 +2810,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   }, [markdownContent, pptSlides.length, previewMode]);
 
   const isPptBusy = pptAction !== null;
-  const isProcessLocked = isUploading || isPdfConverting || deletingGenId !== null || isPptBusy;
+  const isDocLocked = isUploading || isPdfConverting || deletingGenId !== null || isRegenerating;
+  const isProcessLocked = isDocLocked || isPptBusy;
   const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
   const canRegeneratePpt = Boolean(canGeneratePpt && activePptGenId);
   const selectedSlideSafeIndex = useMemo(() => {
@@ -2838,6 +2839,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const hasGeneratedPpt = Boolean(activePptGenId || pptSlides.length);
   const pptPrimaryActionLabel = hasGeneratedPpt ? "Regenerate PPT" : "Generate PPT";
   const pptPrimaryDisabled = hasGeneratedPpt || !canGeneratePpt || isProcessLocked || pptTemplatesLoading;
+  const showWordFormatting = previewMode === "word" && !isRegenerating && !generatedDocument && !markdownContent;
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -3144,9 +3146,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 {!isGenerated ? (
                   <button
                     onClick={handleUpload}
-                    disabled={supabaseEnvMissing || isProcessLocked || rfpFiles.length === 0 || !config.trim()}
+                    disabled={supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()}
                     className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isProcessLocked || rfpFiles.length === 0 || !config.trim()
+                      ${supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
                         : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
                       }`}
@@ -3175,9 +3177,9 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 ) : (
                   <button
                     onClick={handleRegenerate}
-                    disabled={supabaseEnvMissing || isProcessLocked}
+                    disabled={supabaseEnvMissing || isDocLocked}
                     className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isProcessLocked
+                      ${supabaseEnvMissing || isDocLocked
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
                         : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
                       }`}
@@ -3341,324 +3343,329 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           </div>
           
 
-          {/* Right Panel - Document Configuration */}
-          <div className="w-96 p-6 border-l border-gray-200 bg-white h-full overflow-y-auto">
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                Document Formatting
-              </h2>
-              <p className="text-sm text-gray-600">
-                Customize the appearance and layout of your generated proposal
-              </p>
-            </div>
-            
-            
-            {/* Page Layout */}
-             { !markdownContent &&(<ConfigSection
-              title="Page Layout"
-              icon={AlignLeft}
-              isExpanded={expandedSections.layout}
-              onToggle={() => toggleSection('layout')}
-              >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Page Orientation"
-                  value={docConfig.page_orientation}
-                  onChange={(value) => updateConfig('page_orientation', value)}
-                  type="select"
-                  options={[
-                    { value: 'portrait', label: 'Portrait' },
-                    { value: 'landscape', label: 'Landscape' }
-                  ]}
-                />
-                <InputField
-                  label="Text Alignment"
-                  value={docConfig.text_alignment}
-                  onChange={(value) => updateConfig('text_alignment', value)}
-                  type="select"
-                  options={[
-                    { value: 'left', label: 'Left' },
-                    { value: 'center', label: 'Center' },
-                    { value: 'right', label: 'Right' },
-                    { value: 'justify', label: 'Justify' }
-                  ]}
-                />
-              </div>
-              
-              <div className="grid grid-cols-4 gap-2">
-                <InputField
-                  label="Top Margin (in)"
-                  value={docConfig.top_margin}
-                  onChange={(value) => updateConfig('top_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Bottom Margin (in)"
-                  value={docConfig.bottom_margin}
-                  onChange={(value) => updateConfig('bottom_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Left Margin (in)"
-                  value={docConfig.left_margin}
-                  onChange={(value) => updateConfig('left_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Right Margin (in)"
-                  value={docConfig.right_margin}
-                  onChange={(value) => updateConfig('right_margin', value)}
-                  type="number"
-                />
-              </div>
-            </ConfigSection>)}
+          {/* Right Panel - Document Configuration (Word only) */}
+          {previewMode === "word" && (
+            <div className="w-96 p-6 border-l border-gray-200 bg-white h-full overflow-y-auto">
+              {showWordFormatting && (
+                <>
+                  <div className="mb-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                      Document Formatting
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      Customize the appearance and layout of your generated proposal
+                    </p>
+                  </div>
 
-            {/* Typography */}
-            { !markdownContent &&( <ConfigSection
-              title="Typography & Colors"
-              icon={Type}
-              isExpanded={expandedSections.typography}
-              onToggle={() => toggleSection('typography')}
-            >
-              <div className="grid grid-cols-3 gap-4">
-                <InputField
-                  label="Body Text Size (pt)"
-                  value={docConfig.body_font_size}
-                  onChange={(value) => updateConfig('body_font_size', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Heading Size (pt)"
-                  value={docConfig.heading_font_size}
-                  onChange={(value) => updateConfig('heading_font_size', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Title Size (pt)"
-                  value={docConfig.title_font_size}
-                  onChange={(value) => updateConfig('title_font_size', value)}
-                  type="number"
-                />
-              </div>
-              
-              <div className="grid grid-cols-3 gap-4">
-                <InputField
-                  label="Main Title Color"
-                  value={docConfig.title_color}
-                  onChange={(value) => updateConfig('title_color', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Heading Color"
-                  value={docConfig.heading_color}
-                  onChange={(value) => updateConfig('heading_color', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Body Text Color"
-                  value={docConfig.body_color}
-                  onChange={(value) => updateConfig('body_color', value)}
-                  type="color"
-                />
-              </div>
-            </ConfigSection>)}
+                  {/* Page Layout */}
+                  <ConfigSection
+                    title="Page Layout"
+                    icon={AlignLeft}
+                    isExpanded={expandedSections.layout}
+                    onToggle={() => toggleSection('layout')}
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Page Orientation"
+                        value={docConfig.page_orientation}
+                        onChange={(value) => updateConfig('page_orientation', value)}
+                        type="select"
+                        options={[
+                          { value: 'portrait', label: 'Portrait' },
+                          { value: 'landscape', label: 'Landscape' }
+                        ]}
+                      />
+                      <InputField
+                        label="Text Alignment"
+                        value={docConfig.text_alignment}
+                        onChange={(value) => updateConfig('text_alignment', value)}
+                        type="select"
+                        options={[
+                          { value: 'left', label: 'Left' },
+                          { value: 'center', label: 'Center' },
+                          { value: 'right', label: 'Right' },
+                          { value: 'justify', label: 'Justify' }
+                        ]}
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-4 gap-2">
+                      <InputField
+                        label="Top Margin (in)"
+                        value={docConfig.top_margin}
+                        onChange={(value) => updateConfig('top_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Bottom Margin (in)"
+                        value={docConfig.bottom_margin}
+                        onChange={(value) => updateConfig('bottom_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Left Margin (in)"
+                        value={docConfig.left_margin}
+                        onChange={(value) => updateConfig('left_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Right Margin (in)"
+                        value={docConfig.right_margin}
+                        onChange={(value) => updateConfig('right_margin', value)}
+                        type="number"
+                      />
+                    </div>
+                  </ConfigSection>
 
-            {/* Table Styling */}
-             { !markdownContent &&(<ConfigSection
-              title="Table Styling"
-              icon={Table}
-              isExpanded={expandedSections.tables}
-              onToggle={() => toggleSection('tables')}
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Auto-fit Tables"
-                  value={docConfig.auto_fit_tables}
-                  onChange={(value) => updateConfig('auto_fit_tables', value)}
-                  type="checkbox"
-                />
-                <InputField
-                  label="Show Borders"
-                  value={docConfig.show_table_borders}
-                  onChange={(value) => updateConfig('show_table_borders', value)}
-                  type="checkbox"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Table Width (%)"
-                  value={docConfig.table_width}
-                  onChange={(value) => updateConfig('table_width', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Table Font Size"
-                  value={docConfig.table_font_size}
-                  onChange={(value) => updateConfig('table_font_size', value)}
-                  type="number"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Header Background"
-                  value={docConfig.header_background}
-                  onChange={(value) => updateConfig('header_background', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Border Color"
-                  value={docConfig.border_color}
-                  onChange={(value) => updateConfig('border_color', value)}
-                  type="color"
-                />
-              </div>
-            </ConfigSection>)}
-            {/* Comments ConfigSection */}
-            {previewMode === "ppt" && (<ConfigSection
-              title="Comments"
-              icon={Text}
-              isExpanded={true}
-              onToggle={() => {}}
-            >
-             {commentConfigList.length > 0 && (
-  <div className="mt-4 space-y-3">
-    <h4 className="text-sm font-medium text-gray-700">Added Comments</h4>
-    {commentConfigList.map((comment, index) => (
-      <div
-        key={index}
-        className="p-3 border border-gray-200 rounded bg-gray-50 flex justify-between items-start gap-2"
-      >
-        <div className="flex-1">
-          <p className="text-xs text-gray-500 mb-1">
-            <span className="font-semibold">Content:</span> {comment.comment1}
-          </p>
-          <p className="text-xs text-gray-500">
-            <span className="font-semibold">Comment:</span> {comment.comment2}
-          </p>
-        </div>
-        
-      </div>
-    ))}
-  </div>
-)}
-            <div className="grid grid-cols-1 gap-4">
-              <InputField
-                label="Content"
-                value={currentCommentContent} // local state
-                onChange={(value) => setCurrentCommentContent(value as string)}
-                placeholder="Enter the Content"
-                isTextarea={true}
-                rows={6}
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-4">
-              <InputField
-                label="Comment"
-                value={currentCommentText} // local state
-                onChange={(value) => setCurrentCommentText(value as string)}
-                placeholder="Enter the Comment"
-                isTextarea={true}
-                rows={6}
-              />
-            </div>
-            <div className="mt-2">
-              <button
-                type="button"
-                disabled={isProcessLocked}
-                className={`px-4 py-2 rounded text-sm transition-colors ${
-                  isProcessLocked
-                    ? 'bg-blue-300 text-white/70 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-                onClick={() => {
-                  if (isProcessLocked) {
-                    return;
-                  }
-                  // Append new comment to the list
-                  setCommentConfigList(prev => [
-                    ...prev,
-                    { comment1: currentCommentContent, comment2: currentCommentText }
-                  ]);
-                  // Clear local inputs
-                  setCurrentCommentContent('');
-                  setCurrentCommentText('');
-                }}
-              >
-                Add Comment
-              </button>
-            </div>
-                        </ConfigSection>)}
+                  {/* Typography */}
+                  <ConfigSection
+                    title="Typography & Colors"
+                    icon={Type}
+                    isExpanded={expandedSections.typography}
+                    onToggle={() => toggleSection('typography')}
+                  >
+                    <div className="grid grid-cols-3 gap-4">
+                      <InputField
+                        label="Body Text Size (pt)"
+                        value={docConfig.body_font_size}
+                        onChange={(value) => updateConfig('body_font_size', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Heading Size (pt)"
+                        value={docConfig.heading_font_size}
+                        onChange={(value) => updateConfig('heading_font_size', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Title Size (pt)"
+                        value={docConfig.title_font_size}
+                        onChange={(value) => updateConfig('title_font_size', value)}
+                        type="number"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <InputField
+                        label="Main Title Color"
+                        value={docConfig.title_color}
+                        onChange={(value) => updateConfig('title_color', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Heading Color"
+                        value={docConfig.heading_color}
+                        onChange={(value) => updateConfig('heading_color', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Body Text Color"
+                        value={docConfig.body_color}
+                        onChange={(value) => updateConfig('body_color', value)}
+                        type="color"
+                      />
+                    </div>
+                  </ConfigSection>
 
-            {/* Header & Footer */}
-            { !markdownContent &&(
-              <ConfigSection
-              title="Branding & Headers"
-              icon={Layout}
-              isExpanded={expandedSections.branding}
-              onToggle={() => toggleSection('branding')}
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Include Header"
-                  value={docConfig.include_header}
-                  onChange={(value) => updateConfig('include_header', value)}
-                  type="checkbox"
-                />
-                <InputField
-                  label="Include Footer"
-                  value={docConfig.include_footer}
-                  onChange={(value) => updateConfig('include_footer', value)}
-                  type="checkbox"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Company Name"
-                  value={docConfig.company_name}
-                  onChange={(value) => updateConfig('company_name', value)}
-                  placeholder="Your Company Name"
-                />
-                <InputField
-                  label="Company Tagline"
-                  value={docConfig.company_tagline}
-                  onChange={(value) => updateConfig('company_tagline', value)}
-                  placeholder="Your tagline or slogan"
-                />
-              </div>
-              
-              <div className="space-y-4">
-                <InputField
-                  label="Footer Left Text"
-                  value={docConfig.footer_left}
-                  onChange={(value) => updateConfig('footer_left', value)}
-                  placeholder="Left footer content"
-                />
-                <InputField
-                  label="Footer Center Text"
-                  value={docConfig.footer_center}
-                  onChange={(value) => updateConfig('footer_center', value)}
-                  placeholder="Center footer content"
-                />
-                <InputField
-                  label="Footer Right Text"
-                  value={docConfig.footer_right}
-                  onChange={(value) => updateConfig('footer_right', value)}
-                  placeholder="Right footer content"
-                />
-              </div>
-              
-              <InputField
-                label="Show Page Numbers"
-                value={docConfig.show_page_numbers}
-                onChange={(value) => updateConfig('show_page_numbers', value)}
-                type="checkbox"
-              />
-            </ConfigSection>)}
-          </div>
-        </div>
+                  {/* Table Styling */}
+                  <ConfigSection
+                    title="Table Styling"
+                    icon={Table}
+                    isExpanded={expandedSections.tables}
+                    onToggle={() => toggleSection('tables')}
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Auto-fit Tables"
+                        value={docConfig.auto_fit_tables}
+                        onChange={(value) => updateConfig('auto_fit_tables', value)}
+                        type="checkbox"
+                      />
+                      <InputField
+                        label="Show Borders"
+                        value={docConfig.show_table_borders}
+                        onChange={(value) => updateConfig('show_table_borders', value)}
+                        type="checkbox"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Table Width (%)"
+                        value={docConfig.table_width}
+                        onChange={(value) => updateConfig('table_width', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Table Font Size"
+                        value={docConfig.table_font_size}
+                        onChange={(value) => updateConfig('table_font_size', value)}
+                        type="number"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Header Background"
+                        value={docConfig.header_background}
+                        onChange={(value) => updateConfig('header_background', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Border Color"
+                        value={docConfig.border_color}
+                        onChange={(value) => updateConfig('border_color', value)}
+                        type="color"
+                      />
+                    </div>
+                  </ConfigSection>
+                </>
+              )}
+
+              {/* Comments ConfigSection (visible after Word is generated) */}
+              {previewMode === "word" && Boolean(markdownContent || generatedDocument) && (
+                <ConfigSection
+                  title="Comments"
+                  icon={Text}
+                  isExpanded={true}
+                  onToggle={() => {}}
+                >
+                {commentConfigList.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-sm font-medium text-gray-700">Added Comments</h4>
+                    {commentConfigList.map((comment, index) => (
+                      <div
+                        key={index}
+                        className="p-3 border border-gray-200 rounded bg-gray-50 flex justify-between items-start gap-2"
+                      >
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500 mb-1">
+                            <span className="font-semibold">Content:</span> {comment.comment1}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            <span className="font-semibold">Comment:</span> {comment.comment2}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 gap-4">
+                  <InputField
+                    label="Content"
+                    value={currentCommentContent}
+                    onChange={(value) => setCurrentCommentContent(value as string)}
+                    placeholder="Enter the Content"
+                    isTextarea={true}
+                    rows={6}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <InputField
+                    label="Comment"
+                    value={currentCommentText}
+                    onChange={(value) => setCurrentCommentText(value as string)}
+                    placeholder="Enter the Comment"
+                    isTextarea={true}
+                    rows={6}
+                  />
+                </div>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    disabled={isProcessLocked}
+                    className={`px-4 py-2 rounded text-sm transition-colors ${
+                      isProcessLocked
+                        ? 'bg-blue-300 text-white/70 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                    onClick={() => {
+                      if (isProcessLocked) {
+                        return;
+                      }
+                      setCommentConfigList(prev => [
+                        ...prev,
+                        { comment1: currentCommentContent, comment2: currentCommentText }
+                      ]);
+                      setCurrentCommentContent('');
+                      setCurrentCommentText('');
+                    }}
+                  >
+                    Add Comment
+                  </button>
+                </div>
+              </ConfigSection>
+            )}
+
+              {/* Header & Footer */}
+              {showWordFormatting && (
+                <ConfigSection
+                  title="Branding & Headers"
+                  icon={Layout}
+                  isExpanded={expandedSections.branding}
+                  onToggle={() => toggleSection('branding')}
+                >
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                      label="Include Header"
+                      value={docConfig.include_header}
+                      onChange={(value) => updateConfig('include_header', value)}
+                      type="checkbox"
+                    />
+                    <InputField
+                      label="Include Footer"
+                      value={docConfig.include_footer}
+                      onChange={(value) => updateConfig('include_footer', value)}
+                      type="checkbox"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                      label="Company Name"
+                      value={docConfig.company_name}
+                      onChange={(value) => updateConfig('company_name', value)}
+                      placeholder="Your Company Name"
+                    />
+                    <InputField
+                      label="Company Tagline"
+                      value={docConfig.company_tagline}
+                      onChange={(value) => updateConfig('company_tagline', value)}
+                      placeholder="Your tagline or slogan"
+                    />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <InputField
+                      label="Footer Left Text"
+                      value={docConfig.footer_left}
+                      onChange={(value) => updateConfig('footer_left', value)}
+                      placeholder="Left footer content"
+                    />
+                    <InputField
+                      label="Footer Center Text"
+                      value={docConfig.footer_center}
+                      onChange={(value) => updateConfig('footer_center', value)}
+                      placeholder="Center footer content"
+                    />
+                    <InputField
+                      label="Footer Right Text"
+                      value={docConfig.footer_right}
+                      onChange={(value) => updateConfig('footer_right', value)}
+                      placeholder="Right footer content"
+                    />
+                  </div>
+                  
+                  <InputField
+                    label="Show Page Numbers"
+                    value={docConfig.show_page_numbers}
+                    onChange={(value) => updateConfig('show_page_numbers', value)}
+                    type="checkbox"
+                  />
+                </ConfigSection>
+              )}
+            </div>
+          )}
 
         {/* Hidden file inputs */}
         <input
@@ -3677,7 +3684,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         />
       </div>
     </div>
-
+    </div>
     </>
   );
 };
