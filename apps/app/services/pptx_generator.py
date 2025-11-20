@@ -993,6 +993,8 @@ class PptxGenerator:
                     
                     if is_thank_you:
                         icon_name = 'hand-waving'
+                    else:
+                        icon_name = self.icon_service.auto_select_icon(title_text, "")
                     
                     # *** FIX: Pass slide_data ***
                     self._add_centered_section_icon(slide, icon_name, title_text, layout_config, slide_data=data)
