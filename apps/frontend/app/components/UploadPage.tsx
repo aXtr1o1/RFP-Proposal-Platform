@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, ChevronUp, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle, Menu, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
-import { saveAllComments } from "./utils";
+import { saveAllComments, safeJsonParse } from "./utils";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000/api"; 
 const resolveApiBaseUrl = () => {

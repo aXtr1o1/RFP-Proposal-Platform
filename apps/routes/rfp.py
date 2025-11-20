@@ -1,9 +1,15 @@
 import logging
 from typing import Optional, Dict, Any, List
 import json
+<<<<<<< HEAD
 from fastapi import APIRouter, HTTPException, Body, Path, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
+=======
+from fastapi import APIRouter, HTTPException, Body, Path
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel
+>>>>>>> 806c20208cd2c947e0bcbd29955b5e6560642ac2
 from apps.wordgenAgent.app.api import wordgen_api
 from apps.api.services.supabase_service import (
     get_pdf_urls_by_uuid,
@@ -11,10 +17,13 @@ from apps.api.services.supabase_service import (
     get_latest_gen_id,
 )
 from apps.wordgenAgent.app.document import generate_word_from_markdown
+<<<<<<< HEAD
 
 from apps.app.core.ppt_generation import run_initial_generation
 from apps.app.core.ppt_regeneration import run_regeneration
 from apps.app.core.supabase_service import get_proposal_url
+=======
+>>>>>>> 806c20208cd2c947e0bcbd29955b5e6560642ac2
 
 logger = logging.getLogger("routes.rfp")
 router = APIRouter()
@@ -172,6 +181,7 @@ def download_proposal(
     except Exception as e:
         logger.exception(f"download failed for uuid={uuid}")
         raise HTTPException(status_code=500, detail=str(e))
+<<<<<<< HEAD
 
 class PPTInitialGenRequest(BaseModel):
     uuid: str
@@ -417,3 +427,5 @@ async def list_available_templates():
     except Exception as e:
         logger.exception("/templates failed")
         raise HTTPException(status_code=500, detail=str(e))
+=======
+>>>>>>> 806c20208cd2c947e0bcbd29955b5e6560642ac2
