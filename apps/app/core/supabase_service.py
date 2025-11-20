@@ -6,7 +6,7 @@ from datetime import datetime
 
 from supabase import Client, create_client
 from postgrest.exceptions import APIError
-from config import settings
+from apps.app.config import settings
 
 logger = logging.getLogger("supabase_service")
 
@@ -100,34 +100,39 @@ class SupabaseService:
         ppt_url: str,
         generated_content: Dict[str, Any],
         language: str,
+        template_id: str,  # This is the template name (e.g., "arweqah")
         user_preference: str = "",
-        is_regeneration: bool = False,
         max_retries: int = 3
     ) -> str:
         """
         Save generation record to ppt_gen table with retry logic
         """
-        if not all([uuid_str, gen_id, ppt_genid, ppt_url]):
-            raise ValueError("UUID, Gen ID, PPT Gen ID, and PPT URL are required")
+        if not all([uuid_str, gen_id, ppt_genid, ppt_url, template_id]):
+            raise ValueError("uuid, gen_id, ppt_genid, ppt_url, and template_id are required")
+        
+        if not generated_content:
+            raise ValueError("generated_content cannot be empty")
         
         for attempt in range(1, max_retries + 1):
             try:
-                logger.info(f"Saving generation record (attempt {attempt}/{max_retries}): ppt_genid={ppt_genid}")
+                logger.info(f"💾 Saving generation record (attempt {attempt}/{max_retries}): ppt_genid={ppt_genid}")
                 
                 payload = {
                     "uuid": uuid_str,
                     "gen_id": gen_id,
                     "ppt_genid": ppt_genid,
-                    "general_preference": user_preference if not is_regeneration else None,
+                    "ppt_template": template_id,  # ✅ Template name goes here
+                    "general_preference": user_preference if user_preference else None,
                     "generated_content": json.dumps(generated_content),
                     "proposal_ppt": ppt_url,
-                    "ppt_template": generated_content.get("template_id"),
                     "regen_comments": None,
                     "created_at": datetime.utcnow().isoformat()
                 }
                 
                 self.client.table(self.ppt_table).insert(payload).execute()
-                logger.info(f"Generation record saved: {ppt_genid}")
+                logger.info(f"✅ Generation record saved: {ppt_genid}")
+                logger.info(f"   Template: {template_id}")
+                logger.info(f"   Language: {language}")
                 
                 return ppt_genid
             
@@ -147,6 +152,7 @@ class SupabaseService:
                 raise RuntimeError(f"Failed to save generation record: {str(e)}") from e
         
         raise RuntimeError("Failed to save generation record after all retries")
+
     
     # ==================== REGENERATION ====================
     

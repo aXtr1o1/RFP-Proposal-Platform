@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict, Any
-from models.presentation import SlideContent, BulletPoint
+from apps.app.models.presentation import SlideContent, BulletPoint
 
 logger = logging.getLogger("content_validator")
 
