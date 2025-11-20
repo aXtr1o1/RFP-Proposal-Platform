@@ -2181,7 +2181,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "text/event-stream",
+          "Accept": "application/json",
         },
         body: JSON.stringify({
           uuid: jobUuid,
@@ -2193,59 +2193,116 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         }),
       });
 
-      if (!response.ok) {
-        const txt = await response.text().catch(() => "");
-        throw new Error(`Backend /regenerate failed: ${response.status} ${txt}`);
-      }
-
       let streamedMarkdown = "";
       let regenWordLink: string | null = null;
       let regenGenId: string | null = null;
       let backendUpdatedMarkdown: string | null = null;
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      const isStream = contentType.includes("text/event-stream");
 
-      await streamSseResponse(response, {
-        onChunk: (chunk) => {
-          streamedMarkdown += chunk;
-          setMarkdownContent(streamedMarkdown);
-        },
-        onStage: (payload) => {
-          const stageKey =
-            typeof payload === "string"
-              ? payload
-              : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
-          if (stageKey) {
-            setProcessingStage(resolveStageMessage(stageKey));
-          }
-        },
-        onResult: (payload) => {
-          if (payload && typeof payload === "object" && "markdown" in payload) {
-            const fullMarkdown = (payload as { markdown?: string }).markdown;
-            if (typeof fullMarkdown === "string") {
-              streamedMarkdown = fullMarkdown;
-              setMarkdownContent(fullMarkdown);
-            }
-          }
-        },
-        onDone: (payload) => {
-          if (payload && typeof payload === "object") {
-            const doneData = payload as { gen_id?: string; wordLink?: string; updated_markdown?: string | null };
-            if (doneData.gen_id) {
-              regenGenId = doneData.gen_id;
-            }
-            if (doneData.wordLink) {
-              regenWordLink = doneData.wordLink;
-            }
-            if (typeof doneData.updated_markdown === "string") {
-              backendUpdatedMarkdown = doneData.updated_markdown;
-            }
-          }
-        },
-        onError: (payload) => {
-          console.error("Regenerate stream error", payload);
-        },
-      });
+      if (isStream) {
+        if (!response.ok) {
+          const txt = await response.text().catch(() => "");
+          throw new Error(`Backend /regenerate failed: ${response.status} ${txt}`);
+        }
 
-      const finalGenId = regenGenId || generateUUID();
+        await streamSseResponse(response, {
+          onChunk: (chunk) => {
+            streamedMarkdown += chunk;
+            setMarkdownContent(streamedMarkdown);
+          },
+          onStage: (payload) => {
+            const stageKey =
+              typeof payload === "string"
+                ? payload
+                : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
+            if (stageKey) {
+              setProcessingStage(resolveStageMessage(stageKey));
+            }
+          },
+          onResult: (payload) => {
+            if (payload && typeof payload === "object" && "markdown" in payload) {
+              const fullMarkdown = (payload as { markdown?: string }).markdown;
+              if (typeof fullMarkdown === "string") {
+                streamedMarkdown = fullMarkdown;
+                setMarkdownContent(fullMarkdown);
+              }
+            }
+          },
+          onDone: (payload) => {
+            if (payload && typeof payload === "object") {
+              const doneData = payload as {
+                gen_id?: string;
+                regen_gen_id?: string;
+                new_gen_id?: string;
+                wordLink?: string;
+                updated_markdown?: string | null;
+              };
+              const returnedGenId = doneData.regen_gen_id || doneData.gen_id || doneData.new_gen_id;
+              if (returnedGenId) {
+                regenGenId = returnedGenId;
+                setSelectedGenId(returnedGenId);
+              }
+              if (doneData.wordLink) {
+                regenWordLink = doneData.wordLink;
+              }
+              if (typeof doneData.updated_markdown === "string") {
+                backendUpdatedMarkdown = doneData.updated_markdown;
+                setMarkdownContent(backendUpdatedMarkdown);
+              }
+            }
+          },
+          onError: (payload) => {
+            console.error("Regenerate stream error", payload);
+          },
+        });
+      } else {
+        const payload = await readJsonOrThrow(response, "Backend /regenerate failed");
+        regenGenId =
+          (payload && typeof payload === "object" && (payload as any).regen_gen_id) ||
+          (payload && typeof payload === "object" && (payload as any).regenGenId) ||
+          (payload && typeof payload === "object" && (payload as any).gen_id) ||
+          (payload && typeof payload === "object" && (payload as any).new_gen_id) ||
+          null;
+        if (payload && typeof payload === "object" && (payload as any).wordLink) {
+          regenWordLink = (payload as any).wordLink;
+        }
+        const updatedMarkdown =
+          (payload && typeof payload === "object" && typeof (payload as any).updated_markdown === "string"
+            ? (payload as any).updated_markdown
+            : null) ||
+          (payload && typeof payload === "object" && typeof (payload as any).generated_markdown === "string"
+            ? (payload as any).generated_markdown
+            : null);
+        const directMarkdown =
+          payload && typeof payload === "object" && typeof (payload as any).markdown === "string"
+            ? (payload as any).markdown
+            : null;
+        backendUpdatedMarkdown = updatedMarkdown;
+        streamedMarkdown = updatedMarkdown || directMarkdown || "";
+      }
+
+      let finalGenId = regenGenId;
+      if (!finalGenId && supabase) {
+        try {
+          const { data: latestGenRow, error: latestGenError } = await supabase
+            .from("word_gen")
+            .select("gen_id")
+            .eq("uuid", jobUuid)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (!latestGenError && latestGenRow?.gen_id) {
+            finalGenId = latestGenRow.gen_id;
+          }
+        } catch (latestErr) {
+          console.warn("Unable to fetch latest gen_id after regeneration", latestErr);
+        }
+      }
+      if (!finalGenId) {
+        finalGenId = baseGenId;
+      }
+
       let regeneratedMarkdown: string | null = streamedMarkdown || null;
       const backendMarkdownClean =
         (typeof backendUpdatedMarkdown === "string" ? backendUpdatedMarkdown : "").trim();
@@ -2254,6 +2311,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       }
       if (!regeneratedMarkdown) {
         regeneratedMarkdown = getLocalMarkdownForGen(jobUuid, finalGenId);
+      }
+      if (!regeneratedMarkdown && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from("word_gen")
+            .select("generated_markdown")
+            .eq("uuid", jobUuid)
+            .eq("gen_id", finalGenId)
+            .limit(1)
+            .maybeSingle();
+          if (!error && data?.generated_markdown && typeof data.generated_markdown === "string") {
+            regeneratedMarkdown = data.generated_markdown;
+          }
+        } catch (fallbackErr) {
+          console.warn("Fallback markdown fetch failed", fallbackErr);
+        }
       }
 
       const proposalSnapshot: StoredProposalSnapshot = {
@@ -2267,9 +2340,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       setProcessingStage('Finalizing regenerated proposal...');
       setUploadProgress(100);
+      setSelectedUseCase(jobUuid);
       setSelectedGenId(finalGenId);
       setGeneratedDocument(proposalSnapshot.generatedDocument ?? 'Regenerated_Proposal.docx');
       setWordLink(proposalSnapshot.wordLink ?? null);
+      setIsGenerated(Boolean(regeneratedMarkdown || proposalSnapshot.wordLink));
       versionLanguageRef.current[finalGenId] = regenLanguage;
       setCurrentVersionLanguage(regenLanguage);
       setPdfLinkSafely(proposalSnapshot.pdfLink ?? null);
@@ -2279,16 +2354,19 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setIsRegenerationComplete(true);
       setIsRegenerating(false);
       pendingRegenCommentsRef.current = [];
-      // await persistGenerationRecord({
-      //   uuid: jobUuid,
-      //   genId: finalGenId,
-      //   regenComments: commentsSnapshot,
-      //   generalPreference: regenConfig,
-      //   rfpFiles: savedRfpFiles,
-      //   supportingFiles: savedSupportingFiles,
-      //   proposalSnapshot,
-      //   generatedMarkdown: regeneratedMarkdown,
-      // }, { skipSupabase: true });
+      await persistGenerationRecord(
+        {
+          uuid: jobUuid,
+          genId: finalGenId,
+          regenComments: commentsSnapshot,
+          generalPreference: regenConfig,
+          rfpFiles: savedRfpFiles,
+          supportingFiles: savedSupportingFiles,
+          proposalSnapshot,
+          generatedMarkdown: regeneratedMarkdown,
+        },
+        { skipSupabase: true }
+      );
     } catch (error) {
       console.error('Regenerate failed:', error);
       const message = error instanceof Error ? error.message : 'Regenerate failed. Please try again.';
@@ -2457,27 +2535,27 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         <div className="flex gap-2">
           <button
             type="button"
-            disabled={isProcessLocked}
+            disabled={isDocLocked}
             onClick={() => setLanguage('arabic')}
             className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
               ${language === 'arabic' 
                 ? 'bg-blue-600 text-white border-blue-600' 
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }
-              ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+              ${isDocLocked ? 'cursor-not-allowed opacity-60' : ''}`}
           >
             Arabic
           </button>
           <button
             type="button"
-            disabled={isProcessLocked}
+            disabled={isDocLocked}
             onClick={() => setLanguage('english')}
             className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
               ${language === 'english' 
                 ? 'bg-blue-600 text-white border-blue-600' 
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
               }
-              ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+              ${isDocLocked ? 'cursor-not-allowed opacity-60' : ''}`}
           >
             English
           </button>
@@ -2495,7 +2573,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         onDrop={(e) => handleDrop(e, 'rfp')}
         onClick={() => rfpInputRef.current?.click()}
         fileType="rfp"
-        disabled={isProcessLocked}
+        disabled={isDocLocked}
       />
 
       <FileUploadZone
@@ -2509,7 +2587,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         onDrop={(e) => handleDrop(e, 'supporting')}
         onClick={() => supportingInputRef.current?.click()}
         fileType="supporting"
-        disabled={isProcessLocked}
+        disabled={isDocLocked}
       />
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -2552,7 +2630,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               <select
                 value={pptTemplates.length ? selectedPptTemplate : ""}
                 onChange={(e) => setSelectedPptTemplate(e.target.value)}
-                disabled={pptTemplatesLoading || isProcessLocked || !pptTemplates.length}
+                disabled={pptTemplatesLoading || isPptLocked || !pptTemplates.length}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
               >
                 {pptTemplates.length === 0 ? (
@@ -2617,7 +2695,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           )}
         </div>
       </div>
-
     </>
   );
 
@@ -2814,16 +2891,23 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     const hasWord = Boolean(markdownContent);
     const hasPpt = pptSlides.length > 0;
 
+    if (isUploading || isRegenerating) {
+      return;
+    }
+
     if (previewMode === "word" && hasPpt && !hasWord) {
       setPreviewMode("ppt");
     }
-  }, [markdownContent, pptSlides.length, previewMode]);
+  }, [markdownContent, pptSlides.length, previewMode, isUploading, isRegenerating]);
 
   const isPptBusy = pptAction !== null;
+  const isPptLocked = isPptBusy;
   const isDocLocked = isUploading || isPdfConverting || deletingGenId !== null || isRegenerating;
-  const isProcessLocked = isDocLocked || isPptBusy;
+  const isProcessLocked = isDocLocked || isPptLocked;
+  const hasPptAsset = Boolean(pptPreviewUrl || (pptSlides.length > 0));
+  const hasPptGenHandle = Boolean(activePptGenId);
   const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
-  const canRegeneratePpt = Boolean(canGeneratePpt && activePptGenId);
+  const canRegeneratePpt = Boolean(canGeneratePpt && hasPptGenHandle && hasPptAsset);
   const selectedSlideSafeIndex = useMemo(() => {
     if (!pptSlides.length) {
       return -1;
@@ -2846,10 +2930,18 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       pptError ||
       (jobUuid && selectedGenId)
   );
-  const hasGeneratedPpt = Boolean(activePptGenId || pptSlides.length);
+  const hasGeneratedPpt = hasPptAsset;
   const pptPrimaryActionLabel = hasGeneratedPpt ? "Regenerate PPT" : "Generate PPT";
-  const pptPrimaryDisabled = hasGeneratedPpt || !canGeneratePpt || isProcessLocked || pptTemplatesLoading;
+  const pptPrimaryDisabled =
+    isPptLocked ||
+    pptTemplatesLoading ||
+    !canGeneratePpt ||
+    (hasGeneratedPpt && !canRegeneratePpt);
   const showWordFormatting = previewMode === "word" && !isRegenerating && !generatedDocument && !markdownContent;
+  const showRightPanel = previewMode === "word" || previewMode === "ppt";
+  const showCommentsForPreview =
+    (previewMode === "word" && Boolean(markdownContent || generatedDocument)) ||
+    (previewMode === "ppt" && hasGeneratedPpt);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -2867,10 +2959,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return;
     }
     if (hasGeneratedPpt) {
+      handleRegeneratePpt();
       return;
     }
     handleGeneratePpt();
-  }, [handleGeneratePpt, hasGeneratedPpt, pptPrimaryDisabled]);
+  }, [handleGeneratePpt, handleRegeneratePpt, hasGeneratedPpt, pptPrimaryDisabled]);
 
   const [comment1, setComment1] = useState<string>("");
   const [comment2, setComment2] = useState<string>("");
@@ -3152,72 +3245,98 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
               {generatedDocument && <GeneratedDocumentSection />}
 
-              <div className="pt-2">
-                {!isGenerated ? (
-                  <button
-                    onClick={handleUpload}
-                    disabled={supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                        : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
-                      }`}
-                  >
-                    {isUploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        {supabaseEnvMissing ? (
-                          <>
-                            <AlertCircle size={16} />
-                            Supabase Config Needed
-                          </>
-                        ) : (
-                          <>
-                            <Send size={16} />
-                            Upload & Process
-                          </>
-                        )}
-                      </>
-                    )}
-                  </button>
+          <div className="pt-2 space-y-2">
+            {previewMode === "word" && (
+              !isGenerated ? (
+                <button
+                  onClick={handleUpload}
+                  disabled={supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                    ${supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                      : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
+                    }`}
+                >
+                  {isUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      {supabaseEnvMissing ? (
+                        <>
+                          <AlertCircle size={16} />
+                          Supabase Config Needed
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Upload & Process
+                        </>
+                      )}
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleRegenerate}
+                  disabled={supabaseEnvMissing || isDocLocked}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                    ${supabaseEnvMissing || isDocLocked
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
+                    }`}
+                >
+                  {isUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      {supabaseEnvMissing ? (
+                        <>
+                          <AlertCircle size={16} />
+                          Supabase Config Needed
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Regenerate Document
+                        </>
+                      )}
+                    </>
+                  )}
+                </button>
+              )
+            )}
+
+            {previewMode === "ppt" && (
+              <button
+                onClick={handlePrimaryPptClick}
+                disabled={pptPrimaryDisabled || supabaseEnvMissing}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                  ${pptPrimaryDisabled || supabaseEnvMissing
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700 border border-blue-600'
+                  }`}
+              >
+                {pptTemplatesLoading ? (
+                  <>
+                    <Loader className="animate-spin" size={16} />
+                    Loading templates...
+                  </>
                 ) : (
-                  <button
-                    onClick={handleRegenerate}
-                    disabled={supabaseEnvMissing || isDocLocked}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isDocLocked
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
-                      }`}
-                  >
-                    {isUploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Regenerating...
-                      </>
-                    ) : (
-                      <>
-                        {supabaseEnvMissing ? (
-                          <>
-                            <AlertCircle size={16} />
-                            Supabase Config Needed
-                          </>
-                        ) : (
-                          <>
-                            <Send size={16} />
-                            Regenerate Document
-                          </>
-                        )}
-                      </>
-                    )}
-                  </button>
+                  <>
+                    <Layout size={16} />
+                    {pptPrimaryActionLabel}
+                  </>
                 )}
-              </div>
-            </div>
+              </button>
+            )}
+          </div>
+        </div>
           </div>
 
           {/* Center Panel - Loading/Output Display */}
@@ -3300,25 +3419,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                       </div>
                     )}
                   </div>
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={handlePrimaryPptClick}
-                      disabled={pptPrimaryDisabled}
-                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                        pptPrimaryDisabled
-                          ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                          : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
-                      }`}
-                    >
-                      {pptPrimaryActionLabel}
-                    </button>
-                  </div>
-                  {hasGeneratedPpt && (
-                    <p className="text-xs text-gray-500 text-right">
-                      Regeneration is currently disabled after the first PPT generation.
-                    </p>
-                  )}
                 </div>
               ) : isUploading && !markdownContent ? (
                 <LoadingDisplay />
@@ -3353,10 +3453,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           </div>
           
 
-          {/* Right Panel - Document Configuration (Word only) */}
-          {previewMode === "word" && (
+          {/* Right Panel */}
+          {showRightPanel && (
             <div className="w-96 p-6 border-l border-gray-200 bg-white h-full overflow-y-auto">
-              {showWordFormatting && (
+              {previewMode === "word" && showWordFormatting && (
                 <>
                   <div className="mb-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-2">
@@ -3532,8 +3632,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 </>
               )}
 
-              {/* Comments ConfigSection (visible after Word is generated) */}
-              {previewMode === "word" && Boolean(markdownContent || generatedDocument) && (
+              {showCommentsForPreview && (
                 <ConfigSection
                   title="Comments"
                   icon={Text}
@@ -3583,14 +3682,14 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 <div className="mt-2">
                   <button
                     type="button"
-                    disabled={isProcessLocked}
+                    disabled={isDocLocked}
                     className={`px-4 py-2 rounded text-sm transition-colors ${
-                      isProcessLocked
+                      isDocLocked
                         ? 'bg-blue-300 text-white/70 cursor-not-allowed'
                         : 'bg-blue-600 text-white hover:bg-blue-700'
                     }`}
                     onClick={() => {
-                      if (isProcessLocked) {
+                      if (isDocLocked) {
                         return;
                       }
                       setCommentConfigList(prev => [
@@ -3607,8 +3706,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               </ConfigSection>
             )}
 
-              {/* Header & Footer */}
-              {showWordFormatting && (
+              {previewMode === "word" && showWordFormatting && (
                 <ConfigSection
                   title="Branding & Headers"
                   icon={Layout}
