@@ -1010,11 +1010,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   );
 
   const persistGenerationRecord = useCallback(
-    async (snapshot: GenerationSnapshotInput) => {
+    async (snapshot: GenerationSnapshotInput, options?: { skipSupabase?: boolean }) => {
       const record = buildParsedRecord(snapshot);
+      const shouldPersist = !options?.skipSupabase;
 
       try {
-        if (supabase) {
+        if (supabase && shouldPersist) {
           const ensurePptGenRow = async () => {
             const attempts = [
               { ppt_genid: snapshot.genId, gen_id: snapshot.genId, uuid: snapshot.uuid },
@@ -1998,22 +1999,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSelectedGenId(genId);
       pendingRegenCommentsRef.current = [];
       setCommentConfigList([]);
-      await persistGenerationRecord({
-        uuid,
-        genId,
-        rfpFiles: storedRfpFiles,
-        supportingFiles: storedSupportingFiles,
-        generalPreference: config,
-        regenComments: [],
-        proposalSnapshot: {
-          config,
-          language,
-          docConfig,
-          wordLink: docxShareUrl,
-          generatedDocument: 'Generated_Proposal.docx',
-        },
-        generatedMarkdown: proposalContent ?? null,
-      });
+      // await persistGenerationRecord({
+      //   uuid,
+      //   genId,
+      //   rfpFiles: storedRfpFiles,
+      //   supportingFiles: storedSupportingFiles,
+      //   generalPreference: config,
+      //   regenComments: [],
+      //   proposalSnapshot: {
+      //     config,
+      //     language,
+      //     docConfig,
+      //     wordLink: docxShareUrl,
+      //     generatedDocument: 'Generated_Proposal.docx',
+      //   },
+      //   generatedMarkdown: proposalContent ?? null,
+      // }, { skipSupabase: true });
     } catch (error) {
       console.error('Upload failed:', error);
       alert('Upload failed. Please try again.');
@@ -2067,20 +2068,20 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSelectedGenId(newGenId);
 
       // Pre-register the new generation so the backend can find the uploaded files.
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: newGenId,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-        generalPreference: regenConfig,
-        regenComments: commentsSnapshot,
-        proposalSnapshot: {
-          config: regenConfig,
-          language: regenLanguage,
-          docConfig: regenDocConfig,
-        },
-        generatedMarkdown: null,
-      });
+      // await persistGenerationRecord({
+      //   uuid: jobUuid,
+      //   genId: newGenId,
+      //   rfpFiles: savedRfpFiles,
+      //   supportingFiles: savedSupportingFiles,
+      //   generalPreference: regenConfig,
+      //   regenComments: commentsSnapshot,
+      //   proposalSnapshot: {
+      //     config: regenConfig,
+      //     language: regenLanguage,
+      //     docConfig: regenDocConfig,
+      //   },
+      //   generatedMarkdown: null,
+      // }, { skipSupabase: true });
 
       const { docxShareUrl, proposalContent } = await postUuidConfig(jobUuid, regenConfig);
 
@@ -2099,22 +2100,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setCommentConfigList([]);
       setCurrentCommentContent("");
       setCurrentCommentText("");
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: newGenId,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-        generalPreference: regenConfig,
-        regenComments: commentsSnapshot,
-        proposalSnapshot: {
-          config: regenConfig,
-          language: regenLanguage,
-          docConfig: regenDocConfig,
-          wordLink: docxShareUrl,
-          generatedDocument: 'Generated_Proposal.docx',
-        },
-        generatedMarkdown: proposalContent ?? null,
-      });
+      // await persistGenerationRecord({
+      //   uuid: jobUuid,
+      //   genId: newGenId,
+      //   rfpFiles: savedRfpFiles,
+      //   supportingFiles: savedSupportingFiles,
+      //   generalPreference: regenConfig,
+      //   regenComments: commentsSnapshot,
+      //   proposalSnapshot: {
+      //     config: regenConfig,
+      //     language: regenLanguage,
+      //     docConfig: regenDocConfig,
+      //     wordLink: docxShareUrl,
+      //     generatedDocument: 'Generated_Proposal.docx',
+      //   },
+      //   generatedMarkdown: proposalContent ?? null,
+      // }, { skipSupabase: true });
     } catch (error) {
       console.error('Language change regeneration failed:', error);
       alert('Regenerate failed. Please try again.');
@@ -2269,16 +2270,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setIsRegenerationComplete(true);
       setIsRegenerating(false);
       pendingRegenCommentsRef.current = [];
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: finalGenId,
-        regenComments: commentsSnapshot,
-        generalPreference: regenConfig,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-        proposalSnapshot,
-        generatedMarkdown: regeneratedMarkdown,
-      });
+      // await persistGenerationRecord({
+      //   uuid: jobUuid,
+      //   genId: finalGenId,
+      //   regenComments: commentsSnapshot,
+      //   generalPreference: regenConfig,
+      //   rfpFiles: savedRfpFiles,
+      //   supportingFiles: savedSupportingFiles,
+      //   proposalSnapshot,
+      //   generatedMarkdown: regeneratedMarkdown,
+      // }, { skipSupabase: true });
     } catch (error) {
       console.error('Regenerate failed:', error);
       const message = error instanceof Error ? error.message : 'Regenerate failed. Please try again.';
