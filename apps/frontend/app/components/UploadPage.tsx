@@ -2201,6 +2201,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       let streamedMarkdown = "";
       let regenWordLink: string | null = null;
       let regenGenId: string | null = null;
+      let backendUpdatedMarkdown: string | null = null;
 
       await streamSseResponse(response, {
         onChunk: (chunk) => {
@@ -2227,12 +2228,15 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         },
         onDone: (payload) => {
           if (payload && typeof payload === "object") {
-            const doneData = payload as { gen_id?: string; wordLink?: string };
+            const doneData = payload as { gen_id?: string; wordLink?: string; updated_markdown?: string | null };
             if (doneData.gen_id) {
               regenGenId = doneData.gen_id;
             }
             if (doneData.wordLink) {
               regenWordLink = doneData.wordLink;
+            }
+            if (typeof doneData.updated_markdown === "string") {
+              backendUpdatedMarkdown = doneData.updated_markdown;
             }
           }
         },
@@ -2243,6 +2247,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       const finalGenId = regenGenId || generateUUID();
       let regeneratedMarkdown: string | null = streamedMarkdown || null;
+      const backendMarkdownClean =
+        (typeof backendUpdatedMarkdown === "string" ? backendUpdatedMarkdown : "").trim();
+      if (!regeneratedMarkdown && backendMarkdownClean) {
+        regeneratedMarkdown = backendMarkdownClean;
+      }
       if (!regeneratedMarkdown) {
         regeneratedMarkdown = getLocalMarkdownForGen(jobUuid, finalGenId);
       }
