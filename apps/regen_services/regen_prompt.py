@@ -175,6 +175,7 @@ def regenerate_markdown_with_comments(
             raise ValueError("Empty source markdown — cannot regenerate")
 
         comments = comments or []
+        updated_markdown = ''
         if not comments:
             logger.warning("No comments provided, reusing original markdown")
             updated_markdown = source_markdown

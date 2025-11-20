@@ -111,6 +111,8 @@ async def regenerate(request: RegenRequest):
             comments=comments,
         )
 
+        logger.info(f"Result from regenerate_markdown_with_comments: {result}")
+        
         return {
             "status": "success",
             "uuid": uuid,
@@ -118,14 +120,13 @@ async def regenerate(request: RegenRequest):
             "regen_gen_id": new_gen_id,
             "language": language,
             "wordLink": result.get("wordLink"),
-            "updated_markdown": result.get("update_markdown"),
+            "updated_markdown": result.get("updated_markdown")
         }
 
     except Exception as e:
         logger.exception("regenerate endpoint failed")
         raise HTTPException(status_code=500, detail=f"Regeneration failed: {str(e)}")
-
-
+    
 class DownloadRequest(BaseModel):
     docConfig: Optional[Dict[str, Any]] = None
     language: Optional[str] = "english"
