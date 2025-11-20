@@ -224,7 +224,7 @@
   },
   
   "agenda": {
-    "max_items": 5,
+    "max_items": 6,
     "title_font_size": 54,
     "item_font_size": 20,
     "line_spacing": 1.8,

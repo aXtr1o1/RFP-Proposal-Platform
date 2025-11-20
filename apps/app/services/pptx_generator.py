@@ -977,13 +977,8 @@ class PptxGenerator:
                     title_text = title_text[:max_title - 3] + "..."
                     data.title = title_text
                 
-                # *** FIX: Use correct layout for section ***
                 layout_config = self.get_layout_for_content(content_type, data)
                 
-                # Log what layout we got
-                logger.info(f"Section layout config: {list(layout_config.keys())}")
-                
-                # Add background for section headers
                 bg_config = layout_config.get('background', {})
                 if bg_config.get('type') == 'image':
                     self._add_background(slide, bg_config)
@@ -991,7 +986,6 @@ class PptxGenerator:
                 
                 # Add centered icon for section
                 if self.icon_service and title_text:
-                    # *** FIX: Localized thank you detection ***
                     is_thank_you = any(
                         word in title_text.lower() 
                         for word in ['thank', 'thanks', 'شكر', 'شكراً', 'شكرا']
@@ -999,14 +993,14 @@ class PptxGenerator:
                     
                     if is_thank_you:
                         icon_name = 'hand-waving'
-                    else:
-                        icon_name = self.icon_service.auto_select_icon(title_text, "")
                     
-                    self._add_centered_section_icon(slide, icon_name, title_text, layout_config)
+                    # *** FIX: Pass slide_data ***
+                    self._add_centered_section_icon(slide, icon_name, title_text, layout_config, slide_data=data)
                 
                 # Add title text
                 for element in elements:
                     if element.get('type') == 'text' and element.get('id') == 'title':
+                        title_element = element
                         self._add_text_master(slide, element, data, content_type)
                 
                 logger.info(f"✓ Section slide complete: {title_text}")
@@ -1050,10 +1044,10 @@ class PptxGenerator:
                             title_text = title_text[:max_title - 3] + "..."
                             data.title = title_text
                         
-                        # Add icon to title
-                        if self.icon_service and title_text and not (has_chart or has_table):
+                        # ✅ FIX: Add icon to title for ALL slides including table/chart
+                        if self.icon_service and title_text:
                             icon_name = self.icon_service.auto_select_icon(title_text, "")
-                            self._add_icon_to_title(slide, icon_name, element)
+                            self._add_icon_to_title(slide, icon_name, element, slide_data=data)
                         
                         self._add_text_master(slide, element, data, content_type)
                     
@@ -1105,7 +1099,6 @@ class PptxGenerator:
             
             # Add page number
             if page_num and self.config.get('page_numbering', {}).get('enabled', True):
-                # Check if this slide type should have page numbers
                 skip_title = self.config['page_numbering'].get('skip_title_slide', True)
                 skip_sections = self.config['page_numbering'].get('skip_section_headers', False)
                 
@@ -1115,22 +1108,35 @@ class PptxGenerator:
                     should_add = False
                 
                 if should_add:
-                    self.add_page_number(slide, page_num)  # ← CALLED ONLY ONCE HERE
+                    self.add_page_number(slide, page_num)
         
         except Exception as e:
             logger.error(f"❌ Slide creation error: {e}")
             raise
-
+        
     # ========================================================================
     # ICON INTEGRATION - RTL/LTR AWARE
     # ========================================================================
 
-    def _add_icon_to_title(self, slide, icon_name: str, title_element: Dict) -> None:
+    def _add_icon_to_title(self, slide, icon_name: str, title_element: Dict, slide_data=None) -> None:
         """Add icon next to title with language-specific positioning"""
         if not self.icon_service:
             return
         
         try:
+            # *** FIX: Check if slide_data has icon_name field ***
+            if slide_data and hasattr(slide_data, 'icon_name') and slide_data.icon_name:
+                icon_name_from_data = slide_data.icon_name
+                logger.info(f"🎯 Using icon_name from slide_data: {icon_name_from_data}")
+                
+                # Try to match the icon_name
+                matched_icon = self.icon_service.fuzzy_match_icon_name(icon_name_from_data)
+                if matched_icon:
+                    icon_name = matched_icon
+                    logger.info(f"✅ Matched icon: {icon_name_from_data} → {matched_icon}")
+                else:
+                    logger.warning(f"⚠️ Could not match icon_name: {icon_name_from_data}, using auto-selected: {icon_name}")
+            
             pos = self.get_position(title_element, 'position')
             style = title_element.get('style', {})
             
@@ -1170,14 +1176,28 @@ class PptxGenerator:
                 )
                 logger.debug(f"✅ Icon added: {icon_name} ({'RTL' if is_rtl else 'LTR'})")
         except Exception as e:
-            logger.warning(f"⚠️  Icon render failed: {e}")
+            logger.warning(f"⚠️ Icon render failed: {e}")
 
-    def _add_centered_section_icon(self, slide, icon_name: str, title_text: str, layout_config: Dict) -> None:
+
+    def _add_centered_section_icon(self, slide, icon_name: str, title_text: str, layout_config: Dict, slide_data=None) -> None:
         """Add icon centered above title for section headers"""
         if not self.icon_service:
             return
         
         try:
+            # *** FIX: Check if slide_data has icon_name field ***
+            if slide_data and hasattr(slide_data, 'icon_name') and slide_data.icon_name:
+                icon_name_from_data = slide_data.icon_name
+                logger.info(f"🎯 Section using icon_name from slide_data: {icon_name_from_data}")
+                
+                # Try to match the icon_name
+                matched_icon = self.icon_service.fuzzy_match_icon_name(icon_name_from_data)
+                if matched_icon:
+                    icon_name = matched_icon
+                    logger.info(f"✅ Section matched icon: {icon_name_from_data} → {matched_icon}")
+                else:
+                    logger.warning(f"⚠️ Section could not match icon_name: {icon_name_from_data}, using auto-selected: {icon_name}")
+            
             elements = layout_config.get('elements', [])
             title_element = next((e for e in elements if e.get('id') == 'title'), None)
             
@@ -1212,7 +1232,7 @@ class PptxGenerator:
                 logger.info(f"✅ Section icon: {icon_name}")
         
         except Exception as e:
-            logger.warning(f"⚠️  Section icon failed: {e}")
+            logger.warning(f"⚠️ Section icon failed: {e}")
 
     def _add_title_underline(self, slide, title_element: Dict) -> None:
         """Add horizontal line below title"""
@@ -1778,11 +1798,24 @@ class PptxGenerator:
             
             # 2. Add icon INSIDE box (top-center)
             if self.icon_service:
-                icon_name = self.icon_service.auto_select_icon(bullet.text or "", "")
+                icon_name_to_use = None
+                
+                if hasattr(bullet, 'icon_name') and bullet.icon_name:
+                    icon_name_from_bullet = bullet.icon_name
+                    logger.info(f"🎯 Box {idx+1} using icon_name: {icon_name_from_bullet}")
+                    
+                    matched_icon = self.icon_service.fuzzy_match_icon_name(icon_name_from_bullet)
+                    if matched_icon:
+                        icon_name_to_use = matched_icon
+                        logger.info(f"✅ Box {idx+1} matched icon: {icon_name_from_bullet} → {matched_icon}")
+                
+                # Fallback to auto-selection
+                if not icon_name_to_use:
+                    icon_name_to_use = self.icon_service.auto_select_icon(bullet.text or "", "")
                 
                 try:
                     icon_data = self.icon_service.render_to_png(
-                        icon_name,
+                        icon_name_to_use,
                         size=int(icon_size * 96),
                         color=text_color
                     )
@@ -1834,6 +1867,17 @@ class PptxGenerator:
     # ========================================================================
     # ICON MASTER - RTL/LTR AWARE
     # ========================================================================
+    def _get_icon_name_from_data(self, data) -> Optional[str]:
+        """Extract icon_name from slide data with various fallbacks"""
+        # Try direct attribute
+        if hasattr(data, 'icon_name') and data.icon_name:
+            return data.icon_name
+        
+        # Try dict access
+        if isinstance(data, dict) and 'icon_name' in data:
+            return data['icon_name']
+        
+        return None
 
     def _add_icon_master(self, slide, element: Dict, data) -> None:
         """Add standalone icon with RTL/LTR positioning"""
