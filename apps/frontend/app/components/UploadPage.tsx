@@ -112,6 +112,34 @@ type PptSlide = {
   image_path?: string;
 };
 
+type PptTemplateInfo = {
+  id: string;
+  name: string;
+  description?: string;
+  version?: string;
+};
+
+type PptStats = {
+  total_slides?: number;
+  sections?: number;
+  content_slides?: number;
+  two_column_slides?: number;
+  charts?: number;
+  tables?: number;
+  images?: number;
+  icons_count?: number;
+};
+
+type ParsedPptContent = {
+  slides: PptSlide[];
+  meta: {
+    title?: string;
+    template_id?: string;
+    language?: string;
+    stats?: PptStats;
+  };
+};
+
 const extractFileNameFromUrl = (url: string | null | undefined): string => {
   if (!url) {
     return "document";
@@ -672,7 +700,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [pptLoading, setPptLoading] = useState(false);
   const [pptError, setPptError] = useState<string | null>(null);
   const [pptPreviewUrl, setPptPreviewUrl] = useState<string | null>(null);
+  const [activePptGenId, setActivePptGenId] = useState<string | null>(null);
+  const [pptSummary, setPptSummary] = useState<{ title?: string; template_id?: string; language?: string; stats?: PptStats } | null>(null);
+  const [pptTemplates, setPptTemplates] = useState<PptTemplateInfo[]>([]);
+  const [selectedPptTemplate, setSelectedPptTemplate] = useState<string>("arweqah");
+  const [pptTemplatesLoading, setPptTemplatesLoading] = useState(false);
+  const [pptTemplatesError, setPptTemplatesError] = useState<string | null>(null);
+  const [pptActionStatus, setPptActionStatus] = useState<string | null>(null);
+  const [pptAction, setPptAction] = useState<"initial" | "regen" | null>(null);
   const [previewMode, setPreviewMode] = useState<"word" | "ppt">("word");
+  const normalizedLanguageLabel = language === "arabic" ? "Arabic" : "English";
   const pendingRegenCommentsRef = useRef<CommentItem[]>([]);
   const versionLanguageRef = useRef<Record<string, string>>({});
   const [currentVersionLanguage, setCurrentVersionLanguage] = useState<string>('arabic');
@@ -694,6 +731,18 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     setIsPdfConverting(false);
   }, [setPdfLinkSafely]);
 
+  const resetPptState = useCallback(() => {
+    setPptSlides([]);
+    setPptPreviewUrl(null);
+    setPptError(null);
+    setPptSummary(null);
+    setActivePptGenId(null);
+    setSelectedSlideIndex(0);
+    setPptActionStatus(null);
+    setPptAction(null);
+    setPptLoading(false);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (pdfLink && pdfLink.startsWith("blob:")) {
@@ -704,6 +753,54 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   useEffect(() => {
     setExpandedVersionDetails({});
   }, [generationHistory]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    const fetchTemplates = async () => {
+      setPptTemplatesLoading(true);
+      setPptTemplatesError(null);
+      try {
+        const response = await fetch(apiPath("/templates"), {
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const detail =
+            (payload && typeof payload === "object" && "detail" in payload ? payload.detail : null) ||
+            "Failed to load templates";
+          throw new Error(detail);
+        }
+        const templates = Array.isArray(payload.templates) ? payload.templates : [];
+        if (isMounted) {
+          setPptTemplates(templates);
+          setSelectedPptTemplate((current) => {
+            if (current && templates.some((tpl: PptTemplateInfo) => tpl.id === current)) {
+              return current;
+            }
+            return templates[0]?.id || current;
+          });
+        }
+      } catch (err) {
+        if (!isMounted || (err instanceof DOMException && err.name === "AbortError")) {
+          return;
+        }
+        setPptTemplatesError(err instanceof Error ? err.message : "Unable to load templates");
+      } finally {
+        if (isMounted) {
+          setPptTemplatesLoading(false);
+        }
+      }
+    };
+
+    fetchTemplates();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
 
   const getWordFileName = useCallback((): string => {
     const explicitName = wordLink ? extractFileNameFromUrl(wordLink) : null;
@@ -889,28 +986,70 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     [findGenerationRecord]
   );
 
-  const parsePptSlides = (raw: any): PptSlide[] => {
+  const parsePptContent = (raw: any): ParsedPptContent => {
+    const meta: ParsedPptContent["meta"] = {};
+    const normalizeSlide = (slide: any): PptSlide => ({
+      title: slide?.title || "",
+      content: Array.isArray(slide?.content)
+        ? slide.content
+        : Array.isArray(slide)
+          ? slide
+          : [],
+      notes: slide?.notes || "",
+      layout_type: slide?.layout_type,
+      layout_index: slide?.layout_index,
+      chart_data: slide?.chart_data,
+      image_path: slide?.image_path,
+    });
+
     if (!raw) {
-      return [];
+      return { slides: [], meta };
     }
     try {
       const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-      if (!Array.isArray(parsed)) {
-        return [];
+      if (Array.isArray(parsed)) {
+        return {
+          slides: parsed.map(normalizeSlide),
+          meta,
+        };
       }
-      return parsed.map((slide) => ({
-        title: slide?.title || "",
-        content: Array.isArray(slide?.content) ? slide.content : [],
-        notes: slide?.notes || "",
-        layout_type: slide?.layout_type,
-        layout_index: slide?.layout_index,
-        chart_data: slide?.chart_data,
-        image_path: slide?.image_path,
-      }));
+      if (parsed && typeof parsed === "object") {
+        if (parsed.title) {
+          meta.title = parsed.title;
+        }
+        if (parsed.template_id) {
+          meta.template_id = parsed.template_id;
+        }
+        if (parsed.language) {
+          meta.language = parsed.language;
+        }
+        if (parsed.stats && typeof parsed.stats === "object") {
+          meta.stats = parsed.stats as PptStats;
+        }
+        const slidesSource = Array.isArray(parsed.slides) ? parsed.slides : [];
+        return {
+          slides: slidesSource.map(normalizeSlide),
+          meta,
+        };
+      }
     } catch (err) {
       console.error("Failed to parse PPT content", err);
-      return [];
     }
+    return { slides: [], meta };
+  };
+
+  const readJsonOrThrow = async (response: Response, fallbackMessage: string) => {
+    const raw = await response.text();
+    const payload = safeJsonParse<any>(raw, {});
+    if (!response.ok) {
+      const detail =
+        (payload && typeof payload === "object" && typeof payload.detail === "string" && payload.detail) ||
+        (payload && typeof payload === "object" && typeof payload.error === "string" && payload.error) ||
+        raw ||
+        fallbackMessage;
+      throw new Error(detail);
+    }
+    return payload;
   };
 
   const loadPptSlidesForGen = useCallback(
@@ -918,6 +1057,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       if (!supabase) {
         setPptSlides([]);
         setPptPreviewUrl(null);
+        setPptSummary(null);
+        setActivePptGenId(null);
         setPptError("Supabase is not configured for PPT preview.");
         return;
       }
@@ -927,7 +1068,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       try {
         const { data, error } = await supabase
           .from("ppt_gen")
-          .select("generated_content, ppt_genid, proposal_ppt, created_at")
+          .select("generated_content, ppt_genid, proposal_ppt, created_at, ppt_template")
           .eq("uuid", uuid)
           .eq("gen_id", genId)
           .order("created_at", { ascending: false })
@@ -941,13 +1082,21 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         if (!row) {
           setPptSlides([]);
           setPptPreviewUrl(null);
+          setPptSummary(null);
+          setActivePptGenId(null);
           setPptError("No PPT found for this version yet.");
           return;
         }
 
-        const slides = parsePptSlides(row.generated_content);
+        const { slides, meta } = parsePptContent(row.generated_content);
+        const summary = {
+          ...meta,
+          template_id: meta.template_id || row.ppt_template || undefined,
+        };
         setPptSlides(slides);
         setPptPreviewUrl(row.proposal_ppt || null);
+        setActivePptGenId(row.ppt_genid || null);
+        setPptSummary(summary);
         if (!slides.length) {
           setPptError("Slides are not ready yet for this version.");
         }
@@ -955,6 +1104,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         console.error("Failed to load PPT preview", err);
         setPptSlides([]);
         setPptPreviewUrl(null);
+        setPptSummary(null);
+        setActivePptGenId(null);
         setPptError("Unable to load PPT preview.");
       } finally {
         setPptLoading(false);
@@ -1174,10 +1325,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       loadPptSlidesForGen(selectedUseCase, selectedGenId);
       return;
     }
-    setPptSlides([]);
-    setPptPreviewUrl(null);
-    setPptError(null);
-  }, [selectedUseCase, selectedGenId, loadPptSlidesForGen]);
+    resetPptState();
+  }, [selectedUseCase, selectedGenId, loadPptSlidesForGen, resetPptState]);
 
   const toggleUseCaseExpansion = useCallback((uuid: string) => {
     setExpandedUseCases(prev => ({
@@ -1307,6 +1456,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   }, [generationHistory, getGenerationLabel, selectedGenId, selectedUseCase, sortedUseCases]);
 
   const wordDownloadName = useMemo(() => getWordFileName(), [getWordFileName]);
+  const selectedTemplateDetails = useMemo(
+    () => pptTemplates.find((tpl) => tpl.id === selectedPptTemplate) || null,
+    [pptTemplates, selectedPptTemplate]
+  );
+  const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
+  const canRegeneratePpt = Boolean(canGeneratePpt && activePptGenId);
 
   const hasHistory = sortedUseCases.length > 0;
   const historyHelperText = hasHistory
@@ -1681,6 +1836,129 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }
   }, [pdfLink, wordLink, jobUuid, setPdfLinkSafely, setPdfError, setIsPdfConverting, getPdfFileName, getWordFileName]);
 
+  const handleGeneratePpt = async () => {
+    if (!jobUuid || !selectedGenId) {
+      alert("Select a proposal version before generating a presentation.");
+      return;
+    }
+    if (!selectedPptTemplate) {
+      alert("Select a PPT template before generating a presentation.");
+      return;
+    }
+
+    const normalizedLanguage = normalizedLanguageLabel;
+    setPreviewMode("ppt");
+    setPptAction("initial");
+    setPptActionStatus("Generating presentation...");
+    setPptError(null);
+    setPptLoading(true);
+
+    try {
+      const response = await fetch(apiPath("/ppt-initialgen"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          uuid: jobUuid,
+          gen_id: selectedGenId,
+          language: normalizedLanguage,
+          template_id: selectedPptTemplate,
+          user_preference: config,
+        }),
+      });
+
+      const payload = await readJsonOrThrow(response, "Failed to generate presentation");
+      const { slides, meta } = parsePptContent(payload.generated_content);
+      const summary = {
+        ...meta,
+        template_id: meta.template_id || selectedPptTemplate,
+      };
+
+      setPptSlides(slides);
+      setSelectedSlideIndex(0);
+      setPptSummary(summary);
+      setPptPreviewUrl(payload.ppt_url || null);
+      setActivePptGenId(payload.ppt_genid || null);
+      if (!slides.length) {
+        setPptError("Slides will appear here once processing finishes.");
+      }
+      setPptActionStatus("Presentation ready.");
+    } catch (error) {
+      console.error("ppt-initialgen failed:", error);
+      setPptError(error instanceof Error ? error.message : "Unable to generate presentation.");
+      setPptActionStatus(null);
+    } finally {
+      setPptLoading(false);
+      setPptAction(null);
+    }
+  };
+
+  const handleRegeneratePpt = async () => {
+    if (!jobUuid || !selectedGenId) {
+      alert("Select a proposal version before regenerating a presentation.");
+      return;
+    }
+    if (!activePptGenId) {
+      alert("Generate a presentation first before requesting a PPT regeneration.");
+      return;
+    }
+    if (!selectedPptTemplate) {
+      alert("Select a PPT template before regenerating the presentation.");
+      return;
+    }
+
+    const normalizedLanguage = normalizedLanguageLabel;
+    const commentsPayload = commentConfigList.length ? commentConfigList : [];
+
+    setPreviewMode("ppt");
+    setPptAction("regen");
+    setPptActionStatus("Applying feedback to presentation...");
+    setPptError(null);
+    setPptLoading(true);
+
+    try {
+      const response = await fetch(apiPath("/ppt-regeneration"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          uuid: jobUuid,
+          gen_id: selectedGenId,
+          ppt_genid: activePptGenId,
+          language: normalizedLanguage,
+          template_id: selectedPptTemplate,
+          regen_comments: commentsPayload,
+        }),
+      });
+
+      const payload = await readJsonOrThrow(response, "Failed to regenerate presentation");
+      const { slides, meta } = parsePptContent(payload.generated_content);
+      const summary = {
+        ...meta,
+        template_id: meta.template_id || selectedPptTemplate,
+      };
+
+      setPptSlides(slides);
+      setSelectedSlideIndex(0);
+      setPptSummary(summary);
+      setPptPreviewUrl(payload.ppt_url || null);
+      setActivePptGenId(payload.new_ppt_genid || null);
+      if (!slides.length) {
+        setPptError("Slides will appear here once processing finishes.");
+      }
+      setPptActionStatus("Presentation regenerated.");
+    } catch (error) {
+      console.error("ppt-regeneration failed:", error);
+      setPptError(error instanceof Error ? error.message : "Unable to regenerate presentation.");
+      setPptActionStatus(null);
+    } finally {
+      setPptLoading(false);
+      setPptAction(null);
+    }
+  };
+
   const handleUpload = async () => {
     if (!supabase) {
       alert('Supabase configuration missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
@@ -1697,10 +1975,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }
 
     setPreviewMode("word");
-    setPptSlides([]);
-    setPptPreviewUrl(null);
-    setPptError(null);
-    setSelectedSlideIndex(0);
+    resetPptState();
     setMarkdownContent(null);
     setIsUploading(true);
     setUploadProgress(0);
@@ -1864,10 +2139,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }
 
     setPreviewMode("word");
-    setPptSlides([]);
-    setPptPreviewUrl(null);
-    setPptError(null);
-    setSelectedSlideIndex(0);
+    resetPptState();
     const progressInterval = simulateProgress();
     setIsUploading(true);
     setIsRegenerating(true);
@@ -1982,10 +2254,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }
 
     setPreviewMode("word");
-    setPptSlides([]);
-    setPptPreviewUrl(null);
-    setPptError(null);
-    setSelectedSlideIndex(0);
+    resetPptState();
     try {
       pendingRegenCommentsRef.current = commentsSnapshot;
       setIsUploading(true);
@@ -2462,7 +2731,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }
   }, [markdownContent, pptSlides.length, previewMode]);
 
-  const isProcessLocked = isUploading || isPdfConverting || deletingGenId !== null;
+  const isPptBusy = pptAction !== null;
+  const isProcessLocked = isUploading || isPdfConverting || deletingGenId !== null || isPptBusy;
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -2953,6 +3223,123 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 </div>
               </div>
             </div>
+            {previewMode === "ppt" && (
+            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="flex-1 min-w-[220px]">
+                  <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">PPT Template</label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <select
+                      value={pptTemplates.length ? selectedPptTemplate : ""}
+                      onChange={(e) => setSelectedPptTemplate(e.target.value)}
+                      disabled={pptTemplatesLoading || isProcessLocked || !pptTemplates.length}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                    >
+                      {pptTemplates.length === 0 ? (
+                        <option value="">No templates detected</option>
+                      ) : (
+                        pptTemplates.map((tpl) => (
+                          <option key={tpl.id} value={tpl.id}>
+                            {tpl.name} {tpl.version ? `(${tpl.version})` : ""}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    {pptTemplatesLoading && <Loader className="animate-spin text-gray-500" size={16} />}
+                  </div>
+                  {selectedTemplateDetails?.description && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      {selectedTemplateDetails.description}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGeneratePpt}
+                    disabled={!canGeneratePpt || isProcessLocked || pptTemplatesLoading}
+                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                      !canGeneratePpt || isProcessLocked || pptTemplatesLoading
+                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                        : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    {pptAction === "initial" ? (
+                      <span className="flex items-center gap-2">
+                        <Loader className="animate-spin" size={16} />
+                        Generating…
+                      </span>
+                    ) : (
+                      "Generate PPT"
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRegeneratePpt}
+                    disabled={!canRegeneratePpt || isProcessLocked || pptTemplatesLoading}
+                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                      !canRegeneratePpt || isProcessLocked || pptTemplatesLoading
+                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                        : "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
+                    }`}
+                  >
+                    {pptAction === "regen" ? (
+                      <span className="flex items-center gap-2">
+                        <Loader className="animate-spin" size={16} />
+                        Regenerating…
+                      </span>
+                    ) : (
+                      "Regenerate PPT"
+                    )}
+                  </button>
+                </div>
+              </div>
+              {(pptActionStatus || pptTemplatesError || (!canGeneratePpt && !isUploading)) && (
+                <div className="mt-3 text-xs">
+                  {pptActionStatus && <p className="text-gray-600">{pptActionStatus}</p>}
+                  {pptTemplatesError && <p className="text-red-600">{pptTemplatesError}</p>}
+                  {!jobUuid && (
+                    <p className="text-gray-500">
+                      Generate or select a proposal version to unlock PPT controls.
+                    </p>
+                  )}
+                </div>
+              )}
+              {pptSummary && (
+                <div className="mt-4 space-y-3 text-xs text-gray-600">
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      {pptSummary.title || "Presentation"}
+                    </p>
+                    <p className="text-gray-500">
+                      Template: {pptSummary.template_id || selectedPptTemplate || "—"} • Language:{" "}
+                      {pptSummary.language || normalizedLanguageLabel}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Slides", value: pptSummary.stats?.total_slides ?? pptSlides.length },
+                      { label: "Sections", value: pptSummary.stats?.sections },
+                      { label: "Charts", value: pptSummary.stats?.charts },
+                      { label: "Images", value: pptSummary.stats?.images },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded border border-gray-100 bg-gray-50 px-3 py-2"
+                      >
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                          {item.label}
+                        </p>
+                        <p className="text-lg font-semibold text-gray-800">
+                          {typeof item.value === "number" ? item.value : "—"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            )}
             <div className="flex-1 min-h-0">
               {previewMode === "ppt" ? (
                 <PptPreview
@@ -3170,7 +3557,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               </div>
             </ConfigSection>)}
             {/* Comments ConfigSection */}
-            {(previewMode === "ppt" || markdownContent) && (<ConfigSection
+            {previewMode === "ppt" && (<ConfigSection
               title="Comments"
               icon={Text}
               isExpanded={true}
