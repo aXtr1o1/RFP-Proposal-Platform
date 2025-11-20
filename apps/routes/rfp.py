@@ -1,15 +1,9 @@
 import logging
 from typing import Optional, Dict, Any, List
 import json
-<<<<<<< HEAD
 from fastapi import APIRouter, HTTPException, Body, Path, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
-=======
-from fastapi import APIRouter, HTTPException, Body, Path
-from fastapi.responses import StreamingResponse, JSONResponse
-from pydantic import BaseModel
->>>>>>> 806c20208cd2c947e0bcbd29955b5e6560642ac2
 from apps.wordgenAgent.app.api import wordgen_api
 from apps.api.services.supabase_service import (
     get_pdf_urls_by_uuid,
@@ -17,13 +11,10 @@ from apps.api.services.supabase_service import (
     get_latest_gen_id,
 )
 from apps.wordgenAgent.app.document import generate_word_from_markdown
-<<<<<<< HEAD
 
 from apps.app.core.ppt_generation import run_initial_generation
 from apps.app.core.ppt_regeneration import run_regeneration
 from apps.app.core.supabase_service import get_proposal_url
-=======
->>>>>>> 806c20208cd2c947e0bcbd29955b5e6560642ac2
 
 logger = logging.getLogger("routes.rfp")
 router = APIRouter()
@@ -86,7 +77,7 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
 @router.post("/regenerate")
 async def regenerate(request: RegenRequest):
     """
-    Regenerates the proposal based on the previous gen_id (base version) - STREAMING.
+    Regenerates the proposal based on the previous gen_id (base version).
     """
     from apps.api.services import supabase_service
     from apps.regen_services import regen_prompt
@@ -103,7 +94,6 @@ async def regenerate(request: RegenRequest):
         base_markdown = supabase_service.get_markdown_content(uuid, base_gen_id)
         if not base_markdown:
             raise HTTPException(status_code=404, detail=f"No markdown found for gen_id={base_gen_id}")
-        
         regen_comments_str = json.dumps(comments, ensure_ascii=False)
         ok = supabase_service.create_regeneration_row(
             uuid=uuid,
@@ -112,26 +102,28 @@ async def regenerate(request: RegenRequest):
         )
         if not ok:
             raise HTTPException(status_code=400, detail="Failed to create regeneration version row")
+        result = regen_prompt.regenerate_markdown_with_comments(
+            uuid=uuid,
+            source_markdown=base_markdown,  
+            gen_id=new_gen_id,
+            docConfig=doc_config,
+            language=language,
+            comments=comments,
+        )
 
-        def stream_generator():
-            for chunk in regen_prompt.regenerate_markdown_with_comments_streaming(
-                uuid=uuid,
-                source_markdown=base_markdown,
-                gen_id=new_gen_id,
-                docConfig=doc_config,
-                language=language,
-                comments=comments,
-            ):
-                yield chunk
+        return {
+            "status": "success",
+            "uuid": uuid,
+            "base_gen_id": base_gen_id,
+            "regen_gen_id": new_gen_id,
+            "language": language,
+            "wordLink": result.get("wordLink"),
+        }
 
-        return StreamingResponse(stream_generator(), media_type="text/event-stream")
-
-    except HTTPException:
-        logger.exception("regenerate HTTP error")
-        raise
     except Exception as e:
         logger.exception("regenerate endpoint failed")
         raise HTTPException(status_code=500, detail=f"Regeneration failed: {str(e)}")
+
 
 class DownloadRequest(BaseModel):
     docConfig: Optional[Dict[str, Any]] = None
@@ -181,7 +173,6 @@ def download_proposal(
     except Exception as e:
         logger.exception(f"download failed for uuid={uuid}")
         raise HTTPException(status_code=500, detail=str(e))
-<<<<<<< HEAD
 
 class PPTInitialGenRequest(BaseModel):
     uuid: str
@@ -427,5 +418,3 @@ async def list_available_templates():
     except Exception as e:
         logger.exception("/templates failed")
         raise HTTPException(status_code=500, detail=str(e))
-=======
->>>>>>> 806c20208cd2c947e0bcbd29955b5e6560642ac2

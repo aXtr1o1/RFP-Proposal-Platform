@@ -1460,6 +1460,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     () => pptTemplates.find((tpl) => tpl.id === selectedPptTemplate) || null,
     [pptTemplates, selectedPptTemplate]
   );
+  const pptEmbedUrl = useMemo(() => {
+    if (!pptPreviewUrl) {
+      return null;
+    }
+    try {
+      return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(pptPreviewUrl)}`;
+    } catch (err) {
+      console.warn("Failed to build PPT embed URL", err);
+      return null;
+    }
+  }, [pptPreviewUrl]);
   const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
   const canRegeneratePpt = Boolean(canGeneratePpt && activePptGenId);
 
@@ -3178,7 +3189,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           </div>
 
           {/* Center Panel - Loading/Output Display */}
-          <div className="flex-1 h-full p-6 min-w-0 flex flex-col overflow-hidden">
+          <div className="flex-1 h-full p-6 min-w-0 flex flex-col overflow-y-auto">
             <div className="flex items-center justify-between mb-4 gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-semibold text-gray-800">Preview</span>
@@ -3342,13 +3353,25 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             )}
             <div className="flex-1 min-h-0">
               {previewMode === "ppt" ? (
-                <PptPreview
-                  slides={pptSlides}
-                  selectedIndex={selectedSlideIndex}
-                  onSelectSlide={setSelectedSlideIndex}
-                  isLoading={pptLoading}
-                  error={pptError}
-                />
+                <div className="flex flex-col gap-6 h-full">
+                  <PptPreview
+                    slides={pptSlides}
+                    selectedIndex={selectedSlideIndex}
+                    onSelectSlide={setSelectedSlideIndex}
+                    isLoading={pptLoading}
+                    error={pptError}
+                  />
+                  {pptEmbedUrl && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-h-[420px] overflow-hidden">
+                      <iframe
+                        title="PowerPoint preview"
+                        src={pptEmbedUrl}
+                        className="w-full h-full border-0"
+                        allowFullScreen
+                      />
+                    </div>
+                  )}
+                </div>
               ) : isUploading && !markdownContent ? (
                 <LoadingDisplay />
               ) : !isUploading && !markdownContent ? (
