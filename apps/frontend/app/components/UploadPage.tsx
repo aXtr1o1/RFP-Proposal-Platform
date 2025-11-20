@@ -212,7 +212,7 @@ const formatRelativeTimestamp = (value: string | null | undefined): string => {
 
 const formatSidebarTimestamp = (value: string | null | undefined): string => {
   if (!value) {
-    return "—";
+    return "-";
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -224,6 +224,47 @@ const formatSidebarTimestamp = (value: string | null | undefined): string => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+const collectSlideTextParts = (slide?: PptSlide): string[] => {
+  if (!slide) {
+    return [];
+  }
+  const parts: string[] = [];
+  if (typeof slide.title === "string" && slide.title.trim()) {
+    parts.push(slide.title.trim());
+  }
+  if (Array.isArray(slide.content)) {
+    slide.content.forEach((item) => {
+      if (typeof item === "string" && item.trim()) {
+        parts.push(item.trim());
+        return;
+      }
+      if (item && typeof item === "object") {
+        const typed = item as any;
+        if (typeof typed.heading === "string" && typed.heading.trim()) {
+          parts.push(typed.heading.trim());
+        } else if (typeof typed.text === "string" && typed.text.trim()) {
+          parts.push(typed.text.trim());
+        }
+        if (Array.isArray(typed.items)) {
+          const firstBullet = typed.items.find((entry: any) => typeof entry === "string" && entry.trim());
+          if (typeof firstBullet === "string" && firstBullet.trim()) {
+            parts.push(firstBullet.trim());
+          }
+        }
+      }
+    });
+  }
+  if (typeof slide.notes === "string" && slide.notes.trim()) {
+    parts.push(slide.notes.trim());
+  }
+  return parts.filter(Boolean);
+};
+
+const getSlidePreviewLines = (slide?: PptSlide, maxLines = 3): string[] => {
+  const parts = collectSlideTextParts(slide);
+  return parts.slice(0, maxLines);
 };
 
 const toStoredFileInfo = (file: { name: string; url: string; size?: number | null }): StoredFileInfo => ({
@@ -499,152 +540,6 @@ export const OutputDocumentDisplay = React.memo(
     JSON.stringify(prev.docConfig) === JSON.stringify(next.docConfig)
 );
 
-type PptPreviewProps = {
-  slides: PptSlide[];
-  selectedIndex: number;
-  onSelectSlide: (index: number) => void;
-  isLoading: boolean;
-  error: string | null;
-};
-
-const PptPreview: React.FC<PptPreviewProps> = ({
-  slides,
-  selectedIndex,
-  onSelectSlide,
-  isLoading,
-  error,
-}) => {
-  const hasSlides = slides.length > 0;
-  const safeIndex = Math.min(Math.max(selectedIndex, 0), Math.max(slides.length - 1, 0));
-  const activeSlide = hasSlides ? slides[safeIndex] : null;
-
-  const renderContentText = (item: any) => {
-    if (typeof item === "string") {
-      return item;
-    }
-    if (Array.isArray(item)) {
-      return item.join(", ");
-    }
-    if (item && typeof item === "object") {
-      try {
-        return JSON.stringify(item);
-      } catch {
-        return String(item);
-      }
-    }
-    return String(item ?? "");
-  };
-
-  if (isLoading) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Loader className="animate-spin" size={18} />
-          <span>Loading PPT preview…</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex overflow-hidden">
-      <div className="w-64 border-r border-gray-100 bg-gray-50 overflow-y-auto p-3 space-y-3">
-        {hasSlides ? (
-          slides.map((slide, index) => {
-            const snippet = slide.content && slide.content.length ? renderContentText(slide.content[0]) : "";
-            const isActive = index === safeIndex;
-            return (
-              <button
-                key={index}
-                type="button"
-                onClick={() => onSelectSlide(index)}
-                className={`w-full text-left rounded-md border px-3 py-2 transition-colors duration-150 ${
-                  isActive
-                    ? "bg-white border-blue-500 shadow-sm"
-                    : "bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm"
-                }`}
-              >
-                <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1">
-                  <span className="font-semibold text-gray-700">Slide {index + 1}</span>
-                  {typeof slide.layout_index === "number" && (
-                    <span className="text-gray-400">Layout {slide.layout_index}</span>
-                  )}
-                </div>
-                <p className="text-sm font-medium text-gray-800 truncate">{slide.title || "Untitled slide"}</p>
-                {snippet && <p className="text-xs text-gray-500 truncate mt-1">{snippet}</p>}
-              </button>
-            );
-          })
-        ) : (
-          <div className="text-xs text-gray-500 text-center px-2 py-6 border border-dashed border-gray-200 rounded-md">
-            No slides available yet.
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 p-6 overflow-auto">
-        {error && (
-          <div className="mb-4 px-3 py-2 rounded border border-red-200 bg-red-50 text-xs text-red-700">
-            {error}
-          </div>
-        )}
-
-        {activeSlide ? (
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 min-h-[420px] flex flex-col">
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>
-                Slide {safeIndex + 1} of {slides.length}
-              </span>
-              {activeSlide.layout_type && (
-                <span className="uppercase tracking-wide font-semibold text-gray-600">
-                  {activeSlide.layout_type}
-                </span>
-              )}
-            </div>
-            <div className="mt-4 flex-1 overflow-auto">
-              <h3 className="text-2xl font-semibold text-gray-900 mb-4">{activeSlide.title || "Untitled slide"}</h3>
-              {activeSlide.content && activeSlide.content.length > 0 ? (
-                <ul className="list-disc pl-5 space-y-2 text-gray-800">
-                  {activeSlide.content.map((item, idx) => (
-                    <li key={idx} className="text-sm leading-relaxed">
-                      {renderContentText(item)}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-500">No bullet content provided for this slide.</p>
-              )}
-
-              {activeSlide.chart_data && (
-                <div className="mt-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
-                  <div className="font-semibold text-gray-800 mb-1">{activeSlide.chart_data.title || "Chart"}</div>
-                  <p>Type: {activeSlide.chart_data.type || "N/A"}</p>
-                  {activeSlide.chart_data.data && (
-                    <p className="mt-1">
-                      Labels: {(activeSlide.chart_data.data.labels || []).join(", ")} | Values:{" "}
-                      {(activeSlide.chart_data.data.values || []).join(", ")}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {activeSlide.notes && (
-                <div className="mt-4 rounded border border-gray-200 bg-slate-50 p-3 text-xs text-gray-700">
-                  <div className="font-semibold text-gray-800 mb-1">Notes</div>
-                  <p className="leading-relaxed whitespace-pre-wrap">{activeSlide.notes}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="h-full flex items-center justify-center text-sm text-gray-500">
-            {error || "Select a version to load PPT slides."}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 
 interface UploadPageProps {}
 
@@ -1471,8 +1366,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return null;
     }
   }, [pptPreviewUrl]);
-  const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
-  const canRegeneratePpt = Boolean(canGeneratePpt && activePptGenId);
 
   const hasHistory = sortedUseCases.length > 0;
   const historyHelperText = hasHistory
@@ -2544,6 +2437,180 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     </div>
   );
 
+  const renderWordSidebarContent = () => (
+    <>
+      {/* Language Selection */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
+        <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
+          <Globe className="text-gray-500" size={16} /> Language
+        </h3>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={isProcessLocked}
+            onClick={() => setLanguage('arabic')}
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
+              ${language === 'arabic' 
+                ? 'bg-blue-600 text-white border-blue-600' 
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }
+              ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            Arabic
+          </button>
+          <button
+            type="button"
+            disabled={isProcessLocked}
+            onClick={() => setLanguage('english')}
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
+              ${language === 'english' 
+                ? 'bg-blue-600 text-white border-blue-600' 
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }
+              ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            English
+          </button>
+        </div>
+      </div>
+
+      <FileUploadZone
+        title="RFP Documents"
+        files={rfpFiles}
+        storedFiles={savedRfpFiles}
+        dragActive={dragActiveRfp}
+        onDragEnter={(e) => handleDrag(e, setDragActiveRfp)}
+        onDragLeave={(e) => handleDrag(e, setDragActiveRfp)}
+        onDragOver={(e) => handleDrag(e, setDragActiveRfp)}
+        onDrop={(e) => handleDrop(e, 'rfp')}
+        onClick={() => rfpInputRef.current?.click()}
+        fileType="rfp"
+        disabled={isProcessLocked}
+      />
+
+      <FileUploadZone
+        title="Supporting Files"
+        files={supportingFiles}
+        storedFiles={savedSupportingFiles}
+        dragActive={dragActiveSupporting}
+        onDragEnter={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDragLeave={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDragOver={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDrop={(e) => handleDrop(e, 'supporting')}
+        onClick={() => supportingInputRef.current?.click()}
+        fileType="supporting"
+        disabled={isProcessLocked}
+      />
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="border-b border-gray-100 p-4">
+          <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
+            <Settings className="text-gray-500" size={16} />
+            General Preferences
+          </h3>
+        </div>
+        
+        <div className="p-4">
+          <textarea
+            value={config}
+            onChange={(e) => setConfig(e.target.value)}
+            placeholder="Describe your proposal generation preferences..."
+            rows={4}
+            className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded text-xs focus:ring-1 focus:ring-gray-400 focus:border-gray-400 resize-none placeholder-gray-400"
+          />
+          <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+            Include tone, structure, and specific requirements
+          </p>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderPptSidebarContent = () => (
+    <>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
+        <div className="border-b border-gray-100 p-4">
+          <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
+            <Layout className="text-gray-500" size={16} />
+            Presentation
+          </h3>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">PPT Template</label>
+            <div className="mt-1 flex items-center gap-2">
+              <select
+                value={pptTemplates.length ? selectedPptTemplate : ""}
+                onChange={(e) => setSelectedPptTemplate(e.target.value)}
+                disabled={pptTemplatesLoading || isProcessLocked || !pptTemplates.length}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              >
+                {pptTemplates.length === 0 ? (
+                  <option value="">No templates detected</option>
+                ) : (
+                  pptTemplates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name} {tpl.version ? `(${tpl.version})` : ""}
+                    </option>
+                  ))
+                )}
+              </select>
+              {pptTemplatesLoading && <Loader className="animate-spin text-gray-500" size={16} />}
+            </div>
+            {selectedTemplateDetails?.description && (
+              <p className="text-xs text-gray-500 mt-2">
+                {selectedTemplateDetails.description}
+              </p>
+            )}
+          </div>
+          <div className="text-xs space-y-1">
+            {pptActionStatus && <p className="text-gray-600">{pptActionStatus}</p>}
+            {pptTemplatesError && <p className="text-red-600">{pptTemplatesError}</p>}
+            {pptError && <p className="text-red-600">{pptError}</p>}
+            {!jobUuid && (
+              <p className="text-gray-500">
+                Generate or select a proposal version to unlock PPT controls.
+              </p>
+            )}
+          </div>
+
+          {pptSummary && (
+            <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
+              <div className="col-span-2">
+                <p className="font-semibold text-gray-800">
+                  {pptSummary.title || "Presentation"}
+                </p>
+                <p className="text-gray-500">
+                  Template: {pptSummary.template_id || selectedPptTemplate || "-"} | Language:{" "}
+                  {pptSummary.language || normalizedLanguageLabel}
+                </p>
+              </div>
+              {[
+                { label: "Slides", value: pptSummary.stats?.total_slides ?? pptSlides.length },
+                { label: "Sections", value: pptSummary.stats?.sections },
+                { label: "Charts", value: pptSummary.stats?.charts },
+                { label: "Images", value: pptSummary.stats?.images },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded border border-gray-100 bg-gray-50 px-3 py-2"
+                >
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                    {item.label}
+                  </p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {typeof item.value === "number" ? item.value : "-"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+    </>
+  );
+
   const ConfigSection = ({ 
     title, 
     icon: Icon, 
@@ -2744,6 +2811,33 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
   const isPptBusy = pptAction !== null;
   const isProcessLocked = isUploading || isPdfConverting || deletingGenId !== null || isPptBusy;
+  const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
+  const canRegeneratePpt = Boolean(canGeneratePpt && activePptGenId);
+  const selectedSlideSafeIndex = useMemo(() => {
+    if (!pptSlides.length) {
+      return -1;
+    }
+    return Math.min(selectedSlideIndex, pptSlides.length - 1);
+  }, [pptSlides.length, selectedSlideIndex]);
+  const selectedSlide = useMemo(() => {
+    if (selectedSlideSafeIndex < 0) {
+      return null;
+    }
+    return pptSlides[selectedSlideSafeIndex] || null;
+  }, [pptSlides, selectedSlideSafeIndex]);
+  const selectedSlidePreviewLines = useMemo(
+    () => getSlidePreviewLines(selectedSlide || undefined, 4),
+    [selectedSlide]
+  );
+  const canOpenPptPreview = Boolean(
+    pptSlides.length ||
+      pptLoading ||
+      pptError ||
+      (jobUuid && selectedGenId)
+  );
+  const hasGeneratedPpt = Boolean(activePptGenId || pptSlides.length);
+  const pptPrimaryActionLabel = hasGeneratedPpt ? "Regenerate PPT" : "Generate PPT";
+  const pptPrimaryDisabled = hasGeneratedPpt || !canGeneratePpt || isProcessLocked || pptTemplatesLoading;
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -2755,6 +2849,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       document.body.style.cursor = previousCursor;
     };
   }, [isProcessLocked]);
+
+  const handlePrimaryPptClick = useCallback(() => {
+    if (pptPrimaryDisabled) {
+      return;
+    }
+    if (hasGeneratedPpt) {
+      return;
+    }
+    handleGeneratePpt();
+  }, [handleGeneratePpt, hasGeneratedPpt, pptPrimaryDisabled]);
 
   const [comment1, setComment1] = useState<string>("");
   const [comment2, setComment2] = useState<string>("");
@@ -3031,95 +3135,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               </div>
             </div>
 
-            <div className="space-y-1">
-              {/* Language Selection */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
-                <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
-                  <Globe className="text-gray-500" size={16} /> Language
-                </h3>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={isProcessLocked}
-                    onClick={() => setLanguage('arabic')}
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
-                      ${language === 'arabic' 
-                        ? 'bg-blue-600 text-white border-blue-600' 
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }
-                      ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    Arabic
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isProcessLocked}
-                    onClick={() => setLanguage('english')}
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
-                      ${language === 'english' 
-                        ? 'bg-blue-600 text-white border-blue-600' 
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }
-                      ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    English
-                  </button>
-                </div>
-              </div>
-
-              <FileUploadZone
-                title="RFP Documents"
-                files={rfpFiles}
-                storedFiles={savedRfpFiles}
-                dragActive={dragActiveRfp}
-                onDragEnter={(e) => handleDrag(e, setDragActiveRfp)}
-                onDragLeave={(e) => handleDrag(e, setDragActiveRfp)}
-                onDragOver={(e) => handleDrag(e, setDragActiveRfp)}
-                onDrop={(e) => handleDrop(e, 'rfp')}
-                onClick={() => rfpInputRef.current?.click()}
-                fileType="rfp"
-                disabled={isProcessLocked}
-              />
-
-              <FileUploadZone
-                title="Supporting Files"
-                files={supportingFiles}
-                storedFiles={savedSupportingFiles}
-                dragActive={dragActiveSupporting}
-                onDragEnter={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDragLeave={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDragOver={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDrop={(e) => handleDrop(e, 'supporting')}
-                onClick={() => supportingInputRef.current?.click()}
-                fileType="supporting"
-                disabled={isProcessLocked}
-              />
-
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div className="border-b border-gray-100 p-4">
-                  <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
-                    <Settings className="text-gray-500" size={16} />
-                    General Preferences
-                  </h3>
-                </div>
-                
-                <div className="p-4">
-                  <textarea
-                    value={config}
-                    onChange={(e) => setConfig(e.target.value)}
-                    placeholder="Describe your proposal generation preferences..."
-                    rows={4}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded text-xs focus:ring-1 focus:ring-gray-400 focus:border-gray-400 resize-none placeholder-gray-400"
-                  />
-                  <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                    Include tone, structure, and specific requirements
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-3">
+              {previewMode === "ppt" ? renderPptSidebarContent() : renderWordSidebarContent()}
 
               {generatedDocument && <GeneratedDocumentSection />}
 
-              <div className="pt-4">
+              <div className="pt-2">
                 {!isGenerated ? (
                   <button
                     onClick={handleUpload}
@@ -3184,7 +3205,6 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   </button>
                 )}
               </div>
-              
             </div>
           </div>
 
@@ -3222,11 +3242,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   </button>
                   <button
                     type="button"
-                    disabled={!pptSlides.length && !pptLoading && !pptError}
+                    disabled={!canOpenPptPreview}
                     onClick={() => setPreviewMode("ppt")}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
                       previewMode === "ppt" ? "bg-white shadow text-gray-900" : "text-gray-600"
-                    } ${!pptSlides.length && !pptLoading && !pptError ? "opacity-50 cursor-not-allowed" : ""}`}
+                    } ${!canOpenPptPreview ? "opacity-50 cursor-not-allowed" : ""}`}
                     aria-pressed={previewMode === "ppt"}
                   >
                     PPT
@@ -3234,142 +3254,58 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 </div>
               </div>
             </div>
-            {previewMode === "ppt" && (
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="flex-1 min-w-[220px]">
-                  <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">PPT Template</label>
-                  <div className="mt-1 flex items-center gap-2">
-                    <select
-                      value={pptTemplates.length ? selectedPptTemplate : ""}
-                      onChange={(e) => setSelectedPptTemplate(e.target.value)}
-                      disabled={pptTemplatesLoading || isProcessLocked || !pptTemplates.length}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    >
-                      {pptTemplates.length === 0 ? (
-                        <option value="">No templates detected</option>
-                      ) : (
-                        pptTemplates.map((tpl) => (
-                          <option key={tpl.id} value={tpl.id}>
-                            {tpl.name} {tpl.version ? `(${tpl.version})` : ""}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    {pptTemplatesLoading && <Loader className="animate-spin text-gray-500" size={16} />}
-                  </div>
-                  {selectedTemplateDetails?.description && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      {selectedTemplateDetails.description}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleGeneratePpt}
-                    disabled={!canGeneratePpt || isProcessLocked || pptTemplatesLoading}
-                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                      !canGeneratePpt || isProcessLocked || pptTemplatesLoading
-                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                        : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {pptAction === "initial" ? (
-                      <span className="flex items-center gap-2">
-                        <Loader className="animate-spin" size={16} />
-                        Generating…
-                      </span>
-                    ) : (
-                      "Generate PPT"
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRegeneratePpt}
-                    disabled={!canRegeneratePpt || isProcessLocked || pptTemplatesLoading}
-                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                      !canRegeneratePpt || isProcessLocked || pptTemplatesLoading
-                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                        : "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
-                    }`}
-                  >
-                    {pptAction === "regen" ? (
-                      <span className="flex items-center gap-2">
-                        <Loader className="animate-spin" size={16} />
-                        Regenerating…
-                      </span>
-                    ) : (
-                      "Regenerate PPT"
-                    )}
-                  </button>
-                </div>
-              </div>
-              {(pptActionStatus || pptTemplatesError || (!canGeneratePpt && !isUploading)) && (
-                <div className="mt-3 text-xs">
-                  {pptActionStatus && <p className="text-gray-600">{pptActionStatus}</p>}
-                  {pptTemplatesError && <p className="text-red-600">{pptTemplatesError}</p>}
-                  {!jobUuid && (
-                    <p className="text-gray-500">
-                      Generate or select a proposal version to unlock PPT controls.
-                    </p>
-                  )}
-                </div>
-              )}
-              {pptSummary && (
-                <div className="mt-4 space-y-3 text-xs text-gray-600">
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      {pptSummary.title || "Presentation"}
-                    </p>
-                    <p className="text-gray-500">
-                      Template: {pptSummary.template_id || selectedPptTemplate || "—"} • Language:{" "}
-                      {pptSummary.language || normalizedLanguageLabel}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: "Slides", value: pptSummary.stats?.total_slides ?? pptSlides.length },
-                      { label: "Sections", value: pptSummary.stats?.sections },
-                      { label: "Charts", value: pptSummary.stats?.charts },
-                      { label: "Images", value: pptSummary.stats?.images },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="rounded border border-gray-100 bg-gray-50 px-3 py-2"
-                      >
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          {item.label}
-                        </p>
-                        <p className="text-lg font-semibold text-gray-800">
-                          {typeof item.value === "number" ? item.value : "—"}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            )}
             <div className="flex-1 min-h-0">
               {previewMode === "ppt" ? (
-                <div className="flex flex-col gap-6 h-full">
-                  <PptPreview
-                    slides={pptSlides}
-                    selectedIndex={selectedSlideIndex}
-                    onSelectSlide={setSelectedSlideIndex}
-                    isLoading={pptLoading}
-                    error={pptError}
-                  />
-                  {pptEmbedUrl && (
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-h-[420px] overflow-hidden">
+                <div className="flex flex-col gap-4 h-full">
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-h-[420px] overflow-hidden select-text">
+                    {pptEmbedUrl ? (
                       <iframe
                         title="PowerPoint preview"
                         src={pptEmbedUrl}
                         className="w-full h-full border-0"
                         allowFullScreen
                       />
-                    </div>
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center p-6 text-sm text-gray-600">
+                        {pptLoading ? (
+                          "Loading PPT preview..."
+                        ) : selectedSlide && selectedSlidePreviewLines.length > 0 ? (
+                          <div className="w-full max-w-3xl mx-auto text-left space-y-2">
+                            <p className="text-base font-semibold text-gray-800">
+                              Slide {selectedSlideSafeIndex + 1}
+                              {selectedSlide.title ? ` - ${selectedSlide.title}` : ""}
+                            </p>
+                            <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                              {selectedSlidePreviewLines.map((line, idx) => (
+                                <li key={`slide-preview-${idx}`}>{line}</li>
+                              ))}
+                            </ul>
+                            {pptError && <p className="text-xs text-red-600">{pptError}</p>}
+                          </div>
+                        ) : (
+                          <span>{pptError || "PPT preview will appear here after generation."}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handlePrimaryPptClick}
+                      disabled={pptPrimaryDisabled}
+                      className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                        pptPrimaryDisabled
+                          ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                          : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                      }`}
+                    >
+                      {pptPrimaryActionLabel}
+                    </button>
+                  </div>
+                  {hasGeneratedPpt && (
+                    <p className="text-xs text-gray-500 text-right">
+                      Regeneration is currently disabled after the first PPT generation.
+                    </p>
                   )}
                 </div>
               ) : isUploading && !markdownContent ? (
@@ -3747,3 +3683,4 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 };
 
 export default UploadPage;
+
