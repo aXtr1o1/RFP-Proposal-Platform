@@ -2936,7 +2936,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     isPptLocked ||
     pptTemplatesLoading ||
     !canGeneratePpt ||
-    (hasGeneratedPpt && !canRegeneratePpt);
+    hasGeneratedPpt; // disable regen for now
   const showWordFormatting = previewMode === "word" && !isRegenerating && !generatedDocument && !markdownContent;
   const showRightPanel = previewMode === "word" || previewMode === "ppt";
   const showCommentsForPreview =
