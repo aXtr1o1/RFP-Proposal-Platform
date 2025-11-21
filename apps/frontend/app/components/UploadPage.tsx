@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
 import { saveAllComments, safeJsonParse } from "./utils";
 
-const DEFAULT_API_BASE_URL = "http://localhost:8000/api"; 
+const DEFAULT_API_BASE_URL = `http://${process.env.NEXT_PUBLIC_API_HOST}:8000/api`; 
 const resolveApiBaseUrl = () => {
   const raw = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
   if (!raw) {
@@ -212,7 +212,7 @@ const formatRelativeTimestamp = (value: string | null | undefined): string => {
 
 const formatSidebarTimestamp = (value: string | null | undefined): string => {
   if (!value) {
-    return "—";
+    return "-";
   }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -224,6 +224,47 @@ const formatSidebarTimestamp = (value: string | null | undefined): string => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+const collectSlideTextParts = (slide?: PptSlide): string[] => {
+  if (!slide) {
+    return [];
+  }
+  const parts: string[] = [];
+  if (typeof slide.title === "string" && slide.title.trim()) {
+    parts.push(slide.title.trim());
+  }
+  if (Array.isArray(slide.content)) {
+    slide.content.forEach((item) => {
+      if (typeof item === "string" && item.trim()) {
+        parts.push(item.trim());
+        return;
+      }
+      if (item && typeof item === "object") {
+        const typed = item as any;
+        if (typeof typed.heading === "string" && typed.heading.trim()) {
+          parts.push(typed.heading.trim());
+        } else if (typeof typed.text === "string" && typed.text.trim()) {
+          parts.push(typed.text.trim());
+        }
+        if (Array.isArray(typed.items)) {
+          const firstBullet = typed.items.find((entry: any) => typeof entry === "string" && entry.trim());
+          if (typeof firstBullet === "string" && firstBullet.trim()) {
+            parts.push(firstBullet.trim());
+          }
+        }
+      }
+    });
+  }
+  if (typeof slide.notes === "string" && slide.notes.trim()) {
+    parts.push(slide.notes.trim());
+  }
+  return parts.filter(Boolean);
+};
+
+const getSlidePreviewLines = (slide?: PptSlide, maxLines = 3): string[] => {
+  const parts = collectSlideTextParts(slide);
+  return parts.slice(0, maxLines);
 };
 
 const toStoredFileInfo = (file: { name: string; url: string; size?: number | null }): StoredFileInfo => ({
@@ -499,152 +540,6 @@ export const OutputDocumentDisplay = React.memo(
     JSON.stringify(prev.docConfig) === JSON.stringify(next.docConfig)
 );
 
-type PptPreviewProps = {
-  slides: PptSlide[];
-  selectedIndex: number;
-  onSelectSlide: (index: number) => void;
-  isLoading: boolean;
-  error: string | null;
-};
-
-const PptPreview: React.FC<PptPreviewProps> = ({
-  slides,
-  selectedIndex,
-  onSelectSlide,
-  isLoading,
-  error,
-}) => {
-  const hasSlides = slides.length > 0;
-  const safeIndex = Math.min(Math.max(selectedIndex, 0), Math.max(slides.length - 1, 0));
-  const activeSlide = hasSlides ? slides[safeIndex] : null;
-
-  const renderContentText = (item: any) => {
-    if (typeof item === "string") {
-      return item;
-    }
-    if (Array.isArray(item)) {
-      return item.join(", ");
-    }
-    if (item && typeof item === "object") {
-      try {
-        return JSON.stringify(item);
-      } catch {
-        return String(item);
-      }
-    }
-    return String(item ?? "");
-  };
-
-  if (isLoading) {
-    return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Loader className="animate-spin" size={18} />
-          <span>Loading PPT preview…</span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex overflow-hidden">
-      <div className="w-64 border-r border-gray-100 bg-gray-50 overflow-y-auto p-3 space-y-3">
-        {hasSlides ? (
-          slides.map((slide, index) => {
-            const snippet = slide.content && slide.content.length ? renderContentText(slide.content[0]) : "";
-            const isActive = index === safeIndex;
-            return (
-              <button
-                key={index}
-                type="button"
-                onClick={() => onSelectSlide(index)}
-                className={`w-full text-left rounded-md border px-3 py-2 transition-colors duration-150 ${
-                  isActive
-                    ? "bg-white border-blue-500 shadow-sm"
-                    : "bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm"
-                }`}
-              >
-                <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1">
-                  <span className="font-semibold text-gray-700">Slide {index + 1}</span>
-                  {typeof slide.layout_index === "number" && (
-                    <span className="text-gray-400">Layout {slide.layout_index}</span>
-                  )}
-                </div>
-                <p className="text-sm font-medium text-gray-800 truncate">{slide.title || "Untitled slide"}</p>
-                {snippet && <p className="text-xs text-gray-500 truncate mt-1">{snippet}</p>}
-              </button>
-            );
-          })
-        ) : (
-          <div className="text-xs text-gray-500 text-center px-2 py-6 border border-dashed border-gray-200 rounded-md">
-            No slides available yet.
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 p-6 overflow-auto">
-        {error && (
-          <div className="mb-4 px-3 py-2 rounded border border-red-200 bg-red-50 text-xs text-red-700">
-            {error}
-          </div>
-        )}
-
-        {activeSlide ? (
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 min-h-[420px] flex flex-col">
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>
-                Slide {safeIndex + 1} of {slides.length}
-              </span>
-              {activeSlide.layout_type && (
-                <span className="uppercase tracking-wide font-semibold text-gray-600">
-                  {activeSlide.layout_type}
-                </span>
-              )}
-            </div>
-            <div className="mt-4 flex-1 overflow-auto">
-              <h3 className="text-2xl font-semibold text-gray-900 mb-4">{activeSlide.title || "Untitled slide"}</h3>
-              {activeSlide.content && activeSlide.content.length > 0 ? (
-                <ul className="list-disc pl-5 space-y-2 text-gray-800">
-                  {activeSlide.content.map((item, idx) => (
-                    <li key={idx} className="text-sm leading-relaxed">
-                      {renderContentText(item)}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-500">No bullet content provided for this slide.</p>
-              )}
-
-              {activeSlide.chart_data && (
-                <div className="mt-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
-                  <div className="font-semibold text-gray-800 mb-1">{activeSlide.chart_data.title || "Chart"}</div>
-                  <p>Type: {activeSlide.chart_data.type || "N/A"}</p>
-                  {activeSlide.chart_data.data && (
-                    <p className="mt-1">
-                      Labels: {(activeSlide.chart_data.data.labels || []).join(", ")} | Values:{" "}
-                      {(activeSlide.chart_data.data.values || []).join(", ")}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {activeSlide.notes && (
-                <div className="mt-4 rounded border border-gray-200 bg-slate-50 p-3 text-xs text-gray-700">
-                  <div className="font-semibold text-gray-800 mb-1">Notes</div>
-                  <p className="leading-relaxed whitespace-pre-wrap">{activeSlide.notes}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="h-full flex items-center justify-center text-sm text-gray-500">
-            {error || "Select a version to load PPT slides."}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 
 interface UploadPageProps {}
 
@@ -1115,11 +1010,12 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   );
 
   const persistGenerationRecord = useCallback(
-    async (snapshot: GenerationSnapshotInput) => {
+    async (snapshot: GenerationSnapshotInput, options?: { skipSupabase?: boolean }) => {
       const record = buildParsedRecord(snapshot);
+      const shouldPersist = !options?.skipSupabase;
 
       try {
-        if (supabase) {
+        if (supabase && shouldPersist) {
           const ensurePptGenRow = async () => {
             const attempts = [
               { ppt_genid: snapshot.genId, gen_id: snapshot.genId, uuid: snapshot.uuid },
@@ -1460,8 +1356,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     () => pptTemplates.find((tpl) => tpl.id === selectedPptTemplate) || null,
     [pptTemplates, selectedPptTemplate]
   );
-  const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
-  const canRegeneratePpt = Boolean(canGeneratePpt && activePptGenId);
+  const pptEmbedUrl = useMemo(() => {
+    if (!pptPreviewUrl) {
+      return null;
+    }
+    try {
+      return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(pptPreviewUrl)}`;
+    } catch (err) {
+      console.warn("Failed to build PPT embed URL", err);
+      return null;
+    }
+  }, [pptPreviewUrl]);
 
   const hasHistory = sortedUseCases.length > 0;
   const historyHelperText = hasHistory
@@ -2094,22 +1999,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSelectedGenId(genId);
       pendingRegenCommentsRef.current = [];
       setCommentConfigList([]);
-      await persistGenerationRecord({
-        uuid,
-        genId,
-        rfpFiles: storedRfpFiles,
-        supportingFiles: storedSupportingFiles,
-        generalPreference: config,
-        regenComments: [],
-        proposalSnapshot: {
-          config,
-          language,
-          docConfig,
-          wordLink: docxShareUrl,
-          generatedDocument: 'Generated_Proposal.docx',
-        },
-        generatedMarkdown: proposalContent ?? null,
-      });
+      // await persistGenerationRecord({
+      //   uuid,
+      //   genId,
+      //   rfpFiles: storedRfpFiles,
+      //   supportingFiles: storedSupportingFiles,
+      //   generalPreference: config,
+      //   regenComments: [],
+      //   proposalSnapshot: {
+      //     config,
+      //     language,
+      //     docConfig,
+      //     wordLink: docxShareUrl,
+      //     generatedDocument: 'Generated_Proposal.docx',
+      //   },
+      //   generatedMarkdown: proposalContent ?? null,
+      // }, { skipSupabase: true });
     } catch (error) {
       console.error('Upload failed:', error);
       alert('Upload failed. Please try again.');
@@ -2163,20 +2068,20 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSelectedGenId(newGenId);
 
       // Pre-register the new generation so the backend can find the uploaded files.
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: newGenId,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-        generalPreference: regenConfig,
-        regenComments: commentsSnapshot,
-        proposalSnapshot: {
-          config: regenConfig,
-          language: regenLanguage,
-          docConfig: regenDocConfig,
-        },
-        generatedMarkdown: null,
-      });
+      // await persistGenerationRecord({
+      //   uuid: jobUuid,
+      //   genId: newGenId,
+      //   rfpFiles: savedRfpFiles,
+      //   supportingFiles: savedSupportingFiles,
+      //   generalPreference: regenConfig,
+      //   regenComments: commentsSnapshot,
+      //   proposalSnapshot: {
+      //     config: regenConfig,
+      //     language: regenLanguage,
+      //     docConfig: regenDocConfig,
+      //   },
+      //   generatedMarkdown: null,
+      // }, { skipSupabase: true });
 
       const { docxShareUrl, proposalContent } = await postUuidConfig(jobUuid, regenConfig);
 
@@ -2195,22 +2100,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setCommentConfigList([]);
       setCurrentCommentContent("");
       setCurrentCommentText("");
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: newGenId,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-        generalPreference: regenConfig,
-        regenComments: commentsSnapshot,
-        proposalSnapshot: {
-          config: regenConfig,
-          language: regenLanguage,
-          docConfig: regenDocConfig,
-          wordLink: docxShareUrl,
-          generatedDocument: 'Generated_Proposal.docx',
-        },
-        generatedMarkdown: proposalContent ?? null,
-      });
+      // await persistGenerationRecord({
+      //   uuid: jobUuid,
+      //   genId: newGenId,
+      //   rfpFiles: savedRfpFiles,
+      //   supportingFiles: savedSupportingFiles,
+      //   generalPreference: regenConfig,
+      //   regenComments: commentsSnapshot,
+      //   proposalSnapshot: {
+      //     config: regenConfig,
+      //     language: regenLanguage,
+      //     docConfig: regenDocConfig,
+      //     wordLink: docxShareUrl,
+      //     generatedDocument: 'Generated_Proposal.docx',
+      //   },
+      //   generatedMarkdown: proposalContent ?? null,
+      // }, { skipSupabase: true });
     } catch (error) {
       console.error('Language change regeneration failed:', error);
       alert('Regenerate failed. Please try again.');
@@ -2276,7 +2181,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "text/event-stream",
+          "Accept": "application/json",
         },
         body: JSON.stringify({
           uuid: jobUuid,
@@ -2288,58 +2193,140 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         }),
       });
 
-      if (!response.ok) {
-        const txt = await response.text().catch(() => "");
-        throw new Error(`Backend /regenerate failed: ${response.status} ${txt}`);
-      }
-
       let streamedMarkdown = "";
       let regenWordLink: string | null = null;
       let regenGenId: string | null = null;
+      let backendUpdatedMarkdown: string | null = null;
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      const isStream = contentType.includes("text/event-stream");
 
-      await streamSseResponse(response, {
-        onChunk: (chunk) => {
-          streamedMarkdown += chunk;
-          setMarkdownContent(streamedMarkdown);
-        },
-        onStage: (payload) => {
-          const stageKey =
-            typeof payload === "string"
-              ? payload
-              : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
-          if (stageKey) {
-            setProcessingStage(resolveStageMessage(stageKey));
-          }
-        },
-        onResult: (payload) => {
-          if (payload && typeof payload === "object" && "markdown" in payload) {
-            const fullMarkdown = (payload as { markdown?: string }).markdown;
-            if (typeof fullMarkdown === "string") {
-              streamedMarkdown = fullMarkdown;
-              setMarkdownContent(fullMarkdown);
-            }
-          }
-        },
-        onDone: (payload) => {
-          if (payload && typeof payload === "object") {
-            const doneData = payload as { gen_id?: string; wordLink?: string };
-            if (doneData.gen_id) {
-              regenGenId = doneData.gen_id;
-            }
-            if (doneData.wordLink) {
-              regenWordLink = doneData.wordLink;
-            }
-          }
-        },
-        onError: (payload) => {
-          console.error("Regenerate stream error", payload);
-        },
-      });
+      if (isStream) {
+        if (!response.ok) {
+          const txt = await response.text().catch(() => "");
+          throw new Error(`Backend /regenerate failed: ${response.status} ${txt}`);
+        }
 
-      const finalGenId = regenGenId || generateUUID();
+        await streamSseResponse(response, {
+          onChunk: (chunk) => {
+            streamedMarkdown += chunk;
+            setMarkdownContent(streamedMarkdown);
+          },
+          onStage: (payload) => {
+            const stageKey =
+              typeof payload === "string"
+                ? payload
+                : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
+            if (stageKey) {
+              setProcessingStage(resolveStageMessage(stageKey));
+            }
+          },
+          onResult: (payload) => {
+            if (payload && typeof payload === "object" && "markdown" in payload) {
+              const fullMarkdown = (payload as { markdown?: string }).markdown;
+              if (typeof fullMarkdown === "string") {
+                streamedMarkdown = fullMarkdown;
+                setMarkdownContent(fullMarkdown);
+              }
+            }
+          },
+          onDone: (payload) => {
+            if (payload && typeof payload === "object") {
+              const doneData = payload as {
+                gen_id?: string;
+                regen_gen_id?: string;
+                new_gen_id?: string;
+                wordLink?: string;
+                updated_markdown?: string | null;
+              };
+              const returnedGenId = doneData.regen_gen_id || doneData.gen_id || doneData.new_gen_id;
+              if (returnedGenId) {
+                regenGenId = returnedGenId;
+                setSelectedGenId(returnedGenId);
+              }
+              if (doneData.wordLink) {
+                regenWordLink = doneData.wordLink;
+              }
+              if (typeof doneData.updated_markdown === "string") {
+                backendUpdatedMarkdown = doneData.updated_markdown;
+                setMarkdownContent(backendUpdatedMarkdown);
+              }
+            }
+          },
+          onError: (payload) => {
+            console.error("Regenerate stream error", payload);
+          },
+        });
+      } else {
+        const payload = await readJsonOrThrow(response, "Backend /regenerate failed");
+        regenGenId =
+          (payload && typeof payload === "object" && (payload as any).regen_gen_id) ||
+          (payload && typeof payload === "object" && (payload as any).regenGenId) ||
+          (payload && typeof payload === "object" && (payload as any).gen_id) ||
+          (payload && typeof payload === "object" && (payload as any).new_gen_id) ||
+          null;
+        if (payload && typeof payload === "object" && (payload as any).wordLink) {
+          regenWordLink = (payload as any).wordLink;
+        }
+        const updatedMarkdown =
+          (payload && typeof payload === "object" && typeof (payload as any).updated_markdown === "string"
+            ? (payload as any).updated_markdown
+            : null) ||
+          (payload && typeof payload === "object" && typeof (payload as any).generated_markdown === "string"
+            ? (payload as any).generated_markdown
+            : null);
+        const directMarkdown =
+          payload && typeof payload === "object" && typeof (payload as any).markdown === "string"
+            ? (payload as any).markdown
+            : null;
+        backendUpdatedMarkdown = updatedMarkdown;
+        streamedMarkdown = updatedMarkdown || directMarkdown || "";
+      }
+
+      let finalGenId = regenGenId;
+      if (!finalGenId && supabase) {
+        try {
+          const { data: latestGenRow, error: latestGenError } = await supabase
+            .from("word_gen")
+            .select("gen_id")
+            .eq("uuid", jobUuid)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (!latestGenError && latestGenRow?.gen_id) {
+            finalGenId = latestGenRow.gen_id;
+          }
+        } catch (latestErr) {
+          console.warn("Unable to fetch latest gen_id after regeneration", latestErr);
+        }
+      }
+      if (!finalGenId) {
+        finalGenId = baseGenId;
+      }
+
       let regeneratedMarkdown: string | null = streamedMarkdown || null;
+      const backendMarkdownClean =
+        (typeof backendUpdatedMarkdown === "string" ? backendUpdatedMarkdown : "").trim();
+      if (!regeneratedMarkdown && backendMarkdownClean) {
+        regeneratedMarkdown = backendMarkdownClean;
+      }
       if (!regeneratedMarkdown) {
         regeneratedMarkdown = getLocalMarkdownForGen(jobUuid, finalGenId);
+      }
+      if (!regeneratedMarkdown && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from("word_gen")
+            .select("generated_markdown")
+            .eq("uuid", jobUuid)
+            .eq("gen_id", finalGenId)
+            .limit(1)
+            .maybeSingle();
+          if (!error && data?.generated_markdown && typeof data.generated_markdown === "string") {
+            regeneratedMarkdown = data.generated_markdown;
+          }
+        } catch (fallbackErr) {
+          console.warn("Fallback markdown fetch failed", fallbackErr);
+        }
       }
 
       const proposalSnapshot: StoredProposalSnapshot = {
@@ -2353,9 +2340,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
 
       setProcessingStage('Finalizing regenerated proposal...');
       setUploadProgress(100);
+      setSelectedUseCase(jobUuid);
       setSelectedGenId(finalGenId);
       setGeneratedDocument(proposalSnapshot.generatedDocument ?? 'Regenerated_Proposal.docx');
       setWordLink(proposalSnapshot.wordLink ?? null);
+      setIsGenerated(Boolean(regeneratedMarkdown || proposalSnapshot.wordLink));
       versionLanguageRef.current[finalGenId] = regenLanguage;
       setCurrentVersionLanguage(regenLanguage);
       setPdfLinkSafely(proposalSnapshot.pdfLink ?? null);
@@ -2365,16 +2354,19 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setIsRegenerationComplete(true);
       setIsRegenerating(false);
       pendingRegenCommentsRef.current = [];
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: finalGenId,
-        regenComments: commentsSnapshot,
-        generalPreference: regenConfig,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-        proposalSnapshot,
-        generatedMarkdown: regeneratedMarkdown,
-      });
+      await persistGenerationRecord(
+        {
+          uuid: jobUuid,
+          genId: finalGenId,
+          regenComments: commentsSnapshot,
+          generalPreference: regenConfig,
+          rfpFiles: savedRfpFiles,
+          supportingFiles: savedSupportingFiles,
+          proposalSnapshot,
+          generatedMarkdown: regeneratedMarkdown,
+        },
+        { skipSupabase: true }
+      );
     } catch (error) {
       console.error('Regenerate failed:', error);
       const message = error instanceof Error ? error.message : 'Regenerate failed. Please try again.';
@@ -2531,6 +2523,179 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         )}
       </div>
     </div>
+  );
+
+  const renderWordSidebarContent = () => (
+    <>
+      {/* Language Selection */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
+        <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
+          <Globe className="text-gray-500" size={16} /> Language
+        </h3>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={isDocLocked}
+            onClick={() => setLanguage('arabic')}
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
+              ${language === 'arabic' 
+                ? 'bg-blue-600 text-white border-blue-600' 
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }
+              ${isDocLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            Arabic
+          </button>
+          <button
+            type="button"
+            disabled={isDocLocked}
+            onClick={() => setLanguage('english')}
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
+              ${language === 'english' 
+                ? 'bg-blue-600 text-white border-blue-600' 
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }
+              ${isDocLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            English
+          </button>
+        </div>
+      </div>
+
+      <FileUploadZone
+        title="RFP Documents"
+        files={rfpFiles}
+        storedFiles={savedRfpFiles}
+        dragActive={dragActiveRfp}
+        onDragEnter={(e) => handleDrag(e, setDragActiveRfp)}
+        onDragLeave={(e) => handleDrag(e, setDragActiveRfp)}
+        onDragOver={(e) => handleDrag(e, setDragActiveRfp)}
+        onDrop={(e) => handleDrop(e, 'rfp')}
+        onClick={() => rfpInputRef.current?.click()}
+        fileType="rfp"
+        disabled={isDocLocked}
+      />
+
+      <FileUploadZone
+        title="Supporting Files"
+        files={supportingFiles}
+        storedFiles={savedSupportingFiles}
+        dragActive={dragActiveSupporting}
+        onDragEnter={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDragLeave={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDragOver={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDrop={(e) => handleDrop(e, 'supporting')}
+        onClick={() => supportingInputRef.current?.click()}
+        fileType="supporting"
+        disabled={isDocLocked}
+      />
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="border-b border-gray-100 p-4">
+          <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
+            <Settings className="text-gray-500" size={16} />
+            General Preferences
+          </h3>
+        </div>
+        
+        <div className="p-4">
+          <textarea
+            value={config}
+            onChange={(e) => setConfig(e.target.value)}
+            placeholder="Describe your proposal generation preferences..."
+            rows={4}
+            className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded text-xs focus:ring-1 focus:ring-gray-400 focus:border-gray-400 resize-none placeholder-gray-400"
+          />
+          <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+            Include tone, structure, and specific requirements
+          </p>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderPptSidebarContent = () => (
+    <>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
+        <div className="border-b border-gray-100 p-4">
+          <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
+            <Layout className="text-gray-500" size={16} />
+            Presentation
+          </h3>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">PPT Template</label>
+            <div className="mt-1 flex items-center gap-2">
+              <select
+                value={pptTemplates.length ? selectedPptTemplate : ""}
+                onChange={(e) => setSelectedPptTemplate(e.target.value)}
+                disabled={pptTemplatesLoading || isPptLocked || !pptTemplates.length}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              >
+                {pptTemplates.length === 0 ? (
+                  <option value="">No templates detected</option>
+                ) : (
+                  pptTemplates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name} {tpl.version ? `(${tpl.version})` : ""}
+                    </option>
+                  ))
+                )}
+              </select>
+              {pptTemplatesLoading && <Loader className="animate-spin text-gray-500" size={16} />}
+            </div>
+            {selectedTemplateDetails?.description && (
+              <p className="text-xs text-gray-500 mt-2">
+                {selectedTemplateDetails.description}
+              </p>
+            )}
+          </div>
+          <div className="text-xs space-y-1">
+            {pptActionStatus && <p className="text-gray-600">{pptActionStatus}</p>}
+            {pptTemplatesError && <p className="text-red-600">{pptTemplatesError}</p>}
+            {pptError && <p className="text-red-600">{pptError}</p>}
+            {!jobUuid && (
+              <p className="text-gray-500">
+                Generate or select a proposal version to unlock PPT controls.
+              </p>
+            )}
+          </div>
+
+          {pptSummary && (
+            <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
+              <div className="col-span-2">
+                <p className="font-semibold text-gray-800">
+                  {pptSummary.title || "Presentation"}
+                </p>
+                <p className="text-gray-500">
+                  Template: {pptSummary.template_id || selectedPptTemplate || "-"} | Language:{" "}
+                  {pptSummary.language || normalizedLanguageLabel}
+                </p>
+              </div>
+              {[
+                { label: "Slides", value: pptSummary.stats?.total_slides ?? pptSlides.length },
+                { label: "Sections", value: pptSummary.stats?.sections },
+                { label: "Charts", value: pptSummary.stats?.charts },
+                { label: "Images", value: pptSummary.stats?.images },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded border border-gray-100 bg-gray-50 px-3 py-2"
+                >
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                    {item.label}
+                  </p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {typeof item.value === "number" ? item.value : "-"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 
   const ConfigSection = ({ 
@@ -2726,13 +2891,57 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     const hasWord = Boolean(markdownContent);
     const hasPpt = pptSlides.length > 0;
 
+    if (isUploading || isRegenerating) {
+      return;
+    }
+
     if (previewMode === "word" && hasPpt && !hasWord) {
       setPreviewMode("ppt");
     }
-  }, [markdownContent, pptSlides.length, previewMode]);
+  }, [markdownContent, pptSlides.length, previewMode, isUploading, isRegenerating]);
 
   const isPptBusy = pptAction !== null;
-  const isProcessLocked = isUploading || isPdfConverting || deletingGenId !== null || isPptBusy;
+  const isPptLocked = isPptBusy;
+  const isDocLocked = isUploading || isPdfConverting || deletingGenId !== null || isRegenerating;
+  const isProcessLocked = isDocLocked || isPptLocked;
+  const hasPptAsset = Boolean(pptPreviewUrl || (pptSlides.length > 0));
+  const hasPptGenHandle = Boolean(activePptGenId);
+  const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
+  const canRegeneratePpt = Boolean(canGeneratePpt && hasPptGenHandle && hasPptAsset);
+  const selectedSlideSafeIndex = useMemo(() => {
+    if (!pptSlides.length) {
+      return -1;
+    }
+    return Math.min(selectedSlideIndex, pptSlides.length - 1);
+  }, [pptSlides.length, selectedSlideIndex]);
+  const selectedSlide = useMemo(() => {
+    if (selectedSlideSafeIndex < 0) {
+      return null;
+    }
+    return pptSlides[selectedSlideSafeIndex] || null;
+  }, [pptSlides, selectedSlideSafeIndex]);
+  const selectedSlidePreviewLines = useMemo(
+    () => getSlidePreviewLines(selectedSlide || undefined, 4),
+    [selectedSlide]
+  );
+  const canOpenPptPreview = Boolean(
+    pptSlides.length ||
+      pptLoading ||
+      pptError ||
+      (jobUuid && selectedGenId)
+  );
+  const hasGeneratedPpt = hasPptAsset;
+  const pptPrimaryActionLabel = hasGeneratedPpt ? "Regenerate PPT" : "Generate PPT";
+  const pptPrimaryDisabled =
+    isPptLocked ||
+    pptTemplatesLoading ||
+    !canGeneratePpt ||
+    hasGeneratedPpt; // disable regen for now
+  const showWordFormatting = previewMode === "word" && !isRegenerating && !generatedDocument && !markdownContent;
+  const showRightPanel = previewMode === "word" || previewMode === "ppt";
+  const showCommentsForPreview =
+    (previewMode === "word" && Boolean(markdownContent || generatedDocument)) ||
+    (previewMode === "ppt" && hasGeneratedPpt);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -2744,6 +2953,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       document.body.style.cursor = previousCursor;
     };
   }, [isProcessLocked]);
+
+  const handlePrimaryPptClick = useCallback(() => {
+    if (pptPrimaryDisabled) {
+      return;
+    }
+    if (hasGeneratedPpt) {
+      handleRegeneratePpt();
+      return;
+    }
+    handleGeneratePpt();
+  }, [handleGeneratePpt, handleRegeneratePpt, hasGeneratedPpt, pptPrimaryDisabled]);
 
   const [comment1, setComment1] = useState<string>("");
   const [comment2, setComment2] = useState<string>("");
@@ -3020,165 +3240,107 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               </div>
             </div>
 
-            <div className="space-y-1">
-              {/* Language Selection */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
-                <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
-                  <Globe className="text-gray-500" size={16} /> Language
-                </h3>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    disabled={isProcessLocked}
-                    onClick={() => setLanguage('arabic')}
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
-                      ${language === 'arabic' 
-                        ? 'bg-blue-600 text-white border-blue-600' 
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }
-                      ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    Arabic
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isProcessLocked}
-                    onClick={() => setLanguage('english')}
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
-                      ${language === 'english' 
-                        ? 'bg-blue-600 text-white border-blue-600' 
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }
-                      ${isProcessLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-                  >
-                    English
-                  </button>
-                </div>
-              </div>
-
-              <FileUploadZone
-                title="RFP Documents"
-                files={rfpFiles}
-                storedFiles={savedRfpFiles}
-                dragActive={dragActiveRfp}
-                onDragEnter={(e) => handleDrag(e, setDragActiveRfp)}
-                onDragLeave={(e) => handleDrag(e, setDragActiveRfp)}
-                onDragOver={(e) => handleDrag(e, setDragActiveRfp)}
-                onDrop={(e) => handleDrop(e, 'rfp')}
-                onClick={() => rfpInputRef.current?.click()}
-                fileType="rfp"
-                disabled={isProcessLocked}
-              />
-
-              <FileUploadZone
-                title="Supporting Files"
-                files={supportingFiles}
-                storedFiles={savedSupportingFiles}
-                dragActive={dragActiveSupporting}
-                onDragEnter={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDragLeave={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDragOver={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDrop={(e) => handleDrop(e, 'supporting')}
-                onClick={() => supportingInputRef.current?.click()}
-                fileType="supporting"
-                disabled={isProcessLocked}
-              />
-
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div className="border-b border-gray-100 p-4">
-                  <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
-                    <Settings className="text-gray-500" size={16} />
-                    General Preferences
-                  </h3>
-                </div>
-                
-                <div className="p-4">
-                  <textarea
-                    value={config}
-                    onChange={(e) => setConfig(e.target.value)}
-                    placeholder="Describe your proposal generation preferences..."
-                    rows={4}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded text-xs focus:ring-1 focus:ring-gray-400 focus:border-gray-400 resize-none placeholder-gray-400"
-                  />
-                  <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                    Include tone, structure, and specific requirements
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-3">
+              {previewMode === "ppt" ? renderPptSidebarContent() : renderWordSidebarContent()}
 
               {generatedDocument && <GeneratedDocumentSection />}
 
-              <div className="pt-4">
-                {!isGenerated ? (
-                  <button
-                    onClick={handleUpload}
-                    disabled={supabaseEnvMissing || isProcessLocked || rfpFiles.length === 0 || !config.trim()}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isProcessLocked || rfpFiles.length === 0 || !config.trim()
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                        : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
-                      }`}
-                  >
-                    {isUploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        {supabaseEnvMissing ? (
-                          <>
-                            <AlertCircle size={16} />
-                            Supabase Config Needed
-                          </>
-                        ) : (
-                          <>
-                            <Send size={16} />
-                            Upload & Process
-                          </>
-                        )}
-                      </>
-                    )}
-                  </button>
+          <div className="pt-2 space-y-2">
+            {previewMode === "word" && (
+              !isGenerated ? (
+                <button
+                  onClick={handleUpload}
+                  disabled={supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                    ${supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                      : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
+                    }`}
+                >
+                  {isUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      {supabaseEnvMissing ? (
+                        <>
+                          <AlertCircle size={16} />
+                          Supabase Config Needed
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Upload & Process
+                        </>
+                      )}
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleRegenerate}
+                  disabled={supabaseEnvMissing || isDocLocked}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                    ${supabaseEnvMissing || isDocLocked
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
+                    }`}
+                >
+                  {isUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      {supabaseEnvMissing ? (
+                        <>
+                          <AlertCircle size={16} />
+                          Supabase Config Needed
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Regenerate Document
+                        </>
+                      )}
+                    </>
+                  )}
+                </button>
+              )
+            )}
+
+            {previewMode === "ppt" && (
+              <button
+                onClick={handlePrimaryPptClick}
+                disabled={pptPrimaryDisabled || supabaseEnvMissing}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                  ${pptPrimaryDisabled || supabaseEnvMissing
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700 border border-blue-600'
+                  }`}
+              >
+                {pptTemplatesLoading ? (
+                  <>
+                    <Loader className="animate-spin" size={16} />
+                    Loading templates...
+                  </>
                 ) : (
-                  <button
-                    onClick={handleRegenerate}
-                    disabled={supabaseEnvMissing || isProcessLocked}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isProcessLocked
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
-                      }`}
-                  >
-                    {isUploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Regenerating...
-                      </>
-                    ) : (
-                      <>
-                        {supabaseEnvMissing ? (
-                          <>
-                            <AlertCircle size={16} />
-                            Supabase Config Needed
-                          </>
-                        ) : (
-                          <>
-                            <Send size={16} />
-                            Regenerate Document
-                          </>
-                        )}
-                      </>
-                    )}
-                  </button>
+                  <>
+                    <Layout size={16} />
+                    {pptPrimaryActionLabel}
+                  </>
                 )}
-              </div>
-              
-            </div>
+              </button>
+            )}
+          </div>
+        </div>
           </div>
 
           {/* Center Panel - Loading/Output Display */}
-          <div className="flex-1 h-full p-6 min-w-0 flex flex-col overflow-hidden">
+          <div className="flex-1 h-full p-6 min-w-0 flex flex-col overflow-y-auto">
             <div className="flex items-center justify-between mb-4 gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-semibold text-gray-800">Preview</span>
@@ -3211,11 +3373,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                   </button>
                   <button
                     type="button"
-                    disabled={!pptSlides.length && !pptLoading && !pptError}
+                    disabled={!canOpenPptPreview}
                     onClick={() => setPreviewMode("ppt")}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
                       previewMode === "ppt" ? "bg-white shadow text-gray-900" : "text-gray-600"
-                    } ${!pptSlides.length && !pptLoading && !pptError ? "opacity-50 cursor-not-allowed" : ""}`}
+                    } ${!canOpenPptPreview ? "opacity-50 cursor-not-allowed" : ""}`}
                     aria-pressed={previewMode === "ppt"}
                   >
                     PPT
@@ -3223,132 +3385,41 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 </div>
               </div>
             </div>
-            {previewMode === "ppt" && (
-            <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="flex-1 min-w-[220px]">
-                  <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">PPT Template</label>
-                  <div className="mt-1 flex items-center gap-2">
-                    <select
-                      value={pptTemplates.length ? selectedPptTemplate : ""}
-                      onChange={(e) => setSelectedPptTemplate(e.target.value)}
-                      disabled={pptTemplatesLoading || isProcessLocked || !pptTemplates.length}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
-                    >
-                      {pptTemplates.length === 0 ? (
-                        <option value="">No templates detected</option>
-                      ) : (
-                        pptTemplates.map((tpl) => (
-                          <option key={tpl.id} value={tpl.id}>
-                            {tpl.name} {tpl.version ? `(${tpl.version})` : ""}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    {pptTemplatesLoading && <Loader className="animate-spin text-gray-500" size={16} />}
-                  </div>
-                  {selectedTemplateDetails?.description && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      {selectedTemplateDetails.description}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleGeneratePpt}
-                    disabled={!canGeneratePpt || isProcessLocked || pptTemplatesLoading}
-                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                      !canGeneratePpt || isProcessLocked || pptTemplatesLoading
-                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                        : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {pptAction === "initial" ? (
-                      <span className="flex items-center gap-2">
-                        <Loader className="animate-spin" size={16} />
-                        Generating…
-                      </span>
-                    ) : (
-                      "Generate PPT"
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRegeneratePpt}
-                    disabled={!canRegeneratePpt || isProcessLocked || pptTemplatesLoading}
-                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                      !canRegeneratePpt || isProcessLocked || pptTemplatesLoading
-                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                        : "bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700"
-                    }`}
-                  >
-                    {pptAction === "regen" ? (
-                      <span className="flex items-center gap-2">
-                        <Loader className="animate-spin" size={16} />
-                        Regenerating…
-                      </span>
-                    ) : (
-                      "Regenerate PPT"
-                    )}
-                  </button>
-                </div>
-              </div>
-              {(pptActionStatus || pptTemplatesError || (!canGeneratePpt && !isUploading)) && (
-                <div className="mt-3 text-xs">
-                  {pptActionStatus && <p className="text-gray-600">{pptActionStatus}</p>}
-                  {pptTemplatesError && <p className="text-red-600">{pptTemplatesError}</p>}
-                  {!jobUuid && (
-                    <p className="text-gray-500">
-                      Generate or select a proposal version to unlock PPT controls.
-                    </p>
-                  )}
-                </div>
-              )}
-              {pptSummary && (
-                <div className="mt-4 space-y-3 text-xs text-gray-600">
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      {pptSummary.title || "Presentation"}
-                    </p>
-                    <p className="text-gray-500">
-                      Template: {pptSummary.template_id || selectedPptTemplate || "—"} • Language:{" "}
-                      {pptSummary.language || normalizedLanguageLabel}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: "Slides", value: pptSummary.stats?.total_slides ?? pptSlides.length },
-                      { label: "Sections", value: pptSummary.stats?.sections },
-                      { label: "Charts", value: pptSummary.stats?.charts },
-                      { label: "Images", value: pptSummary.stats?.images },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="rounded border border-gray-100 bg-gray-50 px-3 py-2"
-                      >
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">
-                          {item.label}
-                        </p>
-                        <p className="text-lg font-semibold text-gray-800">
-                          {typeof item.value === "number" ? item.value : "—"}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            )}
             <div className="flex-1 min-h-0">
               {previewMode === "ppt" ? (
-                <PptPreview
-                  slides={pptSlides}
-                  selectedIndex={selectedSlideIndex}
-                  onSelectSlide={setSelectedSlideIndex}
-                  isLoading={pptLoading}
-                  error={pptError}
-                />
+                <div className="flex flex-col gap-4 h-full">
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-h-[420px] overflow-hidden select-text">
+                    {pptEmbedUrl ? (
+                      <iframe
+                        title="PowerPoint preview"
+                        src={pptEmbedUrl}
+                        className="w-full h-full border-0"
+                        allowFullScreen
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center p-6 text-sm text-gray-600">
+                        {pptLoading ? (
+                          "Loading PPT preview..."
+                        ) : selectedSlide && selectedSlidePreviewLines.length > 0 ? (
+                          <div className="w-full max-w-3xl mx-auto text-left space-y-2">
+                            <p className="text-base font-semibold text-gray-800">
+                              Slide {selectedSlideSafeIndex + 1}
+                              {selectedSlide.title ? ` - ${selectedSlide.title}` : ""}
+                            </p>
+                            <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                              {selectedSlidePreviewLines.map((line, idx) => (
+                                <li key={`slide-preview-${idx}`}>{line}</li>
+                              ))}
+                            </ul>
+                            {pptError && <p className="text-xs text-red-600">{pptError}</p>}
+                          </div>
+                        ) : (
+                          <span>{pptError || "PPT preview will appear here after generation."}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : isUploading && !markdownContent ? (
                 <LoadingDisplay />
               ) : !isUploading && !markdownContent ? (
@@ -3382,324 +3453,327 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           </div>
           
 
-          {/* Right Panel - Document Configuration */}
-          <div className="w-96 p-6 border-l border-gray-200 bg-white h-full overflow-y-auto">
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                Document Formatting
-              </h2>
-              <p className="text-sm text-gray-600">
-                Customize the appearance and layout of your generated proposal
-              </p>
-            </div>
-            
-            
-            {/* Page Layout */}
-             { !markdownContent &&(<ConfigSection
-              title="Page Layout"
-              icon={AlignLeft}
-              isExpanded={expandedSections.layout}
-              onToggle={() => toggleSection('layout')}
-              >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Page Orientation"
-                  value={docConfig.page_orientation}
-                  onChange={(value) => updateConfig('page_orientation', value)}
-                  type="select"
-                  options={[
-                    { value: 'portrait', label: 'Portrait' },
-                    { value: 'landscape', label: 'Landscape' }
-                  ]}
-                />
-                <InputField
-                  label="Text Alignment"
-                  value={docConfig.text_alignment}
-                  onChange={(value) => updateConfig('text_alignment', value)}
-                  type="select"
-                  options={[
-                    { value: 'left', label: 'Left' },
-                    { value: 'center', label: 'Center' },
-                    { value: 'right', label: 'Right' },
-                    { value: 'justify', label: 'Justify' }
-                  ]}
-                />
-              </div>
-              
-              <div className="grid grid-cols-4 gap-2">
-                <InputField
-                  label="Top Margin (in)"
-                  value={docConfig.top_margin}
-                  onChange={(value) => updateConfig('top_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Bottom Margin (in)"
-                  value={docConfig.bottom_margin}
-                  onChange={(value) => updateConfig('bottom_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Left Margin (in)"
-                  value={docConfig.left_margin}
-                  onChange={(value) => updateConfig('left_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Right Margin (in)"
-                  value={docConfig.right_margin}
-                  onChange={(value) => updateConfig('right_margin', value)}
-                  type="number"
-                />
-              </div>
-            </ConfigSection>)}
+          {/* Right Panel */}
+          {showRightPanel && (
+            <div className="w-96 p-6 border-l border-gray-200 bg-white h-full overflow-y-auto">
+              {previewMode === "word" && showWordFormatting && (
+                <>
+                  <div className="mb-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                      Document Formatting
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      Customize the appearance and layout of your generated proposal
+                    </p>
+                  </div>
 
-            {/* Typography */}
-            { !markdownContent &&( <ConfigSection
-              title="Typography & Colors"
-              icon={Type}
-              isExpanded={expandedSections.typography}
-              onToggle={() => toggleSection('typography')}
-            >
-              <div className="grid grid-cols-3 gap-4">
-                <InputField
-                  label="Body Text Size (pt)"
-                  value={docConfig.body_font_size}
-                  onChange={(value) => updateConfig('body_font_size', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Heading Size (pt)"
-                  value={docConfig.heading_font_size}
-                  onChange={(value) => updateConfig('heading_font_size', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Title Size (pt)"
-                  value={docConfig.title_font_size}
-                  onChange={(value) => updateConfig('title_font_size', value)}
-                  type="number"
-                />
-              </div>
-              
-              <div className="grid grid-cols-3 gap-4">
-                <InputField
-                  label="Main Title Color"
-                  value={docConfig.title_color}
-                  onChange={(value) => updateConfig('title_color', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Heading Color"
-                  value={docConfig.heading_color}
-                  onChange={(value) => updateConfig('heading_color', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Body Text Color"
-                  value={docConfig.body_color}
-                  onChange={(value) => updateConfig('body_color', value)}
-                  type="color"
-                />
-              </div>
-            </ConfigSection>)}
+                  {/* Page Layout */}
+                  <ConfigSection
+                    title="Page Layout"
+                    icon={AlignLeft}
+                    isExpanded={expandedSections.layout}
+                    onToggle={() => toggleSection('layout')}
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Page Orientation"
+                        value={docConfig.page_orientation}
+                        onChange={(value) => updateConfig('page_orientation', value)}
+                        type="select"
+                        options={[
+                          { value: 'portrait', label: 'Portrait' },
+                          { value: 'landscape', label: 'Landscape' }
+                        ]}
+                      />
+                      <InputField
+                        label="Text Alignment"
+                        value={docConfig.text_alignment}
+                        onChange={(value) => updateConfig('text_alignment', value)}
+                        type="select"
+                        options={[
+                          { value: 'left', label: 'Left' },
+                          { value: 'center', label: 'Center' },
+                          { value: 'right', label: 'Right' },
+                          { value: 'justify', label: 'Justify' }
+                        ]}
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-4 gap-2">
+                      <InputField
+                        label="Top Margin (in)"
+                        value={docConfig.top_margin}
+                        onChange={(value) => updateConfig('top_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Bottom Margin (in)"
+                        value={docConfig.bottom_margin}
+                        onChange={(value) => updateConfig('bottom_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Left Margin (in)"
+                        value={docConfig.left_margin}
+                        onChange={(value) => updateConfig('left_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Right Margin (in)"
+                        value={docConfig.right_margin}
+                        onChange={(value) => updateConfig('right_margin', value)}
+                        type="number"
+                      />
+                    </div>
+                  </ConfigSection>
 
-            {/* Table Styling */}
-             { !markdownContent &&(<ConfigSection
-              title="Table Styling"
-              icon={Table}
-              isExpanded={expandedSections.tables}
-              onToggle={() => toggleSection('tables')}
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Auto-fit Tables"
-                  value={docConfig.auto_fit_tables}
-                  onChange={(value) => updateConfig('auto_fit_tables', value)}
-                  type="checkbox"
-                />
-                <InputField
-                  label="Show Borders"
-                  value={docConfig.show_table_borders}
-                  onChange={(value) => updateConfig('show_table_borders', value)}
-                  type="checkbox"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Table Width (%)"
-                  value={docConfig.table_width}
-                  onChange={(value) => updateConfig('table_width', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Table Font Size"
-                  value={docConfig.table_font_size}
-                  onChange={(value) => updateConfig('table_font_size', value)}
-                  type="number"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Header Background"
-                  value={docConfig.header_background}
-                  onChange={(value) => updateConfig('header_background', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Border Color"
-                  value={docConfig.border_color}
-                  onChange={(value) => updateConfig('border_color', value)}
-                  type="color"
-                />
-              </div>
-            </ConfigSection>)}
-            {/* Comments ConfigSection */}
-            {previewMode === "ppt" && (<ConfigSection
-              title="Comments"
-              icon={Text}
-              isExpanded={true}
-              onToggle={() => {}}
-            >
-             {commentConfigList.length > 0 && (
-  <div className="mt-4 space-y-3">
-    <h4 className="text-sm font-medium text-gray-700">Added Comments</h4>
-    {commentConfigList.map((comment, index) => (
-      <div
-        key={index}
-        className="p-3 border border-gray-200 rounded bg-gray-50 flex justify-between items-start gap-2"
-      >
-        <div className="flex-1">
-          <p className="text-xs text-gray-500 mb-1">
-            <span className="font-semibold">Content:</span> {comment.comment1}
-          </p>
-          <p className="text-xs text-gray-500">
-            <span className="font-semibold">Comment:</span> {comment.comment2}
-          </p>
-        </div>
-        
-      </div>
-    ))}
-  </div>
-)}
-            <div className="grid grid-cols-1 gap-4">
-              <InputField
-                label="Content"
-                value={currentCommentContent} // local state
-                onChange={(value) => setCurrentCommentContent(value as string)}
-                placeholder="Enter the Content"
-                isTextarea={true}
-                rows={6}
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-4">
-              <InputField
-                label="Comment"
-                value={currentCommentText} // local state
-                onChange={(value) => setCurrentCommentText(value as string)}
-                placeholder="Enter the Comment"
-                isTextarea={true}
-                rows={6}
-              />
-            </div>
-            <div className="mt-2">
-              <button
-                type="button"
-                disabled={isProcessLocked}
-                className={`px-4 py-2 rounded text-sm transition-colors ${
-                  isProcessLocked
-                    ? 'bg-blue-300 text-white/70 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-                onClick={() => {
-                  if (isProcessLocked) {
-                    return;
-                  }
-                  // Append new comment to the list
-                  setCommentConfigList(prev => [
-                    ...prev,
-                    { comment1: currentCommentContent, comment2: currentCommentText }
-                  ]);
-                  // Clear local inputs
-                  setCurrentCommentContent('');
-                  setCurrentCommentText('');
-                }}
-              >
-                Add Comment
-              </button>
-            </div>
-                        </ConfigSection>)}
+                  {/* Typography */}
+                  <ConfigSection
+                    title="Typography & Colors"
+                    icon={Type}
+                    isExpanded={expandedSections.typography}
+                    onToggle={() => toggleSection('typography')}
+                  >
+                    <div className="grid grid-cols-3 gap-4">
+                      <InputField
+                        label="Body Text Size (pt)"
+                        value={docConfig.body_font_size}
+                        onChange={(value) => updateConfig('body_font_size', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Heading Size (pt)"
+                        value={docConfig.heading_font_size}
+                        onChange={(value) => updateConfig('heading_font_size', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Title Size (pt)"
+                        value={docConfig.title_font_size}
+                        onChange={(value) => updateConfig('title_font_size', value)}
+                        type="number"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <InputField
+                        label="Main Title Color"
+                        value={docConfig.title_color}
+                        onChange={(value) => updateConfig('title_color', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Heading Color"
+                        value={docConfig.heading_color}
+                        onChange={(value) => updateConfig('heading_color', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Body Text Color"
+                        value={docConfig.body_color}
+                        onChange={(value) => updateConfig('body_color', value)}
+                        type="color"
+                      />
+                    </div>
+                  </ConfigSection>
 
-            {/* Header & Footer */}
-            { !markdownContent &&(
-              <ConfigSection
-              title="Branding & Headers"
-              icon={Layout}
-              isExpanded={expandedSections.branding}
-              onToggle={() => toggleSection('branding')}
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Include Header"
-                  value={docConfig.include_header}
-                  onChange={(value) => updateConfig('include_header', value)}
-                  type="checkbox"
-                />
-                <InputField
-                  label="Include Footer"
-                  value={docConfig.include_footer}
-                  onChange={(value) => updateConfig('include_footer', value)}
-                  type="checkbox"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Company Name"
-                  value={docConfig.company_name}
-                  onChange={(value) => updateConfig('company_name', value)}
-                  placeholder="Your Company Name"
-                />
-                <InputField
-                  label="Company Tagline"
-                  value={docConfig.company_tagline}
-                  onChange={(value) => updateConfig('company_tagline', value)}
-                  placeholder="Your tagline or slogan"
-                />
-              </div>
-              
-              <div className="space-y-4">
-                <InputField
-                  label="Footer Left Text"
-                  value={docConfig.footer_left}
-                  onChange={(value) => updateConfig('footer_left', value)}
-                  placeholder="Left footer content"
-                />
-                <InputField
-                  label="Footer Center Text"
-                  value={docConfig.footer_center}
-                  onChange={(value) => updateConfig('footer_center', value)}
-                  placeholder="Center footer content"
-                />
-                <InputField
-                  label="Footer Right Text"
-                  value={docConfig.footer_right}
-                  onChange={(value) => updateConfig('footer_right', value)}
-                  placeholder="Right footer content"
-                />
-              </div>
-              
-              <InputField
-                label="Show Page Numbers"
-                value={docConfig.show_page_numbers}
-                onChange={(value) => updateConfig('show_page_numbers', value)}
-                type="checkbox"
-              />
-            </ConfigSection>)}
-          </div>
-        </div>
+                  {/* Table Styling */}
+                  <ConfigSection
+                    title="Table Styling"
+                    icon={Table}
+                    isExpanded={expandedSections.tables}
+                    onToggle={() => toggleSection('tables')}
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Auto-fit Tables"
+                        value={docConfig.auto_fit_tables}
+                        onChange={(value) => updateConfig('auto_fit_tables', value)}
+                        type="checkbox"
+                      />
+                      <InputField
+                        label="Show Borders"
+                        value={docConfig.show_table_borders}
+                        onChange={(value) => updateConfig('show_table_borders', value)}
+                        type="checkbox"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Table Width (%)"
+                        value={docConfig.table_width}
+                        onChange={(value) => updateConfig('table_width', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Table Font Size"
+                        value={docConfig.table_font_size}
+                        onChange={(value) => updateConfig('table_font_size', value)}
+                        type="number"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Header Background"
+                        value={docConfig.header_background}
+                        onChange={(value) => updateConfig('header_background', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Border Color"
+                        value={docConfig.border_color}
+                        onChange={(value) => updateConfig('border_color', value)}
+                        type="color"
+                      />
+                    </div>
+                  </ConfigSection>
+                </>
+              )}
+
+              {showCommentsForPreview && (
+                <ConfigSection
+                  title="Comments"
+                  icon={Text}
+                  isExpanded={true}
+                  onToggle={() => {}}
+                >
+                {commentConfigList.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-sm font-medium text-gray-700">Added Comments</h4>
+                    {commentConfigList.map((comment, index) => (
+                      <div
+                        key={index}
+                        className="p-3 border border-gray-200 rounded bg-gray-50 flex justify-between items-start gap-2"
+                      >
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500 mb-1">
+                            <span className="font-semibold">Content:</span> {comment.comment1}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            <span className="font-semibold">Comment:</span> {comment.comment2}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 gap-4">
+                  <InputField
+                    label="Content"
+                    value={currentCommentContent}
+                    onChange={(value) => setCurrentCommentContent(value as string)}
+                    placeholder="Enter the Content"
+                    isTextarea={true}
+                    rows={6}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <InputField
+                    label="Comment"
+                    value={currentCommentText}
+                    onChange={(value) => setCurrentCommentText(value as string)}
+                    placeholder="Enter the Comment"
+                    isTextarea={true}
+                    rows={6}
+                  />
+                </div>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    disabled={isDocLocked}
+                    className={`px-4 py-2 rounded text-sm transition-colors ${
+                      isDocLocked
+                        ? 'bg-blue-300 text-white/70 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                    onClick={() => {
+                      if (isDocLocked) {
+                        return;
+                      }
+                      setCommentConfigList(prev => [
+                        ...prev,
+                        { comment1: currentCommentContent, comment2: currentCommentText }
+                      ]);
+                      setCurrentCommentContent('');
+                      setCurrentCommentText('');
+                    }}
+                  >
+                    Add Comment
+                  </button>
+                </div>
+              </ConfigSection>
+            )}
+
+              {previewMode === "word" && showWordFormatting && (
+                <ConfigSection
+                  title="Branding & Headers"
+                  icon={Layout}
+                  isExpanded={expandedSections.branding}
+                  onToggle={() => toggleSection('branding')}
+                >
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                      label="Include Header"
+                      value={docConfig.include_header}
+                      onChange={(value) => updateConfig('include_header', value)}
+                      type="checkbox"
+                    />
+                    <InputField
+                      label="Include Footer"
+                      value={docConfig.include_footer}
+                      onChange={(value) => updateConfig('include_footer', value)}
+                      type="checkbox"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                      label="Company Name"
+                      value={docConfig.company_name}
+                      onChange={(value) => updateConfig('company_name', value)}
+                      placeholder="Your Company Name"
+                    />
+                    <InputField
+                      label="Company Tagline"
+                      value={docConfig.company_tagline}
+                      onChange={(value) => updateConfig('company_tagline', value)}
+                      placeholder="Your tagline or slogan"
+                    />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <InputField
+                      label="Footer Left Text"
+                      value={docConfig.footer_left}
+                      onChange={(value) => updateConfig('footer_left', value)}
+                      placeholder="Left footer content"
+                    />
+                    <InputField
+                      label="Footer Center Text"
+                      value={docConfig.footer_center}
+                      onChange={(value) => updateConfig('footer_center', value)}
+                      placeholder="Center footer content"
+                    />
+                    <InputField
+                      label="Footer Right Text"
+                      value={docConfig.footer_right}
+                      onChange={(value) => updateConfig('footer_right', value)}
+                      placeholder="Right footer content"
+                    />
+                  </div>
+                  
+                  <InputField
+                    label="Show Page Numbers"
+                    value={docConfig.show_page_numbers}
+                    onChange={(value) => updateConfig('show_page_numbers', value)}
+                    type="checkbox"
+                  />
+                </ConfigSection>
+              )}
+            </div>
+          )}
 
         {/* Hidden file inputs */}
         <input
@@ -3718,9 +3792,10 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         />
       </div>
     </div>
-
+    </div>
     </>
   );
 };
 
 export default UploadPage;
+

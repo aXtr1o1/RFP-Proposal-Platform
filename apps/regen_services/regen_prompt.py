@@ -175,6 +175,7 @@ def regenerate_markdown_with_comments(
             raise ValueError("Empty source markdown — cannot regenerate")
 
         comments = comments or []
+        updated_markdown = ''
         if not comments:
             logger.warning("No comments provided, reusing original markdown")
             updated_markdown = source_markdown
@@ -207,6 +208,7 @@ def regenerate_markdown_with_comments(
             "gen_id": gen_id,
             "language": language,
             "wordLink": urls.get("proposal_word_url"),
+            "updated_markdown": updated_markdown
         }
 
     except Exception as e:

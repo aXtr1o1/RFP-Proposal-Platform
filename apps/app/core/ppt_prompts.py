@@ -336,6 +336,7 @@ LAYOUT HINTS (for content slides):
 23. Section: Thank You (icon_name="thank-you", ALWAYS INCLUDE)
 ```
 
+IMPORTANT: Change this according to the Input markdown content
 
 =========================================================
 🎯 **CONTENT FIELD RULES**

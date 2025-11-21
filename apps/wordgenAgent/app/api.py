@@ -214,4 +214,5 @@ class WordGenAPI:
             logger.exception("generate_complete_proposal failed")
             yield _sse_event_json("error", {"message": str(e)})
 
+
 wordgen_api = WordGenAPI()
