@@ -1,0 +1,51 @@
+name: Deploy Test
+
+on:
+  push:
+    branches:
+      - testing
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to AWS VM over SSH
+        uses: appleboy/ssh-action@v1.2.1
+        with:
+          host: ${{ secrets.AWS_HOST || 'ec2-13-233-37-31.ap-south-1.compute.amazonaws.com' }}
+          username: ${{ secrets.AWS_USER || 'ec2-user' }}
+          key: ${{ secrets.AWS_SSH_KEY }}
+          port: ${{ secrets.AWS_SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            PROJECT_ROOT="${{ secrets.AWS_PROJECT_ROOT || '' }}"
+            PROJECT_ROOT="${PROJECT_ROOT:-/home/ec2-user/RFP-Proposal-Platform}"
+            cd "$PROJECT_ROOT"
+
+            echo "Fetching latest testing..."
+            git fetch origin testing
+            git checkout testing
+            git pull origin testing --ff-only
+
+            echo "Activating virtual environment..."
+            source .venv/bin/activate
+
+            echo "Installing backend dependencies..."
+            python3 -m pip install --upgrade pip
+            python3 -m pip install -r apps/requirements.txt
+
+            echo "Installing frontend dependencies..."
+            cd apps/frontend
+            npm install
+            npm run build
+            cd "$PROJECT_ROOT"
+
+            echo "Restarting PM2 apps..."
+            pm2 startOrReload ecosystem.config.js
+            pm2 startOrReload apps/frontend/ecosystem.config.js
