@@ -3,6 +3,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
+package-lock.json
+
+ecosystem.config.js
 
 # .env file
 .env

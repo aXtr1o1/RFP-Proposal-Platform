@@ -1,12 +1,12 @@
 ﻿"use client";
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, ChevronUp, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle, Menu } from 'lucide-react';
+import { Upload, FileText, Settings, Send, X, CheckCircle, ChevronDown, ChevronRight, ChevronUp, AlignLeft, Text ,Table, Layout, Type, Download, Globe, Loader, Database, CheckCircle2, AlertCircle, Menu, Trash2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
-import { saveAllComments } from "./utils";
+import { saveAllComments, safeJsonParse } from "./utils";
 
-const DEFAULT_API_BASE_URL = "http://20.28.48.139:8000/api"; 
+const DEFAULT_API_BASE_URL = `http://${process.env.NEXT_PUBLIC_API_HOST}:8000/api`; 
 const resolveApiBaseUrl = () => {
   const raw = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
   if (!raw) {
@@ -34,6 +34,7 @@ type OutputProps = {
   isPdfConverting: boolean;
   pdfError: string | null;
   wordDownloadName: string;
+  markdownRef?: React.MutableRefObject<HTMLDivElement | null>;
 };
 
 type CommentItem = {
@@ -77,17 +78,66 @@ type ParsedWordGenRecord = WordGenRow & {
   regenComments: CommentItem[];
 };
 
-const safeJsonParse = <T,>(input: string | null | undefined, fallback: T): T => {
-  if (!input) {
-    return fallback;
-  }
+type UseCaseHistoryEntry = {
+  uuid: string;
+  items: ParsedWordGenRecord[];
+  label: string;
+  latestVersion: number;
+  latestCreatedAt: string | null;
+};
 
-  try {
-    return JSON.parse(input) as T;
-  } catch (error) {
-    console.warn("Failed to parse JSON value", error);
-    return fallback;
-  }
+type SseHandlers = {
+  onChunk?: (chunk: string) => void;
+  onStage?: (payload: Record<string, any> | string) => void;
+  onDone?: (payload: Record<string, any> | string) => void;
+  onResult?: (payload: Record<string, any> | string) => void;
+  onError?: (payload: Record<string, any> | string) => void;
+  onEvent?: (eventType: string, rawData: string) => void;
+};
+
+type PptSlide = {
+  title?: string;
+  content?: any[];
+  notes?: string;
+  layout_type?: string;
+  layout_index?: number;
+  chart_data?: {
+    type?: string;
+    title?: string;
+    data?: {
+      labels?: any[];
+      values?: any[];
+    };
+  };
+  image_path?: string;
+};
+
+type PptTemplateInfo = {
+  id: string;
+  name: string;
+  description?: string;
+  version?: string;
+};
+
+type PptStats = {
+  total_slides?: number;
+  sections?: number;
+  content_slides?: number;
+  two_column_slides?: number;
+  charts?: number;
+  tables?: number;
+  images?: number;
+  icons_count?: number;
+};
+
+type ParsedPptContent = {
+  slides: PptSlide[];
+  meta: {
+    title?: string;
+    template_id?: string;
+    language?: string;
+    stats?: PptStats;
+  };
 };
 
 const extractFileNameFromUrl = (url: string | null | undefined): string => {
@@ -103,50 +153,6 @@ const extractFileNameFromUrl = (url: string | null | undefined): string => {
   } catch {
     return "document";
   }
-};
-
-const normalizeStoredFileList = (raw: string | null): StoredFileInfo[] => {
-  if (!raw) {
-    return [];
-  }
-
-  const buildFromUnknown = (value: unknown): StoredFileInfo | null => {
-    if (!value) {
-      return null;
-    }
-
-    if (typeof value === "string") {
-      return {
-        name: extractFileNameFromUrl(value),
-        url: value,
-      };
-    }
-
-    if (typeof value === "object" && "url" in value) {
-      const obj = value as { url?: string; name?: string; size?: number };
-      if (!obj.url) {
-        return null;
-      }
-      return {
-        name: obj.name || extractFileNameFromUrl(obj.url),
-        url: obj.url,
-        size: obj.size ?? null,
-      };
-    }
-
-    return null;
-  };
-
-  const parsed = safeJsonParse<unknown>(raw, raw);
-
-  if (Array.isArray(parsed)) {
-    return parsed
-      .map(buildFromUnknown)
-      .filter((item): item is StoredFileInfo => Boolean(item));
-  }
-
-  const single = buildFromUnknown(parsed);
-  return single ? [single] : [];
 };
 
 const formatNameForSidebar = (input: string | null | undefined, maxLength = 40): string => {
@@ -172,58 +178,234 @@ const formatNameForSidebar = (input: string | null | undefined, maxLength = 40):
   return `${name.slice(0, maxLength - 3)}...`;
 };
 
-const interpretProposalString = (value: string): StoredProposalSnapshot => {
-  const snapshot: StoredProposalSnapshot = {};
+const formatRelativeTimestamp = (value: string | null | undefined): string => {
   if (!value) {
-    return snapshot;
+    return "Unknown";
   }
-  if (/^https?:\/\//i.test(value)) {
-    snapshot.wordLink = value;
-  } else {
-    snapshot.generatedDocument = value;
+  const parsed = new Date(value);
+  const timestamp = parsed.getTime();
+  if (Number.isNaN(timestamp)) {
+    return "Unknown";
   }
-  return snapshot;
+
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+
+  if (diff < minute) {
+    return "Just now";
+  }
+  if (diff < hour) {
+    return `${Math.max(1, Math.round(diff / minute))}m ago`;
+  }
+  if (diff < day) {
+    return `${Math.max(1, Math.round(diff / hour))}h ago`;
+  }
+  if (diff < week) {
+    return `${Math.max(1, Math.round(diff / day))}d ago`;
+  }
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-const parseProposalSnapshot = (raw: string | null | undefined): StoredProposalSnapshot => {
-  if (!raw) {
-    return {};
+const formatSidebarTimestamp = (value: string | null | undefined): string => {
+  if (!value) {
+    return "-";
   }
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return {};
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
   }
-
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed === "string") {
-        return interpretProposalString(parsed);
-      }
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as StoredProposalSnapshot;
-      }
-    } catch (error) {
-      console.warn("Failed to parse proposal JSON; treating value as string", error);
-    }
-  }
-
-  return interpretProposalString(trimmed);
+  return parsed.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
-const mapRowToRecord = (row: WordGenRow): ParsedWordGenRecord => ({
-  ...row,
-  rfpFiles: normalizeStoredFileList(row.rfp_files),
-  supportingFiles: normalizeStoredFileList(row.supporting_files),
-  proposalMeta: parseProposalSnapshot(row.proposal),
-  regenComments: safeJsonParse<CommentItem[]>(row.regen_comments, []),
-});
+const collectSlideTextParts = (slide?: PptSlide): string[] => {
+  if (!slide) {
+    return [];
+  }
+  const parts: string[] = [];
+  if (typeof slide.title === "string" && slide.title.trim()) {
+    parts.push(slide.title.trim());
+  }
+  if (Array.isArray(slide.content)) {
+    slide.content.forEach((item) => {
+      if (typeof item === "string" && item.trim()) {
+        parts.push(item.trim());
+        return;
+      }
+      if (item && typeof item === "object") {
+        const typed = item as any;
+        if (typeof typed.heading === "string" && typed.heading.trim()) {
+          parts.push(typed.heading.trim());
+        } else if (typeof typed.text === "string" && typed.text.trim()) {
+          parts.push(typed.text.trim());
+        }
+        if (Array.isArray(typed.items)) {
+          const firstBullet = typed.items.find((entry: any) => typeof entry === "string" && entry.trim());
+          if (typeof firstBullet === "string" && firstBullet.trim()) {
+            parts.push(firstBullet.trim());
+          }
+        }
+      }
+    });
+  }
+  if (typeof slide.notes === "string" && slide.notes.trim()) {
+    parts.push(slide.notes.trim());
+  }
+  return parts.filter(Boolean);
+};
+
+const getSlidePreviewLines = (slide?: PptSlide, maxLines = 3): string[] => {
+  const parts = collectSlideTextParts(slide);
+  return parts.slice(0, maxLines);
+};
 
 const toStoredFileInfo = (file: { name: string; url: string; size?: number | null }): StoredFileInfo => ({
   name: file?.name || extractFileNameFromUrl(file?.url),
   url: file?.url || "",
   size: file?.size ?? null,
 });
+
+const STAGE_MESSAGE_MAP: Record<string, string> = {
+  starting: 'Starting...',
+  uploading_files: 'Uploading PDFs to AI...',
+  downloading_and_uploading_pdfs: 'Uploading PDFs to AI...',
+  prompting_model: 'Generating proposal...',
+  saving_generated_text: 'Saving content...',
+  saving_markdown: 'Saving content...',
+  building_word: 'Building Word document...',
+  generating_word: 'Building Word document...',
+  validating_input: 'Validating requested changes...',
+  processing_with_ai: 'Applying requested edits...',
+  no_modifications: 'Reusing previous content...',
+};
+
+const resolveStageMessage = (stageKey?: string) => {
+  if (!stageKey) {
+    return 'Processing...';
+  }
+  return STAGE_MESSAGE_MAP[stageKey] || stageKey.replace(/_/g, ' ');
+};
+
+const streamSseResponse = async (response: Response, handlers: SseHandlers = {}) => {
+  if (!response.body) {
+    throw new Error("No response body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  const dispatchEventBlock = (eventBlock: string) => {
+    if (!eventBlock.trim()) {
+      return;
+    }
+    const lines = eventBlock.split("\n");
+    let eventType = "";
+    const dataLines: string[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.replace(/\r$/, "");
+      if (line.startsWith("event:")) {
+        eventType = line.substring(6).trim();
+      } else if (line.startsWith("data:")) {
+        const dataContent = line.substring(5);
+        dataLines.push(dataContent.startsWith(" ") ? dataContent.substring(1) : dataContent);
+      }
+    }
+
+    if (!eventType || dataLines.length === 0) {
+      return;
+    }
+
+    const rawData = dataLines.join("\n");
+    handlers.onEvent?.(eventType, rawData);
+
+    const safeParse = () => {
+      try {
+        return JSON.parse(rawData);
+      } catch {
+        return rawData;
+      }
+    };
+
+    if (eventType === "chunk") {
+      const chunkPayload = safeParse();
+      if (typeof chunkPayload === "string") {
+        handlers.onChunk?.(chunkPayload);
+      } else {
+        handlers.onChunk?.(JSON.stringify(chunkPayload));
+      }
+      return;
+    }
+
+    const payload = safeParse();
+
+    if (eventType === "stage") {
+      handlers.onStage?.(payload);
+      return;
+    }
+    if (eventType === "done") {
+      handlers.onDone?.(payload);
+      return;
+    }
+    if (eventType === "result") {
+      handlers.onResult?.(payload);
+      return;
+    }
+    if (eventType === "error") {
+      handlers.onError?.(payload);
+      const message =
+        typeof payload === "string"
+          ? payload
+          : (payload && typeof payload === "object" && "message" in payload)
+            ? String((payload as { message?: string }).message || "Stream error")
+            : "Stream error";
+      throw new Error(message);
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        buffer = buffer.replace(/\r\n/g, "\n");
+        if (buffer.trim()) {
+          dispatchEventBlock(buffer);
+        }
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r\n/g, "\n");
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || "";
+      for (const eventBlock of events) {
+        dispatchEventBlock(eventBlock);
+      }
+    }
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      // ignore cancellation errors
+    }
+    throw error;
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore release errors
+    }
+  }
+};
 
 
 const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
@@ -239,6 +421,7 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
   isPdfConverting,
   pdfError,
   wordDownloadName,
+  markdownRef,
 }) => {
   const hasWordLink = Boolean(wordLink);
   const hasPdfLink = Boolean(pdfLink);
@@ -318,12 +501,22 @@ const OutputDocumentDisplayBase: React.FC<OutputProps> = ({
       )}
 
       {/* Body / Markdown Preview */}
-      <div className="flex-1 overflow-auto p-6 bg-gray-50">
+      <div
+        className="flex-1 overflow-auto p-6 bg-gray-50"
+        ref={(node) => {
+          if (markdownRef) {
+            markdownRef.current = node;
+          }
+        }}
+      >
         {markdownContent && (
-          <div className="max-w-4xl max-h-screen mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area" style={{ overflow: "scroll", backgroundColor: '#ffffff', color: '#000000' }}>
+          <div
+            className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-sm border border-gray-200 p-8 content-display-area"
+            style={{ backgroundColor: '#ffffff', color: '#000000' }}
+          >
             <MarkdownRenderer markdownContent={markdownContent} docConfig={docConfig} />
           </div>
-        ) }
+        )}
       </div>
     </div>
   );
@@ -343,8 +536,10 @@ export const OutputDocumentDisplay = React.memo(
     prev.isPdfConverting === next.isPdfConverting &&
     prev.pdfError === next.pdfError &&
     prev.wordDownloadName === next.wordDownloadName &&
+    prev.markdownRef === next.markdownRef &&
     JSON.stringify(prev.docConfig) === JSON.stringify(next.docConfig)
 );
+
 
 interface UploadPageProps {}
 
@@ -389,13 +584,27 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [savedRfpFiles, setSavedRfpFiles] = useState<StoredFileInfo[]>([]);
   const [savedSupportingFiles, setSavedSupportingFiles] = useState<StoredFileInfo[]>([]);
   const [generationHistory, setGenerationHistory] = useState<Record<string, ParsedWordGenRecord[]>>({});
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [expandedUseCases, setExpandedUseCases] = useState<Record<string, boolean>>({});
   const [expandedVersionDetails, setExpandedVersionDetails] = useState<Record<string, boolean>>({});
   const [selectedUseCase, setSelectedUseCase] = useState<string | null>(null);
   const [selectedGenId, setSelectedGenId] = useState<string | null>(null);
+  const [deletingGenId, setDeletingGenId] = useState<string | null>(null);
+  const [pptSlides, setPptSlides] = useState<PptSlide[]>([]);
+  const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
+  const [pptLoading, setPptLoading] = useState(false);
+  const [pptError, setPptError] = useState<string | null>(null);
+  const [pptPreviewUrl, setPptPreviewUrl] = useState<string | null>(null);
+  const [activePptGenId, setActivePptGenId] = useState<string | null>(null);
+  const [pptSummary, setPptSummary] = useState<{ title?: string; template_id?: string; language?: string; stats?: PptStats } | null>(null);
+  const [pptTemplates, setPptTemplates] = useState<PptTemplateInfo[]>([]);
+  const [selectedPptTemplate, setSelectedPptTemplate] = useState<string>("arweqah");
+  const [pptTemplatesLoading, setPptTemplatesLoading] = useState(false);
+  const [pptTemplatesError, setPptTemplatesError] = useState<string | null>(null);
+  const [pptActionStatus, setPptActionStatus] = useState<string | null>(null);
+  const [pptAction, setPptAction] = useState<"initial" | "regen" | null>(null);
+  const [previewMode, setPreviewMode] = useState<"word" | "ppt">("word");
+  const normalizedLanguageLabel = language === "arabic" ? "Arabic" : "English";
   const pendingRegenCommentsRef = useRef<CommentItem[]>([]);
   const versionLanguageRef = useRef<Record<string, string>>({});
   const [currentVersionLanguage, setCurrentVersionLanguage] = useState<string>('arabic');
@@ -417,6 +626,18 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     setIsPdfConverting(false);
   }, [setPdfLinkSafely]);
 
+  const resetPptState = useCallback(() => {
+    setPptSlides([]);
+    setPptPreviewUrl(null);
+    setPptError(null);
+    setPptSummary(null);
+    setActivePptGenId(null);
+    setSelectedSlideIndex(0);
+    setPptActionStatus(null);
+    setPptAction(null);
+    setPptLoading(false);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (pdfLink && pdfLink.startsWith("blob:")) {
@@ -427,6 +648,54 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   useEffect(() => {
     setExpandedVersionDetails({});
   }, [generationHistory]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    const fetchTemplates = async () => {
+      setPptTemplatesLoading(true);
+      setPptTemplatesError(null);
+      try {
+        const response = await fetch(apiPath("/templates"), {
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const detail =
+            (payload && typeof payload === "object" && "detail" in payload ? payload.detail : null) ||
+            "Failed to load templates";
+          throw new Error(detail);
+        }
+        const templates = Array.isArray(payload.templates) ? payload.templates : [];
+        if (isMounted) {
+          setPptTemplates(templates);
+          setSelectedPptTemplate((current) => {
+            if (current && templates.some((tpl: PptTemplateInfo) => tpl.id === current)) {
+              return current;
+            }
+            return templates[0]?.id || current;
+          });
+        }
+      } catch (err) {
+        if (!isMounted || (err instanceof DOMException && err.name === "AbortError")) {
+          return;
+        }
+        setPptTemplatesError(err instanceof Error ? err.message : "Unable to load templates");
+      } finally {
+        if (isMounted) {
+          setPptTemplatesLoading(false);
+        }
+      }
+    };
+
+    fetchTemplates();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, []);
 
   const getWordFileName = useCallback((): string => {
     const explicitName = wordLink ? extractFileNameFromUrl(wordLink) : null;
@@ -498,6 +767,26 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     
   });
 
+  useEffect(() => {
+    const targetAlignment = language === 'arabic' ? 'right' : 'left';
+    const targetDirection = language === 'arabic' ? 'rtl' : 'ltr';
+
+    setDocConfig(prev => {
+      if (
+        prev.text_alignment === targetAlignment &&
+        prev.reading_direction === targetDirection
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        text_alignment: targetAlignment,
+        reading_direction: targetDirection,
+      };
+    });
+  }, [language]);
+
   const [expandedSections, setExpandedSections] = useState({
     layout: true,
     typography: false,
@@ -507,7 +796,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   
   const rfpInputRef = useRef<HTMLInputElement>(null);
   const supportingInputRef = useRef<HTMLInputElement>(null);
-  const markdownContainerRef = useRef<HTMLDivElement>(null);
+  const markdownContainerRef = useRef<HTMLDivElement | null>(null);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -516,151 +805,303 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }));
   };
 
-  const refreshHistory = useCallback(async () => {
-    setHistoryLoading(true);
-    setHistoryError(null);
+  type GenerationSnapshotInput = {
+    uuid: string;
+    genId: string;
+    generalPreference?: string;
+    regenComments?: CommentItem[];
+    rfpFiles?: StoredFileInfo[];
+    supportingFiles?: StoredFileInfo[];
+    proposalSnapshot: StoredProposalSnapshot;
+    generatedMarkdown: string | null;
+    createdAt?: string;
+    deleteAt?: string | null;
+  };
 
+  const buildParsedRecord = useCallback((snapshot: GenerationSnapshotInput): ParsedWordGenRecord => {
+    const regenComments = snapshot.regenComments ?? [];
+    const rfpFiles = snapshot.rfpFiles ?? [];
+    const supportingFiles = snapshot.supportingFiles ?? [];
+    const proposalMeta = snapshot.proposalSnapshot ?? {};
+
+    return {
+      id: Date.now(),
+      uuid: snapshot.uuid,
+      gen_id: snapshot.genId,
+      created_at: snapshot.createdAt ?? new Date().toISOString(),
+      rfp_files: rfpFiles[0]?.url ?? null,
+      supporting_files: supportingFiles[0]?.url ?? null,
+      proposal: proposalMeta ? JSON.stringify(proposalMeta) : null,
+      generated_markdown: snapshot.generatedMarkdown ?? null,
+      regen_comments: regenComments.length ? JSON.stringify(regenComments) : null,
+      delete_at: snapshot.deleteAt ?? null,
+      general_preference: snapshot.generalPreference ?? null,
+      rfpFiles,
+      supportingFiles,
+      proposalMeta,
+      regenComments,
+    };
+  }, []);
+
+  const recordVersionHistory = useCallback(
+    (record: ParsedWordGenRecord) => {
+      setGenerationHistory(prev => {
+        const next = { ...prev };
+        const existing = next[record.uuid] ? [...next[record.uuid]] : [];
+        const index = existing.findIndex(item => item.gen_id === record.gen_id);
+        if (index >= 0) {
+          existing[index] = record;
+        } else {
+          existing.unshift(record);
+        }
+        existing.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        next[record.uuid] = existing;
+        return next;
+      });
+    },
+    [setGenerationHistory]
+  );
+
+  const findGenerationRecord = useCallback(
+    (uuid: string, genId: string) => {
+      const items = generationHistory[uuid];
+      if (!items) {
+        return null;
+      }
+      return items.find(item => item.gen_id === genId) ?? null;
+    },
+    [generationHistory]
+  );
+
+  const getLocalMarkdownForGen = useCallback(
+    (uuid: string, genId: string): string | null => {
+      const record = findGenerationRecord(uuid, genId);
+      return record?.generated_markdown ?? null;
+    },
+    [findGenerationRecord]
+  );
+
+  const parsePptContent = (raw: any): ParsedPptContent => {
+    const meta: ParsedPptContent["meta"] = {};
+    const normalizeSlide = (slide: any): PptSlide => ({
+      title: slide?.title || "",
+      content: Array.isArray(slide?.content)
+        ? slide.content
+        : Array.isArray(slide)
+          ? slide
+          : [],
+      notes: slide?.notes || "",
+      layout_type: slide?.layout_type,
+      layout_index: slide?.layout_index,
+      chart_data: slide?.chart_data,
+      image_path: slide?.image_path,
+    });
+
+    if (!raw) {
+      return { slides: [], meta };
+    }
     try {
+      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (Array.isArray(parsed)) {
+        return {
+          slides: parsed.map(normalizeSlide),
+          meta,
+        };
+      }
+      if (parsed && typeof parsed === "object") {
+        if (parsed.title) {
+          meta.title = parsed.title;
+        }
+        if (parsed.template_id) {
+          meta.template_id = parsed.template_id;
+        }
+        if (parsed.language) {
+          meta.language = parsed.language;
+        }
+        if (parsed.stats && typeof parsed.stats === "object") {
+          meta.stats = parsed.stats as PptStats;
+        }
+        const slidesSource = Array.isArray(parsed.slides) ? parsed.slides : [];
+        return {
+          slides: slidesSource.map(normalizeSlide),
+          meta,
+        };
+      }
+    } catch (err) {
+      console.error("Failed to parse PPT content", err);
+    }
+    return { slides: [], meta };
+  };
+
+  const readJsonOrThrow = async (response: Response, fallbackMessage: string) => {
+    const raw = await response.text();
+    const payload = safeJsonParse<any>(raw, {});
+    if (!response.ok) {
+      const detail =
+        (payload && typeof payload === "object" && typeof payload.detail === "string" && payload.detail) ||
+        (payload && typeof payload === "object" && typeof payload.error === "string" && payload.error) ||
+        raw ||
+        fallbackMessage;
+      throw new Error(detail);
+    }
+    return payload;
+  };
+
+  const loadPptSlidesForGen = useCallback(
+    async (uuid: string, genId: string) => {
       if (!supabase) {
-        setHistoryError("Supabase client not configured");
-        setHistoryLoading(false);
+        setPptSlides([]);
+        setPptPreviewUrl(null);
+        setPptSummary(null);
+        setActivePptGenId(null);
+        setPptError("Supabase is not configured for PPT preview.");
         return;
       }
-      const { data, error } = await supabase
-        .from("word_gen")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      const rows = (data ?? []) as WordGenRow[];
-      const grouped: Record<string, ParsedWordGenRecord[]> = {};
-
-      rows.forEach((row) => {
-        const parsed = mapRowToRecord(row);
-        if (parsed.proposalMeta?.language) {
-          versionLanguageRef.current[parsed.gen_id] = parsed.proposalMeta.language;
-        }
-        if (!grouped[parsed.uuid]) {
-          grouped[parsed.uuid] = [];
-        }
-        grouped[parsed.uuid].push(parsed);
-      });
-
-      setGenerationHistory(grouped);
-    } catch (err) {
-      console.error("Failed to load generation history", err);
-      const message = err instanceof Error ? err.message : "Failed to load history";
-      setHistoryError(message);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [supabase]);
-
-  const persistGenerationRecord = useCallback(
-    async (payload: {
-      uuid: string;
-      genId: string;
-      rfpFiles?: StoredFileInfo[];
-      supportingFiles?: StoredFileInfo[];
-      regenComments?: CommentItem[];
-      generalPreference?: string;
-    }) => {
+      setPptLoading(true);
+      setPptError(null);
+      setSelectedSlideIndex(0);
       try {
-        if (!supabase) {
-          throw new Error("Supabase client not configured");
-        }
-        setHistoryError(null);
-
-        const ensurePptGenRow = async () => {
-          const attempts = [
-            { ppt_genid: payload.genId, gen_id: payload.genId, uuid: payload.uuid },
-            { ppt_genid: payload.genId, gen_id: payload.genId },
-          ];
-          let ensured = false;
-          let lastError: any = null;
-
-          for (const attempt of attempts) {
-            const { error: pptError } = await supabase
-              .from("ppt_gen")
-              .upsert(attempt, { ignoreDuplicates: true });
-            if (!pptError) {
-              ensured = true;
-              break;
-            }
-            const message = pptError.message?.toLowerCase?.() || "";
-            if (message.includes("duplicate key value") || message.includes("duplicate key") || message.includes("violates unique constraint")) {
-              ensured = true;
-              break;
-            }
-            if (message.includes('column "uuid" does not exist')) {
-              lastError = pptError;
-              continue;
-            }
-            lastError = pptError;
-            console.warn("Failed attempt to ensure ppt_gen row", pptError);
-          }
-
-          if (!ensured) {
-            const err = lastError || new Error("Unknown error ensuring ppt_gen row");
-            throw err;
-          }
-        };
-        await ensurePptGenRow();
-
-        const deleteAtDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-        const deleteAtIso = deleteAtDate.toISOString().split(".")[0].replace("T", " ");
-        const recordPayload: Record<string, any> = {
-          uuid: payload.uuid,
-          gen_id: payload.genId,
-          delete_at: deleteAtIso,
-        };
-        if (payload.generalPreference !== undefined) {
-          recordPayload.general_preference = payload.generalPreference || null;
-        }
-
-        if (payload.rfpFiles !== undefined) {
-          const rfpList = payload.rfpFiles ?? [];
-          const primaryRfpUrl = rfpList.find(file => file?.url)?.url ?? null;
-          recordPayload.rfp_files = primaryRfpUrl;
-        }
-        if (payload.supportingFiles !== undefined) {
-          const supportList = payload.supportingFiles ?? [];
-          const primarySupportingUrl = supportList.find(file => file?.url)?.url ?? null;
-          recordPayload.supporting_files = primarySupportingUrl;
-        }
-        if (payload.regenComments !== undefined) {
-          recordPayload.regen_comments =
-            payload.regenComments && payload.regenComments.length
-              ? JSON.stringify(payload.regenComments)
-              : null;
-        }
-
         const { data, error } = await supabase
-          .from("word_gen")
-          .upsert(recordPayload, { onConflict: "gen_id" })
-          .select()
-          .single<WordGenRow>();
+          .from("ppt_gen")
+          .select("generated_content, ppt_genid, proposal_ppt, created_at, ppt_template")
+          .eq("uuid", uuid)
+          .eq("gen_id", genId)
+          .order("created_at", { ascending: false })
+          .limit(1);
 
         if (error) {
           throw error;
         }
 
-        const parsed = mapRowToRecord(data);
-        setSelectedUseCase(parsed.uuid);
-        setSelectedGenId(parsed.gen_id);
-        setSavedRfpFiles(parsed.rfpFiles);
-        setSavedSupportingFiles(parsed.supportingFiles);
-        await refreshHistory();
-        return parsed;
+        const row = data?.[0];
+        if (!row) {
+          setPptSlides([]);
+          setPptPreviewUrl(null);
+          setPptSummary(null);
+          setActivePptGenId(null);
+          setPptError("No PPT found for this version yet.");
+          return;
+        }
+
+        const { slides, meta } = parsePptContent(row.generated_content);
+        const summary = {
+          ...meta,
+          template_id: meta.template_id || row.ppt_template || undefined,
+        };
+        setPptSlides(slides);
+        setPptPreviewUrl(row.proposal_ppt || null);
+        setActivePptGenId(row.ppt_genid || null);
+        setPptSummary(summary);
+        if (!slides.length) {
+          setPptError("Slides are not ready yet for this version.");
+        }
       } catch (err) {
-        console.error("Failed to persist generation record", err);
-        throw err;
+        console.error("Failed to load PPT preview", err);
+        setPptSlides([]);
+        setPptPreviewUrl(null);
+        setPptSummary(null);
+        setActivePptGenId(null);
+        setPptError("Unable to load PPT preview.");
+      } finally {
+        setPptLoading(false);
       }
     },
-    [refreshHistory, supabase]
+    [supabase]
+  );
+
+  const persistGenerationRecord = useCallback(
+    async (snapshot: GenerationSnapshotInput, options?: { skipSupabase?: boolean }) => {
+      const record = buildParsedRecord(snapshot);
+      const shouldPersist = !options?.skipSupabase;
+
+      try {
+        if (supabase && shouldPersist) {
+          const ensurePptGenRow = async () => {
+            const attempts = [
+              { ppt_genid: snapshot.genId, gen_id: snapshot.genId, uuid: snapshot.uuid },
+              { ppt_genid: snapshot.genId, gen_id: snapshot.genId },
+            ];
+            let ensured = false;
+            let lastError: any = null;
+
+            for (const attempt of attempts) {
+              const { error: pptError } = await supabase
+                .from("ppt_gen")
+                .upsert(attempt, { ignoreDuplicates: true });
+              if (!pptError) {
+                ensured = true;
+                break;
+              }
+              const message = pptError.message?.toLowerCase?.() || "";
+              if (
+                message.includes("duplicate key value") ||
+                message.includes("duplicate key") ||
+                message.includes("violates unique constraint")
+              ) {
+                ensured = true;
+                break;
+              }
+              if (message.includes('column "uuid" does not exist')) {
+                lastError = pptError;
+                continue;
+              }
+              lastError = pptError;
+              console.warn("Failed attempt to ensure ppt_gen row", pptError);
+            }
+
+            if (!ensured) {
+              const err = lastError || new Error("Unknown error ensuring ppt_gen row");
+              throw err;
+            }
+          };
+
+          await ensurePptGenRow();
+
+          const deleteAtIso =
+            snapshot.deleteAt ??
+            new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split(".")[0].replace("T", " ");
+
+          const recordPayload: Record<string, any> = {
+            uuid: snapshot.uuid,
+            gen_id: snapshot.genId,
+            delete_at: deleteAtIso,
+            general_preference: snapshot.generalPreference ?? null,
+            regen_comments:
+              snapshot.regenComments && snapshot.regenComments.length
+                ? JSON.stringify(snapshot.regenComments)
+                : null,
+            proposal: snapshot.proposalSnapshot ? JSON.stringify(snapshot.proposalSnapshot) : null,
+            generated_markdown: snapshot.generatedMarkdown,
+            rfp_files: snapshot.rfpFiles && snapshot.rfpFiles.length ? snapshot.rfpFiles[0].url : null,
+            supporting_files:
+              snapshot.supportingFiles && snapshot.supportingFiles.length ? snapshot.supportingFiles[0].url : null,
+          };
+
+          const { error } = await supabase
+            .from("word_gen")
+            .upsert(recordPayload, { onConflict: "gen_id" });
+
+          if (error) {
+            throw error;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to persist generation record", err);
+      } finally {
+        setSelectedUseCase(snapshot.uuid);
+        setSelectedGenId(snapshot.genId);
+        if (snapshot.rfpFiles) {
+          setSavedRfpFiles(snapshot.rfpFiles);
+        }
+        if (snapshot.supportingFiles) {
+          setSavedSupportingFiles(snapshot.supportingFiles);
+        }
+        recordVersionHistory(record);
+      }
+
+      return record;
+    },
+    [buildParsedRecord, recordVersionHistory, supabase]
   );
 
   const getGenerationLabel = useCallback((record: ParsedWordGenRecord) => {
@@ -747,33 +1188,41 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     [pendingRegenCommentsRef, setPdfLinkSafely, setPdfError, setIsPdfConverting]
   );
 
-  const sortedUseCases = useMemo(() => {
-    const entries = Object.entries(generationHistory).map(([uuid, items]) => {
+  const useCaseEntries = useMemo<UseCaseHistoryEntry[]>(() => {
+    return Object.entries(generationHistory).map(([uuid, items]) => {
       const sortedItems = [...items].sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       const reference = sortedItems[sortedItems.length - 1] ?? sortedItems[0];
       const rfpName = reference?.rfpFiles?.[0]?.name || `Use Case ${uuid.substring(0, 8)}`;
-      const isArchived = sortedItems.every(item => Boolean(item.delete_at));
+      const latestCreatedAt = sortedItems[0]?.created_at ?? null;
 
       return {
         uuid,
         items: sortedItems,
         label: rfpName,
-        isArchived,
         latestVersion: sortedItems.length,
+        latestCreatedAt,
       };
     });
-
-    return entries.sort((a, b) => {
-      if (a.isArchived !== b.isArchived) {
-        return a.isArchived ? 1 : -1;
-      }
-      const latestA = a.items[0]?.created_at || "";
-      const latestB = b.items[0]?.created_at || "";
-      return new Date(latestB).getTime() - new Date(latestA).getTime();
-    });
   }, [generationHistory]);
+
+  const sortedUseCases = useMemo(() => {
+    const toTimestamp = (value: string | null) =>
+      value ? new Date(value).getTime() : 0;
+
+    return [...useCaseEntries].sort(
+      (a, b) => toTimestamp(b.latestCreatedAt) - toTimestamp(a.latestCreatedAt)
+    );
+  }, [useCaseEntries]);
+
+  useEffect(() => {
+    if (selectedUseCase && selectedGenId) {
+      loadPptSlidesForGen(selectedUseCase, selectedGenId);
+      return;
+    }
+    resetPptState();
+  }, [selectedUseCase, selectedGenId, loadPptSlidesForGen, resetPptState]);
 
   const toggleUseCaseExpansion = useCallback((uuid: string) => {
     setExpandedUseCases(prev => ({
@@ -788,6 +1237,73 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       [genId]: !prev[genId],
     }));
   }, []);
+
+  const handleDeleteGeneration = useCallback(async (record: ParsedWordGenRecord) => {
+    const descriptor = record.regenComments.length > 0 ? 'regeneration' : 'generation';
+    const label = getGenerationLabel(record);
+    const confirmMessage = `Delete this ${descriptor}${label ? ` ("${label}")` : ''}? This action cannot be undone.`;
+    if (typeof window === 'undefined' || !window.confirm(confirmMessage)) {
+      return;
+    }
+    if (!supabase) {
+      alert('Supabase configuration missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+      return;
+    }
+
+    const prevUseCaseLength = generationHistory[record.uuid]?.length ?? 0;
+    const willRemoveUseCase = prevUseCaseLength <= 1;
+
+    setDeletingGenId(record.gen_id);
+    try {
+      const { error } = await supabase.from('word_gen').delete().eq('gen_id', record.gen_id);
+      if (error) {
+        throw error;
+      }
+
+      setGenerationHistory(prev => {
+        const next = { ...prev };
+        const prevItems = next[record.uuid] || [];
+        const filtered = prevItems.filter(item => item.gen_id !== record.gen_id);
+        if (filtered.length > 0) {
+          next[record.uuid] = filtered;
+        } else {
+          delete next[record.uuid];
+        }
+        return next;
+      });
+
+      setExpandedVersionDetails(prev => {
+        if (!prev[record.gen_id]) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[record.gen_id];
+        return next;
+      });
+
+      if (willRemoveUseCase) {
+        setExpandedUseCases(prev => {
+          if (!prev[record.uuid]) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[record.uuid];
+          return next;
+        });
+      }
+
+      setSelectedGenId(prev => (prev === record.gen_id ? null : prev));
+      if (willRemoveUseCase) {
+        setSelectedUseCase(prev => (prev === record.uuid ? null : prev));
+      }
+    } catch (err) {
+      console.error('Failed to delete generation', err);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Failed to delete generation: ${message}`);
+    } finally {
+      setDeletingGenId(null);
+    }
+  }, [generationHistory, getGenerationLabel, supabase]);
 
   const handleSelectHistoryItem = useCallback((record: ParsedWordGenRecord) => {
     applyRecordToState(record);
@@ -836,6 +1352,26 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   }, [generationHistory, getGenerationLabel, selectedGenId, selectedUseCase, sortedUseCases]);
 
   const wordDownloadName = useMemo(() => getWordFileName(), [getWordFileName]);
+  const selectedTemplateDetails = useMemo(
+    () => pptTemplates.find((tpl) => tpl.id === selectedPptTemplate) || null,
+    [pptTemplates, selectedPptTemplate]
+  );
+  const pptEmbedUrl = useMemo(() => {
+    if (!pptPreviewUrl) {
+      return null;
+    }
+    try {
+      return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(pptPreviewUrl)}`;
+    } catch (err) {
+      console.warn("Failed to build PPT embed URL", err);
+      return null;
+    }
+  }, [pptPreviewUrl]);
+
+  const hasHistory = sortedUseCases.length > 0;
+  const historyHelperText = hasHistory
+    ? "Select a version from this session to review or restore it."
+    : "Generate or regenerate to build history for this session.";
 
   const uploadFileToSupabase = async (
         file: File,
@@ -993,169 +1529,72 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   };
 
   const postUuidConfig = async (uuid: string, config: string) => {
-    return new Promise<{ docxShareUrl: string | null; proposalContent: string }>((resolve, reject) => {
-      fetch(apiPath(`/initialgen/${uuid}`), {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Accept": "text/event-stream"
-        },
-        body: JSON.stringify({
-          config: config,
-          docConfig: docConfig,
-          timestamp: new Date().toISOString(),
-          language: language
-        }),
-      }).then(async (res) => {
-        if (!res.ok) {
-          const txt = await res.text().catch(() => "");
-          reject(new Error(`Backend /initialgen failed: ${res.status} ${txt}`));
-          return;
-        }
-
-        if (!res.body) {
-          reject(new Error("No response body"));
-          return;
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let accumulatedMarkdown = "";
-        let isSaved = false;
-
-        const processChunk = async () => {
-          try {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-              // Stream ended - now generate the Word and PDF documents
-              console.log("Stream completed, generating documents...");
-              
-              try {
-                // Generate Word and PDF documents using the /download endpoint
-                const docRes = await fetch(apiPath(`/download/${uuid}`), {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    docConfig: docConfig,
-                    language: language
-                  }),
-                });
-
-                if (!docRes.ok) {
-                  console.error("Failed to generate documents");
-                  resolve({ 
-                    docxShareUrl: null, 
-                    proposalContent: accumulatedMarkdown 
-                  });
-                  return;
-                }
-
-                const docResult = await docRes.json();
-                resolve({ 
-                  docxShareUrl: docResult.proposal_word_url || null, 
-                  proposalContent: accumulatedMarkdown 
-                });
-                setIsUploading(false);
-              } catch (error) {
-                console.error("Error generating documents:", error);
-                resolve({ 
-                  docxShareUrl: null, 
-                  proposalContent: accumulatedMarkdown 
-                });
-              }
-              return;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-            
-            // Split by double newlines to separate SSE events
-            const events = buffer.split('\n\n');
-            // Keep the last incomplete event in the buffer
-            buffer = events.pop() || "";
-
-            for (const eventBlock of events) {
-              if (!eventBlock.trim()) continue;
-              
-              const lines = eventBlock.split('\n');
-              let eventType = '';
-              let dataLines: string[] = [];
-              
-              for (const line of lines) {
-                if (line.startsWith('event:')) {
-                  eventType = line.substring(6).trim();
-                } else if (line.startsWith('data:')) {
-                  // Don't trim data content - preserve whitespace in markdown
-                  const dataContent = line.substring(5);
-                  // Only remove the single leading space that SSE spec adds after 'data:'
-                  dataLines.push(dataContent.startsWith(' ') ? dataContent.substring(1) : dataContent);
-                }
-              }
-              
-              if (!eventType || dataLines.length === 0) continue;
-              
-              // Join multi-line data with newlines to preserve markdown formatting
-              const data = dataLines.join('\n');
-              
-              if (eventType === 'chunk') {
-                // Chunk data is JSON-encoded to preserve newlines and special chars
-                try {
-                  const decodedChunk = JSON.parse(data);
-                  accumulatedMarkdown += decodedChunk;
-                  console.log(`Chunk received: ${decodedChunk.length} chars, Total: ${accumulatedMarkdown.length}`);
-                  setMarkdownContent(accumulatedMarkdown);
-                } catch (e) {
-                  console.error("Failed to parse chunk data:", e, data);
-                  // Fallback: use data as-is
-                  accumulatedMarkdown += data;
-                  setMarkdownContent(accumulatedMarkdown);
-                }
-              } else if (eventType === 'stage') {
-                try {
-                  const stageData = JSON.parse(data);
-                  console.log("Stage:", stageData.stage);
-                  const stageMessages: Record<string, string> = {
-                    'starting': 'Starting...',
-                    'downloading_and_uploading_pdfs': 'Uploading PDFs to AI...',
-                    'prompting_model': 'Generating proposal...',
-                    'saving_generated_text': 'Saving content...'
-                  };
-                  setProcessingStage(stageMessages[stageData.stage] || stageData.stage || 'Processing...');
-                } catch (e) {
-                  console.warn("Failed to parse stage data:", data);
-                }
-              } else if (eventType === 'done') {
-                try {
-                  const doneData = JSON.parse(data);
-                  console.log("Done:", doneData);
-                  isSaved = doneData.status === "saved";
-                } catch (e) {
-                  console.warn("Failed to parse done data:", data);
-                }
-              } else if (eventType === 'error') {
-                try {
-                  const errorData = JSON.parse(data);
-                  console.error("Stream error:", errorData.message);
-                  reject(new Error(errorData.message));
-                  return;
-                } catch (e) {
-                  console.error("Stream error:", data);
-                  reject(new Error(data));
-                  return;
-                }
-              }
-            }
-
-            processChunk();
-          } catch (error) {
-            reject(error);
-          }
-        };
-
-        processChunk();
-      }).catch(reject);
+    const response = await fetch(apiPath(`/initialgen/${uuid}`), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+      },
+      body: JSON.stringify({
+        config: config,
+        docConfig: docConfig,
+        timestamp: new Date().toISOString(),
+        language: language,
+      }),
     });
+
+    if (!response.ok) {
+      const txt = await response.text().catch(() => "");
+      throw new Error(`Backend /initialgen failed: ${response.status} ${txt}`);
+    }
+
+    let accumulatedMarkdown = "";
+    await streamSseResponse(response, {
+      onChunk: (chunk) => {
+        accumulatedMarkdown += chunk;
+        setMarkdownContent(accumulatedMarkdown);
+      },
+      onStage: (payload) => {
+        const stageKey =
+          typeof payload === "string"
+            ? payload
+            : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
+        if (stageKey) {
+          setProcessingStage(resolveStageMessage(stageKey));
+        }
+      },
+      onError: (payload) => {
+        console.error("Initial generation stream error", payload);
+      },
+    });
+
+    let docxShareUrl: string | null = null;
+    try {
+      const docRes = await fetch(apiPath(`/download/${uuid}`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          docConfig: docConfig,
+          language: language,
+        }),
+      });
+
+      if (!docRes.ok) {
+        console.error("Failed to generate documents from /download");
+      } else {
+        const docResult = await docRes.json();
+        docxShareUrl = docResult.proposal_word_url || null;
+      }
+    } catch (error) {
+      console.error("Error generating documents:", error);
+    } finally {
+      setIsUploading(false);
+    }
+
+    return {
+      docxShareUrl,
+      proposalContent: accumulatedMarkdown,
+    };
   };
 
   const simulateProgress = () => {
@@ -1302,6 +1741,129 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }
   }, [pdfLink, wordLink, jobUuid, setPdfLinkSafely, setPdfError, setIsPdfConverting, getPdfFileName, getWordFileName]);
 
+  const handleGeneratePpt = async () => {
+    if (!jobUuid || !selectedGenId) {
+      alert("Select a proposal version before generating a presentation.");
+      return;
+    }
+    if (!selectedPptTemplate) {
+      alert("Select a PPT template before generating a presentation.");
+      return;
+    }
+
+    const normalizedLanguage = normalizedLanguageLabel;
+    setPreviewMode("ppt");
+    setPptAction("initial");
+    setPptActionStatus("Generating presentation...");
+    setPptError(null);
+    setPptLoading(true);
+
+    try {
+      const response = await fetch(apiPath("/ppt-initialgen"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          uuid: jobUuid,
+          gen_id: selectedGenId,
+          language: normalizedLanguage,
+          template_id: selectedPptTemplate,
+          user_preference: config,
+        }),
+      });
+
+      const payload = await readJsonOrThrow(response, "Failed to generate presentation");
+      const { slides, meta } = parsePptContent(payload.generated_content);
+      const summary = {
+        ...meta,
+        template_id: meta.template_id || selectedPptTemplate,
+      };
+
+      setPptSlides(slides);
+      setSelectedSlideIndex(0);
+      setPptSummary(summary);
+      setPptPreviewUrl(payload.ppt_url || null);
+      setActivePptGenId(payload.ppt_genid || null);
+      if (!slides.length) {
+        setPptError("Slides will appear here once processing finishes.");
+      }
+      setPptActionStatus("Presentation ready.");
+    } catch (error) {
+      console.error("ppt-initialgen failed:", error);
+      setPptError(error instanceof Error ? error.message : "Unable to generate presentation.");
+      setPptActionStatus(null);
+    } finally {
+      setPptLoading(false);
+      setPptAction(null);
+    }
+  };
+
+  const handleRegeneratePpt = async () => {
+    if (!jobUuid || !selectedGenId) {
+      alert("Select a proposal version before regenerating a presentation.");
+      return;
+    }
+    if (!activePptGenId) {
+      alert("Generate a presentation first before requesting a PPT regeneration.");
+      return;
+    }
+    if (!selectedPptTemplate) {
+      alert("Select a PPT template before regenerating the presentation.");
+      return;
+    }
+
+    const normalizedLanguage = normalizedLanguageLabel;
+    const commentsPayload = commentConfigList.length ? commentConfigList : [];
+
+    setPreviewMode("ppt");
+    setPptAction("regen");
+    setPptActionStatus("Applying feedback to presentation...");
+    setPptError(null);
+    setPptLoading(true);
+
+    try {
+      const response = await fetch(apiPath("/ppt-regeneration"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          uuid: jobUuid,
+          gen_id: selectedGenId,
+          ppt_genid: activePptGenId,
+          language: normalizedLanguage,
+          template_id: selectedPptTemplate,
+          regen_comments: commentsPayload,
+        }),
+      });
+
+      const payload = await readJsonOrThrow(response, "Failed to regenerate presentation");
+      const { slides, meta } = parsePptContent(payload.generated_content);
+      const summary = {
+        ...meta,
+        template_id: meta.template_id || selectedPptTemplate,
+      };
+
+      setPptSlides(slides);
+      setSelectedSlideIndex(0);
+      setPptSummary(summary);
+      setPptPreviewUrl(payload.ppt_url || null);
+      setActivePptGenId(payload.new_ppt_genid || null);
+      if (!slides.length) {
+        setPptError("Slides will appear here once processing finishes.");
+      }
+      setPptActionStatus("Presentation regenerated.");
+    } catch (error) {
+      console.error("ppt-regeneration failed:", error);
+      setPptError(error instanceof Error ? error.message : "Unable to regenerate presentation.");
+      setPptActionStatus(null);
+    } finally {
+      setPptLoading(false);
+      setPptAction(null);
+    }
+  };
+
   const handleUpload = async () => {
     if (!supabase) {
       alert('Supabase configuration missing. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
@@ -1317,6 +1879,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return;
     }
 
+    setPreviewMode("word");
+    resetPptState();
     setMarkdownContent(null);
     setIsUploading(true);
     setUploadProgress(0);
@@ -1399,13 +1963,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSavedRfpFiles(storedRfpFiles);
       setSavedSupportingFiles(storedSupportingFiles);
 
+      // Ensure Supabase has a row with our newly uploaded files before hitting the backend.
       await persistGenerationRecord({
         uuid,
         genId,
         rfpFiles: storedRfpFiles,
         supportingFiles: storedSupportingFiles,
         generalPreference: config,
+        regenComments: [],
+        proposalSnapshot: {
+          config,
+          language,
+          docConfig,
+        },
+        generatedMarkdown: null,
       });
+
       setRfpFiles([]);
       setSupportingFiles([]);
 
@@ -1426,7 +1999,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setSelectedGenId(genId);
       pendingRegenCommentsRef.current = [];
       setCommentConfigList([]);
-      await refreshHistory();
+      // await persistGenerationRecord({
+      //   uuid,
+      //   genId,
+      //   rfpFiles: storedRfpFiles,
+      //   supportingFiles: storedSupportingFiles,
+      //   generalPreference: config,
+      //   regenComments: [],
+      //   proposalSnapshot: {
+      //     config,
+      //     language,
+      //     docConfig,
+      //     wordLink: docxShareUrl,
+      //     generatedDocument: 'Generated_Proposal.docx',
+      //   },
+      //   generatedMarkdown: proposalContent ?? null,
+      // }, { skipSupabase: true });
     } catch (error) {
       console.error('Upload failed:', error);
       alert('Upload failed. Please try again.');
@@ -1455,6 +2043,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return;
     }
 
+    setPreviewMode("word");
+    resetPptState();
     const progressInterval = simulateProgress();
     setIsUploading(true);
     setIsRegenerating(true);
@@ -1477,13 +2067,21 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       const newGenId = generateUUID();
       setSelectedGenId(newGenId);
 
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: newGenId,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-        generalPreference: regenConfig,
-      });
+      // Pre-register the new generation so the backend can find the uploaded files.
+      // await persistGenerationRecord({
+      //   uuid: jobUuid,
+      //   genId: newGenId,
+      //   rfpFiles: savedRfpFiles,
+      //   supportingFiles: savedSupportingFiles,
+      //   generalPreference: regenConfig,
+      //   regenComments: commentsSnapshot,
+      //   proposalSnapshot: {
+      //     config: regenConfig,
+      //     language: regenLanguage,
+      //     docConfig: regenDocConfig,
+      //   },
+      //   generatedMarkdown: null,
+      // }, { skipSupabase: true });
 
       const { docxShareUrl, proposalContent } = await postUuidConfig(jobUuid, regenConfig);
 
@@ -1502,7 +2100,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setCommentConfigList([]);
       setCurrentCommentContent("");
       setCurrentCommentText("");
-      await refreshHistory();
+      // await persistGenerationRecord({
+      //   uuid: jobUuid,
+      //   genId: newGenId,
+      //   rfpFiles: savedRfpFiles,
+      //   supportingFiles: savedSupportingFiles,
+      //   generalPreference: regenConfig,
+      //   regenComments: commentsSnapshot,
+      //   proposalSnapshot: {
+      //     config: regenConfig,
+      //     language: regenLanguage,
+      //     docConfig: regenDocConfig,
+      //     wordLink: docxShareUrl,
+      //     generatedDocument: 'Generated_Proposal.docx',
+      //   },
+      //   generatedMarkdown: proposalContent ?? null,
+      // }, { skipSupabase: true });
     } catch (error) {
       console.error('Language change regeneration failed:', error);
       alert('Regenerate failed. Please try again.');
@@ -1545,6 +2158,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       return;
     }
 
+    setPreviewMode("word");
+    resetPptState();
     try {
       pendingRegenCommentsRef.current = commentsSnapshot;
       setIsUploading(true);
@@ -1566,6 +2181,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json",
         },
         body: JSON.stringify({
           uuid: jobUuid,
@@ -1577,67 +2193,159 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         }),
       });
 
-      if (!response.ok) {
-        const txt = await response.text().catch(() => "");
-        throw new Error(`Backend /regenerate failed: ${response.status} ${txt}`);
-      }
+      let streamedMarkdown = "";
+      let regenWordLink: string | null = null;
+      let regenGenId: string | null = null;
+      let backendUpdatedMarkdown: string | null = null;
+      const contentType = (response.headers.get("content-type") || "").toLowerCase();
+      const isStream = contentType.includes("text/event-stream");
 
-      let regenResult: any = null;
-      try {
-        regenResult = await response.json();
-      } catch (parseError) {
-        console.warn("Failed to parse regenerate response JSON", parseError);
-      }
-
-      const regenGenId: string = regenResult?.regen_gen_id || regenResult?.gen_id || generateUUID();
-      const newWordLink: string | null = regenResult?.wordLink ?? null;
-      const newPdfLink: string | null = regenResult?.pdfLink ?? null;
-
-      setProcessingStage('Fetching regenerated content...');
-
-      let regeneratedMarkdown: string | null = null;
-      try {
-        const { data: regenRow, error: regenRowError } = await supabase
-          .from("word_gen")
-          .select("*")
-          .eq("uuid", jobUuid)
-          .eq("gen_id", regenGenId)
-          .maybeSingle();
-
-        if (regenRowError) {
-          console.warn("Failed to fetch regenerated row from Supabase", regenRowError);
-        } else if (regenRow) {
-          const typedRow = regenRow as WordGenRow | null;
-          regeneratedMarkdown = typedRow?.generated_markdown ?? null;
+      if (isStream) {
+        if (!response.ok) {
+          const txt = await response.text().catch(() => "");
+          throw new Error(`Backend /regenerate failed: ${response.status} ${txt}`);
         }
-      } catch (fetchError) {
-        console.warn("Error retrieving regenerated markdown from Supabase", fetchError);
+
+        await streamSseResponse(response, {
+          onChunk: (chunk) => {
+            streamedMarkdown += chunk;
+            setMarkdownContent(streamedMarkdown);
+          },
+          onStage: (payload) => {
+            const stageKey =
+              typeof payload === "string"
+                ? payload
+                : (payload && typeof payload === "object" ? (payload as { stage?: string }).stage : "");
+            if (stageKey) {
+              setProcessingStage(resolveStageMessage(stageKey));
+            }
+          },
+          onResult: (payload) => {
+            if (payload && typeof payload === "object" && "markdown" in payload) {
+              const fullMarkdown = (payload as { markdown?: string }).markdown;
+              if (typeof fullMarkdown === "string") {
+                streamedMarkdown = fullMarkdown;
+                setMarkdownContent(fullMarkdown);
+              }
+            }
+          },
+          onDone: (payload) => {
+            if (payload && typeof payload === "object") {
+              const doneData = payload as {
+                gen_id?: string;
+                regen_gen_id?: string;
+                new_gen_id?: string;
+                wordLink?: string;
+                updated_markdown?: string | null;
+              };
+              const returnedGenId = doneData.regen_gen_id || doneData.gen_id || doneData.new_gen_id;
+              if (returnedGenId) {
+                regenGenId = returnedGenId;
+                setSelectedGenId(returnedGenId);
+              }
+              if (doneData.wordLink) {
+                regenWordLink = doneData.wordLink;
+              }
+              if (typeof doneData.updated_markdown === "string") {
+                backendUpdatedMarkdown = doneData.updated_markdown;
+                setMarkdownContent(backendUpdatedMarkdown);
+              }
+            }
+          },
+          onError: (payload) => {
+            console.error("Regenerate stream error", payload);
+          },
+        });
+      } else {
+        const payload = await readJsonOrThrow(response, "Backend /regenerate failed");
+        regenGenId =
+          (payload && typeof payload === "object" && (payload as any).regen_gen_id) ||
+          (payload && typeof payload === "object" && (payload as any).regenGenId) ||
+          (payload && typeof payload === "object" && (payload as any).gen_id) ||
+          (payload && typeof payload === "object" && (payload as any).new_gen_id) ||
+          null;
+        if (payload && typeof payload === "object" && (payload as any).wordLink) {
+          regenWordLink = (payload as any).wordLink;
+        }
+        const updatedMarkdown =
+          (payload && typeof payload === "object" && typeof (payload as any).updated_markdown === "string"
+            ? (payload as any).updated_markdown
+            : null) ||
+          (payload && typeof payload === "object" && typeof (payload as any).generated_markdown === "string"
+            ? (payload as any).generated_markdown
+            : null);
+        const directMarkdown =
+          payload && typeof payload === "object" && typeof (payload as any).markdown === "string"
+            ? (payload as any).markdown
+            : null;
+        backendUpdatedMarkdown = updatedMarkdown;
+        streamedMarkdown = updatedMarkdown || directMarkdown || "";
       }
 
-      await persistGenerationRecord({
-        uuid: jobUuid,
-        genId: regenGenId,
-        regenComments: commentsSnapshot,
-        generalPreference: regenConfig,
-        rfpFiles: savedRfpFiles,
-        supportingFiles: savedSupportingFiles,
-      });
+      let finalGenId = regenGenId;
+      if (!finalGenId && supabase) {
+        try {
+          const { data: latestGenRow, error: latestGenError } = await supabase
+            .from("word_gen")
+            .select("gen_id")
+            .eq("uuid", jobUuid)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (!latestGenError && latestGenRow?.gen_id) {
+            finalGenId = latestGenRow.gen_id;
+          }
+        } catch (latestErr) {
+          console.warn("Unable to fetch latest gen_id after regeneration", latestErr);
+        }
+      }
+      if (!finalGenId) {
+        finalGenId = baseGenId;
+      }
+
+      let regeneratedMarkdown: string | null = streamedMarkdown || null;
+      const backendMarkdownClean =
+        (typeof backendUpdatedMarkdown === "string" ? backendUpdatedMarkdown : "").trim();
+      if (!regeneratedMarkdown && backendMarkdownClean) {
+        regeneratedMarkdown = backendMarkdownClean;
+      }
+      if (!regeneratedMarkdown) {
+        regeneratedMarkdown = getLocalMarkdownForGen(jobUuid, finalGenId);
+      }
+      if (!regeneratedMarkdown && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from("word_gen")
+            .select("generated_markdown")
+            .eq("uuid", jobUuid)
+            .eq("gen_id", finalGenId)
+            .limit(1)
+            .maybeSingle();
+          if (!error && data?.generated_markdown && typeof data.generated_markdown === "string") {
+            regeneratedMarkdown = data.generated_markdown;
+          }
+        } catch (fallbackErr) {
+          console.warn("Fallback markdown fetch failed", fallbackErr);
+        }
+      }
 
       const proposalSnapshot: StoredProposalSnapshot = {
         config: regenConfig,
         language: regenLanguage,
         docConfig: regenDocConfig,
-        wordLink: newWordLink,
-        pdfLink: newPdfLink,
+        wordLink: regenWordLink,
+        pdfLink: null,
         generatedDocument: 'Regenerated_Proposal.docx',
       };
 
       setProcessingStage('Finalizing regenerated proposal...');
       setUploadProgress(100);
-      setSelectedGenId(regenGenId);
+      setSelectedUseCase(jobUuid);
+      setSelectedGenId(finalGenId);
       setGeneratedDocument(proposalSnapshot.generatedDocument ?? 'Regenerated_Proposal.docx');
       setWordLink(proposalSnapshot.wordLink ?? null);
-      versionLanguageRef.current[regenGenId] = regenLanguage;
+      setIsGenerated(Boolean(regeneratedMarkdown || proposalSnapshot.wordLink));
+      versionLanguageRef.current[finalGenId] = regenLanguage;
       setCurrentVersionLanguage(regenLanguage);
       setPdfLinkSafely(proposalSnapshot.pdfLink ?? null);
       setPdfError(null);
@@ -1646,10 +2354,23 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setIsRegenerationComplete(true);
       setIsRegenerating(false);
       pendingRegenCommentsRef.current = [];
-      await refreshHistory();
+      await persistGenerationRecord(
+        {
+          uuid: jobUuid,
+          genId: finalGenId,
+          regenComments: commentsSnapshot,
+          generalPreference: regenConfig,
+          rfpFiles: savedRfpFiles,
+          supportingFiles: savedSupportingFiles,
+          proposalSnapshot,
+          generatedMarkdown: regeneratedMarkdown,
+        },
+        { skipSupabase: true }
+      );
     } catch (error) {
       console.error('Regenerate failed:', error);
-      alert('Regenerate failed. Please try again.');
+      const message = error instanceof Error ? error.message : 'Regenerate failed. Please try again.';
+      alert(message);
       setIsRegenerating(false);
       setIsRegenerationComplete(false);
     } finally {
@@ -1671,7 +2392,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     onDragOver, 
     onDrop, 
     onClick, 
-    fileType 
+    fileType,
+    disabled = false,
   }: {
     title: string;
     files: File[];
@@ -1683,6 +2405,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     onDrop: (e: React.DragEvent) => void;
     onClick: () => void;
     fileType: 'rfp' | 'supporting';
+    disabled?: boolean;
   }) => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
       <div className="border-b border-gray-100 p-4">
@@ -1694,16 +2417,18 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       
       <div className="p-4">
         <div
-          className={`relative border-2 border-dashed rounded-md p-6 text-center transition-all duration-200 cursor-pointer
+          className={`relative border-2 border-dashed rounded-md p-6 text-center transition-all duration-200
             ${dragActive 
               ? 'border-gray-400 bg-gray-50' 
               : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-            }`}
-          onDragEnter={onDragEnter}
-          onDragLeave={onDragLeave}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          onClick={onClick}
+            }
+            ${disabled ? 'opacity-60 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
+          onDragEnter={disabled ? undefined : onDragEnter}
+          onDragLeave={disabled ? undefined : onDragLeave}
+          onDragOver={disabled ? undefined : onDragOver}
+          onDrop={disabled ? undefined : onDrop}
+          onClick={disabled ? undefined : onClick}
+          aria-disabled={disabled}
         >
           <Upload 
             className={`mx-auto mb-3 ${dragActive ? 'text-gray-600' : 'text-gray-400'}`} 
@@ -1740,11 +2465,20 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 <div className="flex items-center gap-1">
                   {file.url && (
                     <button
+                      type="button"
+                      disabled={disabled}
                       onClick={(e) => {
                         e.stopPropagation();
+                        if (disabled) {
+                          return;
+                        }
                         window.open(file.url, "_blank");
                       }}
-                      className="text-blue-500 hover:text-blue-600 text-xs font-medium"
+                      className={`text-xs font-medium ${
+                        disabled
+                          ? 'text-gray-300 cursor-not-allowed'
+                          : 'text-blue-500 hover:text-blue-600'
+                      }`}
                     >
                       View
                     </button>
@@ -1765,11 +2499,20 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 </div>
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
+                    disabled={disabled}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (disabled) {
+                        return;
+                      }
                       removeFile(index, fileType);
                     }}
-                    className="text-gray-400 hover:text-red-500 p-1 flex-shrink-0"
+                    className={`p-1 flex-shrink-0 ${
+                      disabled
+                        ? 'text-gray-300 cursor-not-allowed'
+                        : 'text-gray-400 hover:text-red-500'
+                    }`}
                   >
                     <X size={12} />
                   </button>
@@ -1780,6 +2523,179 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         )}
       </div>
     </div>
+  );
+
+  const renderWordSidebarContent = () => (
+    <>
+      {/* Language Selection */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
+        <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
+          <Globe className="text-gray-500" size={16} /> Language
+        </h3>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={isDocLocked}
+            onClick={() => setLanguage('arabic')}
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
+              ${language === 'arabic' 
+                ? 'bg-blue-600 text-white border-blue-600' 
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }
+              ${isDocLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            Arabic
+          </button>
+          <button
+            type="button"
+            disabled={isDocLocked}
+            onClick={() => setLanguage('english')}
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
+              ${language === 'english' 
+                ? 'bg-blue-600 text-white border-blue-600' 
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }
+              ${isDocLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+          >
+            English
+          </button>
+        </div>
+      </div>
+
+      <FileUploadZone
+        title="RFP Documents"
+        files={rfpFiles}
+        storedFiles={savedRfpFiles}
+        dragActive={dragActiveRfp}
+        onDragEnter={(e) => handleDrag(e, setDragActiveRfp)}
+        onDragLeave={(e) => handleDrag(e, setDragActiveRfp)}
+        onDragOver={(e) => handleDrag(e, setDragActiveRfp)}
+        onDrop={(e) => handleDrop(e, 'rfp')}
+        onClick={() => rfpInputRef.current?.click()}
+        fileType="rfp"
+        disabled={isDocLocked}
+      />
+
+      <FileUploadZone
+        title="Supporting Files"
+        files={supportingFiles}
+        storedFiles={savedSupportingFiles}
+        dragActive={dragActiveSupporting}
+        onDragEnter={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDragLeave={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDragOver={(e) => handleDrag(e, setDragActiveSupporting)}
+        onDrop={(e) => handleDrop(e, 'supporting')}
+        onClick={() => supportingInputRef.current?.click()}
+        fileType="supporting"
+        disabled={isDocLocked}
+      />
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div className="border-b border-gray-100 p-4">
+          <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
+            <Settings className="text-gray-500" size={16} />
+            General Preferences
+          </h3>
+        </div>
+        
+        <div className="p-4">
+          <textarea
+            value={config}
+            onChange={(e) => setConfig(e.target.value)}
+            placeholder="Describe your proposal generation preferences..."
+            rows={4}
+            className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded text-xs focus:ring-1 focus:ring-gray-400 focus:border-gray-400 resize-none placeholder-gray-400"
+          />
+          <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+            Include tone, structure, and specific requirements
+          </p>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderPptSidebarContent = () => (
+    <>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
+        <div className="border-b border-gray-100 p-4">
+          <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
+            <Layout className="text-gray-500" size={16} />
+            Presentation
+          </h3>
+        </div>
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">PPT Template</label>
+            <div className="mt-1 flex items-center gap-2">
+              <select
+                value={pptTemplates.length ? selectedPptTemplate : ""}
+                onChange={(e) => setSelectedPptTemplate(e.target.value)}
+                disabled={pptTemplatesLoading || isPptLocked || !pptTemplates.length}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+              >
+                {pptTemplates.length === 0 ? (
+                  <option value="">No templates detected</option>
+                ) : (
+                  pptTemplates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name} {tpl.version ? `(${tpl.version})` : ""}
+                    </option>
+                  ))
+                )}
+              </select>
+              {pptTemplatesLoading && <Loader className="animate-spin text-gray-500" size={16} />}
+            </div>
+            {selectedTemplateDetails?.description && (
+              <p className="text-xs text-gray-500 mt-2">
+                {selectedTemplateDetails.description}
+              </p>
+            )}
+          </div>
+          <div className="text-xs space-y-1">
+            {pptActionStatus && <p className="text-gray-600">{pptActionStatus}</p>}
+            {pptTemplatesError && <p className="text-red-600">{pptTemplatesError}</p>}
+            {pptError && <p className="text-red-600">{pptError}</p>}
+            {!jobUuid && (
+              <p className="text-gray-500">
+                Generate or select a proposal version to unlock PPT controls.
+              </p>
+            )}
+          </div>
+
+          {pptSummary && (
+            <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
+              <div className="col-span-2">
+                <p className="font-semibold text-gray-800">
+                  {pptSummary.title || "Presentation"}
+                </p>
+                <p className="text-gray-500">
+                  Template: {pptSummary.template_id || selectedPptTemplate || "-"} | Language:{" "}
+                  {pptSummary.language || normalizedLanguageLabel}
+                </p>
+              </div>
+              {[
+                { label: "Slides", value: pptSummary.stats?.total_slides ?? pptSlides.length },
+                { label: "Sections", value: pptSummary.stats?.sections },
+                { label: "Charts", value: pptSummary.stats?.charts },
+                { label: "Images", value: pptSummary.stats?.images },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded border border-gray-100 bg-gray-50 px-3 py-2"
+                >
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                    {item.label}
+                  </p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {typeof item.value === "number" ? item.value : "-"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 
   const ConfigSection = ({ 
@@ -1938,25 +2854,117 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   );
 
   useEffect(() => {
-    refreshHistory();
-  }, [refreshHistory]);
-
-  useEffect(() => {
     checkSupabaseConnection();
   }, [checkSupabaseConnection]);
  
 
+  const isStreamingContent = Boolean(markdownContent) && (isUploading || isRegenerating);
+
   // Auto-scroll to bottom when markdown content updates during streaming
   React.useEffect(() => {
-    if (isUploading && markdownContent && markdownContainerRef.current) {
-      const container = markdownContainerRef.current;
-      // Smooth scroll to bottom to show latest content
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: 'smooth'
-      });
+    if (!isStreamingContent || !markdownContainerRef.current) {
+      return;
     }
-  }, [markdownContent, isUploading]);
+
+    const container = markdownContainerRef.current;
+    const scrollToBottom = () => {
+      if (typeof container.scrollTo === 'function') {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth',
+        });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+    };
+
+    if (typeof window === 'undefined') {
+      scrollToBottom();
+      return;
+    }
+
+    const rafId = window.requestAnimationFrame(scrollToBottom);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [markdownContent, isStreamingContent]);
+
+  useEffect(() => {
+    const hasWord = Boolean(markdownContent);
+    const hasPpt = pptSlides.length > 0;
+
+    if (isUploading || isRegenerating) {
+      return;
+    }
+
+    if (previewMode === "word" && hasPpt && !hasWord) {
+      setPreviewMode("ppt");
+    }
+  }, [markdownContent, pptSlides.length, previewMode, isUploading, isRegenerating]);
+
+  const isPptBusy = pptAction !== null;
+  const isPptLocked = isPptBusy;
+  const isDocLocked = isUploading || isPdfConverting || deletingGenId !== null || isRegenerating;
+  const isProcessLocked = isDocLocked || isPptLocked;
+  const hasPptAsset = Boolean(pptPreviewUrl || (pptSlides.length > 0));
+  const hasPptGenHandle = Boolean(activePptGenId);
+  const canGeneratePpt = Boolean(jobUuid && selectedGenId && selectedPptTemplate);
+  const canRegeneratePpt = Boolean(canGeneratePpt && hasPptGenHandle && hasPptAsset);
+  const selectedSlideSafeIndex = useMemo(() => {
+    if (!pptSlides.length) {
+      return -1;
+    }
+    return Math.min(selectedSlideIndex, pptSlides.length - 1);
+  }, [pptSlides.length, selectedSlideIndex]);
+  const selectedSlide = useMemo(() => {
+    if (selectedSlideSafeIndex < 0) {
+      return null;
+    }
+    return pptSlides[selectedSlideSafeIndex] || null;
+  }, [pptSlides, selectedSlideSafeIndex]);
+  const selectedSlidePreviewLines = useMemo(
+    () => getSlidePreviewLines(selectedSlide || undefined, 4),
+    [selectedSlide]
+  );
+  const canOpenPptPreview = Boolean(
+    pptSlides.length ||
+      pptLoading ||
+      pptError ||
+      (jobUuid && selectedGenId)
+  );
+  const hasGeneratedPpt = hasPptAsset;
+  const pptPrimaryActionLabel = hasGeneratedPpt ? "Regenerate PPT" : "Generate PPT";
+  const pptPrimaryDisabled =
+    isPptLocked ||
+    pptTemplatesLoading ||
+    !canGeneratePpt ||
+    hasGeneratedPpt; // disable regen for now
+  const showWordFormatting = previewMode === "word" && !isRegenerating && !generatedDocument && !markdownContent;
+  const showRightPanel = previewMode === "word" || previewMode === "ppt";
+  const showCommentsForPreview =
+    (previewMode === "word" && Boolean(markdownContent || generatedDocument)) ||
+    (previewMode === "ppt" && hasGeneratedPpt);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const previousCursor = document.body.style.cursor;
+    document.body.style.cursor = isProcessLocked ? 'wait' : '';
+    return () => {
+      document.body.style.cursor = previousCursor;
+    };
+  }, [isProcessLocked]);
+
+  const handlePrimaryPptClick = useCallback(() => {
+    if (pptPrimaryDisabled) {
+      return;
+    }
+    if (hasGeneratedPpt) {
+      handleRegeneratePpt();
+      return;
+    }
+    handleGeneratePpt();
+  }, [handleGeneratePpt, handleRegeneratePpt, hasGeneratedPpt, pptPrimaryDisabled]);
+
   const [comment1, setComment1] = useState<string>("");
   const [comment2, setComment2] = useState<string>("");
 
@@ -1972,14 +2980,23 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     <>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
-      <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-        <div
-          className={`fixed inset-0 z-40 flex transition-all duration-300 ${
-            isHistoryOpen ? '' : 'pointer-events-none'
-          }`}
-        >
+      <div
+        className="relative h-screen bg-gray-50 overflow-hidden"
+        style={{
+          fontFamily: 'JetBrains Mono, monospace',
+          cursor: isProcessLocked ? 'wait' : 'auto',
+        }}
+        aria-busy={isProcessLocked}
+        aria-live={isProcessLocked ? 'polite' : undefined}
+      >
+        <div className="h-full">
+          <div
+            className={`fixed inset-0 z-40 flex transition-all duration-300 ${
+              isHistoryOpen ? '' : 'pointer-events-none'
+            }`}
+          >
           <aside
-            className={`w-80 max-w-full bg-white border-r border-gray-200 shadow-2xl flex flex-col overflow-hidden transform transition-transform duration-300 ease-in-out ${
+            className={`w-[360px] max-w-full bg-white border-r border-gray-200 shadow-2xl flex flex-col overflow-hidden transform transition-transform duration-300 ease-in-out ${
               isHistoryOpen ? 'translate-x-0 pointer-events-auto' : '-translate-x-full pointer-events-none'
             }`}
             role={isHistoryOpen ? 'dialog' : undefined}
@@ -1987,34 +3004,32 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             aria-hidden={!isHistoryOpen}
             aria-label="Version history"
           >
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-                <Database size={16} />
-                Version History
+            <div className="px-5 py-4 border-b border-gray-100">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                    <Database size={16} />
+                    Version History
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-gray-500">
+                    {historyHelperText}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                  aria-label="Close version history"
+                >
+                  <X size={14} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsHistoryOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-                aria-label="Close version history"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="px-5 py-3 border-b border-gray-100 text-[11px] text-gray-500">
-              {historyError
-                ? historyError
-                : sortedUseCases.length === 0
-                  ? 'No versions found yet. Generate a proposal to start tracking history.'
-                  : 'Select a use case to view and load any saved generation or regeneration.'}
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              {historyLoading && sortedUseCases.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-xs text-gray-500 gap-2">
-                  <Loader className="animate-spin" size={14} />
-                  Loading history...
+              {!hasHistory ? (
+                <div className="flex items-center justify-center h-full px-6 text-center text-[11px] text-gray-500">
+                  No versions found yet. Generate a proposal to start tracking history.
                 </div>
               ) : (
                 sortedUseCases.map((useCase) => {
@@ -2025,20 +3040,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                       <button
                         type="button"
                         onClick={() => toggleUseCaseExpansion(useCase.uuid)}
-                        className="w-full px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                        className="w-full px-5 py-4 flex items-center justify-between gap-3 hover:bg-gray-50 transition-colors text-left"
                       >
-                        <div className="pr-4">
-                          <p className="text-sm font-medium text-gray-800 truncate flex items-center gap-2">
-                            <span className="truncate" title={useCase.label}>{displayUseCaseLabel}</span>
-                            {useCase.isArchived && (
-                              <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold text-orange-600 bg-orange-100 rounded">
-                                Archived
-                              </span>
-                            )}
+                        <div className="flex-1 pr-2">
+                          <p className="text-sm font-medium text-gray-800 truncate" title={useCase.label}>
+                            {displayUseCaseLabel}
                           </p>
-                          <p className="text-[11px] text-gray-500">
-                            Latest version V{useCase.latestVersion} • {useCase.items.length} total
-                          </p>
+                          <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 gap-2">
+                            <span className="truncate">{formatRelativeTimestamp(useCase.latestCreatedAt)}</span>
+                            <span className="font-semibold text-gray-700">V{useCase.latestVersion}</span>
+                          </div>
+                          <p className="text-[10px] text-gray-400">{useCase.items.length} saved versions</p>
                         </div>
                         {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                       </button>
@@ -2064,34 +3076,29 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                               >
                                 <div className="absolute left-2 top-0 bottom-0 border-l border-gray-200 pointer-events-none" />
                                 <div className="absolute left-1.5 top-4 w-2 h-2 rounded-full bg-gray-200 border border-white pointer-events-none" />
-                                <div className="flex items-stretch">
+                                <div className="flex items-stretch gap-2">
                                   <button
                                     type="button"
                                     onClick={() => handleSelectHistoryItem(item)}
-                                    className={`flex-1 px-4 py-3 text-left text-xs transition-colors rounded-l ${
+                                    className={`flex-1 px-4 py-3 text-left text-xs transition-colors rounded-l-lg border ${
                                       isActive
-                                        ? 'bg-white text-blue-600 border-l-2 border-blue-500 font-semibold shadow-sm'
-                                        : 'bg-transparent hover:bg-white text-gray-700'
+                                        ? 'bg-white text-blue-600 border-blue-300 shadow-sm'
+                                        : 'bg-transparent hover:bg-white text-gray-700 border-transparent hover:border-gray-200'
                                     }`}
                                   >
-                                    <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-start justify-between gap-2">
                                       <span className="truncate flex items-center gap-2">
                                         <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                                           V{versionNumber}
                                         </span>
                                         <span className="truncate" title={label || `Generation ${versionNumber}`}>{displayVersionLabel}</span>
-                                        {item.delete_at && (
-                                          <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-semibold text-orange-600 bg-orange-100 rounded">
-                                            Archived
-                                          </span>
-                                        )}
                                       </span>
-                                      <span className="flex-shrink-0 text-[10px] text-gray-400">
-                                        {new Date(item.created_at).toLocaleString()}
+                                      <span className="flex-shrink-0 text-[10px] text-gray-400 whitespace-nowrap">
+                                        {formatSidebarTimestamp(item.created_at)}
                                       </span>
                                     </div>
                                     {shortGenId && (
-                                      <p className="mt-1 text-[9px] text-gray-400">ID: {shortGenId}</p>
+                                      <p className="mt-1 text-[9px] text-gray-400 font-mono">ID: {shortGenId}</p>
                                     )}
                                     {item.regenComments.length > 0 && (
                                       <p className="mt-1 text-[10px] text-gray-500 truncate">
@@ -2102,10 +3109,24 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                                   <button
                                     type="button"
                                     onClick={() => toggleVersionDetails(item.gen_id)}
-                                    className="px-3 py-3 text-gray-500 border-l border-gray-200 bg-white hover:text-gray-700 rounded-tr rounded-br"
+                                    className="px-3 py-3 text-gray-500 border border-gray-200 border-l-0 bg-white hover:text-gray-700"
                                     aria-label={versionExpanded ? "Hide version details" : "Show version details"}
                                   >
                                     {versionExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteGeneration(item)}
+                                    className="px-3 py-3 text-red-500 border border-gray-200 border-l-0 bg-white hover:text-red-600 rounded-r-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label={`Delete this ${item.regenComments.length > 0 ? 'regeneration' : 'generation'}`}
+                                    title="Delete this version"
+                                    disabled={deletingGenId === item.gen_id}
+                                  >
+                                    {deletingGenId === item.gen_id ? (
+                                      <Loader size={14} className="animate-spin" />
+                                    ) : (
+                                      <Trash2 size={14} />
+                                    )}
                                   </button>
                                 </div>
                                 {versionExpanded && (
@@ -2160,43 +3181,25 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           />
         </div>
 
-        <div className="flex">
+        <div className="flex h-full">
           {/* Left Panel - Upload Form */}
-          <div className="w-96 bg-white border-r border-gray-200 min-h-screen p-6">
-            <div className="mb-8 flex gap-3">
+          <div className="w-96 bg-white border-r border-gray-200 h-full p-6 overflow-y-auto">
+            <div className="mb-8 flex items-start gap-4">
               <button
                 type="button"
                 onClick={() => setIsHistoryOpen(prev => !prev)}
-                className={`flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-md border transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
+                className={`flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-md border transition-all duration-200 ${
                   isHistoryOpen
                     ? 'bg-gray-900 text-white border-gray-900 shadow'
                     : 'bg-white text-gray-700 border-gray-200 hover:shadow'
                 }`}
-                disabled={supabaseEnvMissing || (historyLoading && sortedUseCases.length === 0)}
-                aria-label={
-                  supabaseEnvMissing
-                    ? 'Supabase configuration required'
-                    : historyLoading && sortedUseCases.length === 0
-                      ? 'Loading version history'
-                      : isHistoryOpen
-                        ? 'Close version history'
-                        : 'Open version history'
-                }
-                title={
-                  supabaseEnvMissing
-                    ? 'Configure Supabase to enable version history'
-                    : historyLoading && sortedUseCases.length === 0
-                      ? 'Loading version history...'
-                      : isHistoryOpen
-                        ? 'Close version history'
-                        : 'Open version history'
-                }
+                aria-label={isHistoryOpen ? 'Close version history' : 'Open version history'}
+                title={isHistoryOpen ? 'Close version history' : 'Open version history'}
                 aria-pressed={isHistoryOpen}
-                aria-expanded={isHistoryOpen}
-              >
+                aria-expanded={isHistoryOpen}>
                 <Menu size={18} />
               </button>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <h1 className="text-lg font-semibold text-gray-900 mb-2">
                   RFP Processing
                 </h1>
@@ -2210,18 +3213,24 @@ const UploadPage: React.FC<UploadPageProps> = () => {
                 )}
                 {activeUseCaseLabel && (
                   <div className="mt-3 space-y-1 text-xs text-gray-500">
-                    <p className="flex items-center gap-2">
+                    <p className="flex items-center gap-2 min-w-0">
                       <CheckCircle2 className="text-green-500" size={14} />
-                      <span className="text-gray-700">Active use case:</span>
-                      <span className="text-gray-900 font-medium truncate" title={activeUseCaseLabel}>
+                      <span className="text-gray-700 whitespace-nowrap">Active use case:</span>
+                      <span
+                        className="flex-1 min-w-0 text-gray-900 font-medium truncate"
+                        title={activeUseCaseLabel}
+                      >
                         {formatNameForSidebar(activeUseCaseLabel, 48)}
                       </span>
                     </p>
                     {activeVersionLabel && (
-                      <p className="flex items-center gap-2">
+                      <p className="flex items-center gap-2 min-w-0">
                         <ChevronRight size={12} className="text-gray-400" />
-                        <span className="text-gray-700">Current version:</span>
-                        <span className="text-gray-900 font-medium truncate" title={activeVersionLabel}>
+                        <span className="text-gray-700 whitespace-nowrap">Current version:</span>
+                        <span
+                          className="flex-1 min-w-0 text-gray-900 font-medium truncate"
+                          title={activeVersionLabel}
+                        >
                           {formatNameForSidebar(activeVersionLabel, 52)}
                         </span>
                       </p>
@@ -2231,499 +3240,540 @@ const UploadPage: React.FC<UploadPageProps> = () => {
               </div>
             </div>
 
-            <div className="space-y-1">
-              {/* Language Selection */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 p-4">
-                <h3 className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
-                  <Globe className="text-gray-500" size={16} /> Language
-                </h3>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setLanguage('arabic')}
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
-                      ${language === 'arabic' 
-                        ? 'bg-blue-600 text-white border-blue-600' 
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
-                  >
-                    Arabic
-                  </button>
-                  <button
-                    onClick={() => setLanguage('english')}
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors
-                      ${language === 'english' 
-                        ? 'bg-blue-600 text-white border-blue-600' 
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                      }`}
-                  >
-                    English
-                  </button>
-                </div>
-              </div>
-
-              <FileUploadZone
-                title="RFP Documents"
-                files={rfpFiles}
-                storedFiles={savedRfpFiles}
-                dragActive={dragActiveRfp}
-                onDragEnter={(e) => handleDrag(e, setDragActiveRfp)}
-                onDragLeave={(e) => handleDrag(e, setDragActiveRfp)}
-                onDragOver={(e) => handleDrag(e, setDragActiveRfp)}
-                onDrop={(e) => handleDrop(e, 'rfp')}
-                onClick={() => rfpInputRef.current?.click()}
-                fileType="rfp"
-              />
-
-              <FileUploadZone
-                title="Supporting Files"
-                files={supportingFiles}
-                storedFiles={savedSupportingFiles}
-                dragActive={dragActiveSupporting}
-                onDragEnter={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDragLeave={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDragOver={(e) => handleDrag(e, setDragActiveSupporting)}
-                onDrop={(e) => handleDrop(e, 'supporting')}
-                onClick={() => supportingInputRef.current?.click()}
-                fileType="supporting"
-              />
-
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                <div className="border-b border-gray-100 p-4">
-                  <h3 className="text-sm font-medium text-gray-800 flex items-center gap-2">
-                    <Settings className="text-gray-500" size={16} />
-                    General Preferences
-                  </h3>
-                </div>
-                
-                <div className="p-4">
-                  <textarea
-                    value={config}
-                    onChange={(e) => setConfig(e.target.value)}
-                    placeholder="Describe your proposal generation preferences..."
-                    rows={4}
-                    className="w-full px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded text-xs focus:ring-1 focus:ring-gray-400 focus:border-gray-400 resize-none placeholder-gray-400"
-                  />
-                  <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                    Include tone, structure, and specific requirements
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-3">
+              {previewMode === "ppt" ? renderPptSidebarContent() : renderWordSidebarContent()}
 
               {generatedDocument && <GeneratedDocumentSection />}
 
-              <div className="pt-4">
-                {!isGenerated ? (
-                  <button
-                    onClick={handleUpload}
-                    disabled={supabaseEnvMissing || isUploading || rfpFiles.length === 0 || !config.trim()}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isUploading || rfpFiles.length === 0 || !config.trim()
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                        : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
-                      }`}
-                  >
-                    {isUploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        {supabaseEnvMissing ? (
-                          <>
-                            <AlertCircle size={16} />
-                            Supabase Config Needed
-                          </>
-                        ) : (
-                          <>
-                            <Send size={16} />
-                            Upload & Process
-                          </>
-                        )}
-                      </>
-                    )}
-                  </button>
+          <div className="pt-2 space-y-2">
+            {previewMode === "word" && (
+              !isGenerated ? (
+                <button
+                  onClick={handleUpload}
+                  disabled={supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                    ${supabaseEnvMissing || isDocLocked || rfpFiles.length === 0 || !config.trim()
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                      : 'bg-gray-900 text-white hover:bg-gray-800 border border-gray-900'
+                    }`}
+                >
+                  {isUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      {supabaseEnvMissing ? (
+                        <>
+                          <AlertCircle size={16} />
+                          Supabase Config Needed
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Upload & Process
+                        </>
+                      )}
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleRegenerate}
+                  disabled={supabaseEnvMissing || isDocLocked}
+                  className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                    ${supabaseEnvMissing || isDocLocked
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
+                    }`}
+                >
+                  {isUploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      {supabaseEnvMissing ? (
+                        <>
+                          <AlertCircle size={16} />
+                          Supabase Config Needed
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Regenerate Document
+                        </>
+                      )}
+                    </>
+                  )}
+                </button>
+              )
+            )}
+
+            {previewMode === "ppt" && (
+              <button
+                onClick={handlePrimaryPptClick}
+                disabled={pptPrimaryDisabled || supabaseEnvMissing}
+                className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
+                  ${pptPrimaryDisabled || supabaseEnvMissing
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700 border border-blue-600'
+                  }`}
+              >
+                {pptTemplatesLoading ? (
+                  <>
+                    <Loader className="animate-spin" size={16} />
+                    Loading templates...
+                  </>
                 ) : (
-                  <button
-                    onClick={handleRegenerate}
-                    disabled={supabaseEnvMissing || isUploading}
-                    className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded text-sm font-medium transition-all duration-200
-                      ${supabaseEnvMissing || isUploading
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 border border-indigo-600'
-                      }`}
-                  >
-                    {isUploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Regenerating...
-                      </>
-                    ) : (
-                      <>
-                        {supabaseEnvMissing ? (
-                          <>
-                            <AlertCircle size={16} />
-                            Supabase Config Needed
-                          </>
-                        ) : (
-                          <>
-                            <Send size={16} />
-                            Regenerate Document
-                          </>
-                        )}
-                      </>
-                    )}
-                  </button>
+                  <>
+                    <Layout size={16} />
+                    {pptPrimaryActionLabel}
+                  </>
                 )}
-              </div>
-              
-            </div>
+              </button>
+            )}
+          </div>
+        </div>
           </div>
 
           {/* Center Panel - Loading/Output Display */}
-          <div className="flex-1 p-6 min-w-0">
-            {isUploading && !markdownContent ? (
-              <LoadingDisplay />
-            ) : !isUploading && !markdownContent ? (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
-                <div className="text-center">
-                  <FileText className="mx-auto mb-4 text-gray-300" size={64} />
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">Ready to Process</h3>
-                  <p className="text-sm text-gray-500">
-                    Upload your RFP documents and click "Upload & Process" to begin
-                  </p>
+          <div className="flex-1 h-full p-6 min-w-0 flex flex-col overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-gray-800">Preview</span>
+                {processingStage && (
+                  <span className="text-xs text-gray-500 truncate max-w-[260px]" title={processingStage}>
+                    {processingStage}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {pptPreviewUrl && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(pptPreviewUrl, "_blank")}
+                    className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-md text-gray-700 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                  >
+                    Download PPT
+                  </button>
+                )}
+                <div className="bg-gray-100 rounded-full p-1 flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode("word")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      previewMode === "word" ? "bg-white shadow text-gray-900" : "text-gray-600"
+                    }`}
+                    aria-pressed={previewMode === "word"}
+                  >
+                    Word
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canOpenPptPreview}
+                    onClick={() => setPreviewMode("ppt")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                      previewMode === "ppt" ? "bg-white shadow text-gray-900" : "text-gray-600"
+                    } ${!canOpenPptPreview ? "opacity-50 cursor-not-allowed" : ""}`}
+                    aria-pressed={previewMode === "ppt"}
+                  >
+                    PPT
+                  </button>
                 </div>
               </div>
-              
-            ) : (
-              <OutputDocumentDisplay
-                generatedDocument={generatedDocument}
-                markdownContent={markdownContent}
-                wordLink={wordLink}
-                pdfLink={pdfLink}
-                jobUuid={jobUuid}
-                isRegenerating={isRegenerating}
-                isRegenerationComplete={isRegenerationComplete}
-                docConfig={docConfig}
-                onPdfDownload={handlePdfDownload}
-                isPdfConverting={isPdfConverting}
-                pdfError={pdfError}
-                wordDownloadName={wordDownloadName}
-              />
-            )}
+            </div>
+            <div className="flex-1 min-h-0">
+              {previewMode === "ppt" ? (
+                <div className="flex flex-col gap-4 h-full">
+                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 flex-1 min-h-[420px] overflow-hidden select-text">
+                    {pptEmbedUrl ? (
+                      <iframe
+                        title="PowerPoint preview"
+                        src={pptEmbedUrl}
+                        className="w-full h-full border-0"
+                        allowFullScreen
+                      />
+                    ) : (
+                      <div className="h-full w-full flex items-center justify-center p-6 text-sm text-gray-600">
+                        {pptLoading ? (
+                          "Loading PPT preview..."
+                        ) : selectedSlide && selectedSlidePreviewLines.length > 0 ? (
+                          <div className="w-full max-w-3xl mx-auto text-left space-y-2">
+                            <p className="text-base font-semibold text-gray-800">
+                              Slide {selectedSlideSafeIndex + 1}
+                              {selectedSlide.title ? ` - ${selectedSlide.title}` : ""}
+                            </p>
+                            <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+                              {selectedSlidePreviewLines.map((line, idx) => (
+                                <li key={`slide-preview-${idx}`}>{line}</li>
+                              ))}
+                            </ul>
+                            {pptError && <p className="text-xs text-red-600">{pptError}</p>}
+                          </div>
+                        ) : (
+                          <span>{pptError || "PPT preview will appear here after generation."}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : isUploading && !markdownContent ? (
+                <LoadingDisplay />
+              ) : !isUploading && !markdownContent ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <FileText className="mx-auto mb-4 text-gray-300" size={64} />
+                    <h3 className="text-lg font-medium text-gray-600 mb-2">Ready to Process</h3>
+                    <p className="text-sm text-gray-500">
+                      Upload your RFP documents and click "Upload & Process" to begin
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <OutputDocumentDisplay
+                  generatedDocument={generatedDocument}
+                  markdownContent={markdownContent}
+                  wordLink={wordLink}
+                  pdfLink={pdfLink}
+                  jobUuid={jobUuid}
+                  isRegenerating={isRegenerating}
+                  isRegenerationComplete={isRegenerationComplete}
+                  docConfig={docConfig}
+                  onPdfDownload={handlePdfDownload}
+                  isPdfConverting={isPdfConverting}
+                  pdfError={pdfError}
+                  wordDownloadName={wordDownloadName}
+                  markdownRef={markdownContainerRef}
+                />
+              )}
+            </div>
           </div>
           
 
-          {/* Right Panel - Document Configuration */}
-          <div className="w-96 p-6 border-l border-gray-200 bg-white">
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-2">
-                Document Formatting
-              </h2>
-              <p className="text-sm text-gray-600">
-                Customize the appearance and layout of your generated proposal
-              </p>
-            </div>
-            
-            
-            {/* Page Layout */}
-             { !markdownContent &&(<ConfigSection
-              title="Page Layout"
-              icon={AlignLeft}
-              isExpanded={expandedSections.layout}
-              onToggle={() => toggleSection('layout')}
-              >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Page Orientation"
-                  value={docConfig.page_orientation}
-                  onChange={(value) => updateConfig('page_orientation', value)}
-                  type="select"
-                  options={[
-                    { value: 'portrait', label: 'Portrait' },
-                    { value: 'landscape', label: 'Landscape' }
-                  ]}
-                />
-                <InputField
-                  label="Text Alignment"
-                  value={docConfig.text_alignment}
-                  onChange={(value) => updateConfig('text_alignment', value)}
-                  type="select"
-                  options={[
-                    { value: 'left', label: 'Left' },
-                    { value: 'center', label: 'Center' },
-                    { value: 'right', label: 'Right' },
-                    { value: 'justify', label: 'Justify' }
-                  ]}
-                />
-              </div>
-              
-              <div className="grid grid-cols-4 gap-2">
-                <InputField
-                  label="Top Margin (in)"
-                  value={docConfig.top_margin}
-                  onChange={(value) => updateConfig('top_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Bottom Margin (in)"
-                  value={docConfig.bottom_margin}
-                  onChange={(value) => updateConfig('bottom_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Left Margin (in)"
-                  value={docConfig.left_margin}
-                  onChange={(value) => updateConfig('left_margin', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Right Margin (in)"
-                  value={docConfig.right_margin}
-                  onChange={(value) => updateConfig('right_margin', value)}
-                  type="number"
-                />
-              </div>
-            </ConfigSection>)}
+          {/* Right Panel */}
+          {showRightPanel && (
+            <div className="w-96 p-6 border-l border-gray-200 bg-white h-full overflow-y-auto">
+              {previewMode === "word" && showWordFormatting && (
+                <>
+                  <div className="mb-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                      Document Formatting
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      Customize the appearance and layout of your generated proposal
+                    </p>
+                  </div>
 
-            {/* Typography */}
-            { !markdownContent &&( <ConfigSection
-              title="Typography & Colors"
-              icon={Type}
-              isExpanded={expandedSections.typography}
-              onToggle={() => toggleSection('typography')}
-            >
-              <div className="grid grid-cols-3 gap-4">
-                <InputField
-                  label="Body Text Size (pt)"
-                  value={docConfig.body_font_size}
-                  onChange={(value) => updateConfig('body_font_size', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Heading Size (pt)"
-                  value={docConfig.heading_font_size}
-                  onChange={(value) => updateConfig('heading_font_size', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Title Size (pt)"
-                  value={docConfig.title_font_size}
-                  onChange={(value) => updateConfig('title_font_size', value)}
-                  type="number"
-                />
-              </div>
-              
-              <div className="grid grid-cols-3 gap-4">
-                <InputField
-                  label="Main Title Color"
-                  value={docConfig.title_color}
-                  onChange={(value) => updateConfig('title_color', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Heading Color"
-                  value={docConfig.heading_color}
-                  onChange={(value) => updateConfig('heading_color', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Body Text Color"
-                  value={docConfig.body_color}
-                  onChange={(value) => updateConfig('body_color', value)}
-                  type="color"
-                />
-              </div>
-            </ConfigSection>)}
+                  {/* Page Layout */}
+                  <ConfigSection
+                    title="Page Layout"
+                    icon={AlignLeft}
+                    isExpanded={expandedSections.layout}
+                    onToggle={() => toggleSection('layout')}
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Page Orientation"
+                        value={docConfig.page_orientation}
+                        onChange={(value) => updateConfig('page_orientation', value)}
+                        type="select"
+                        options={[
+                          { value: 'portrait', label: 'Portrait' },
+                          { value: 'landscape', label: 'Landscape' }
+                        ]}
+                      />
+                      <InputField
+                        label="Text Alignment"
+                        value={docConfig.text_alignment}
+                        onChange={(value) => updateConfig('text_alignment', value)}
+                        type="select"
+                        options={[
+                          { value: 'left', label: 'Left' },
+                          { value: 'center', label: 'Center' },
+                          { value: 'right', label: 'Right' },
+                          { value: 'justify', label: 'Justify' }
+                        ]}
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-4 gap-2">
+                      <InputField
+                        label="Top Margin (in)"
+                        value={docConfig.top_margin}
+                        onChange={(value) => updateConfig('top_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Bottom Margin (in)"
+                        value={docConfig.bottom_margin}
+                        onChange={(value) => updateConfig('bottom_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Left Margin (in)"
+                        value={docConfig.left_margin}
+                        onChange={(value) => updateConfig('left_margin', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Right Margin (in)"
+                        value={docConfig.right_margin}
+                        onChange={(value) => updateConfig('right_margin', value)}
+                        type="number"
+                      />
+                    </div>
+                  </ConfigSection>
 
-            {/* Table Styling */}
-             { !markdownContent &&(<ConfigSection
-              title="Table Styling"
-              icon={Table}
-              isExpanded={expandedSections.tables}
-              onToggle={() => toggleSection('tables')}
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Auto-fit Tables"
-                  value={docConfig.auto_fit_tables}
-                  onChange={(value) => updateConfig('auto_fit_tables', value)}
-                  type="checkbox"
-                />
-                <InputField
-                  label="Show Borders"
-                  value={docConfig.show_table_borders}
-                  onChange={(value) => updateConfig('show_table_borders', value)}
-                  type="checkbox"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Table Width (%)"
-                  value={docConfig.table_width}
-                  onChange={(value) => updateConfig('table_width', value)}
-                  type="number"
-                />
-                <InputField
-                  label="Table Font Size"
-                  value={docConfig.table_font_size}
-                  onChange={(value) => updateConfig('table_font_size', value)}
-                  type="number"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Header Background"
-                  value={docConfig.header_background}
-                  onChange={(value) => updateConfig('header_background', value)}
-                  type="color"
-                />
-                <InputField
-                  label="Border Color"
-                  value={docConfig.border_color}
-                  onChange={(value) => updateConfig('border_color', value)}
-                  type="color"
-                />
-              </div>
-            </ConfigSection>)}
-            {/* Comments ConfigSection */}
-            {markdownContent && (<ConfigSection
-              title="Comments"
-              icon={Text}
-              isExpanded={true}
-              onToggle={() => {}}
-            >
-             {commentConfigList.length > 0 && (
-  <div className="mt-4 space-y-3">
-    <h4 className="text-sm font-medium text-gray-700">Added Comments</h4>
-    {commentConfigList.map((comment, index) => (
-      <div
-        key={index}
-        className="p-3 border border-gray-200 rounded bg-gray-50 flex justify-between items-start gap-2"
-      >
-        <div className="flex-1">
-          <p className="text-xs text-gray-500 mb-1">
-            <span className="font-semibold">Content:</span> {comment.comment1}
-          </p>
-          <p className="text-xs text-gray-500">
-            <span className="font-semibold">Comment:</span> {comment.comment2}
-          </p>
-        </div>
-        
-      </div>
-    ))}
-  </div>
-)}
-            <div className="grid grid-cols-1 gap-4">
-              <InputField
-                label="Content"
-                value={currentCommentContent} // local state
-                onChange={(value) => setCurrentCommentContent(value as string)}
-                placeholder="Enter the Content"
-                isTextarea={true}
-                rows={6}
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-4">
-              <InputField
-                label="Comment"
-                value={currentCommentText} // local state
-                onChange={(value) => setCurrentCommentText(value as string)}
-                placeholder="Enter the Comment"
-                isTextarea={true}
-                rows={6}
-              />
-            </div>
-            <div className="mt-2">
-              <button
-                type="button"
-                className="px-4 py-2 bg-blue-600 text-white rounded text-sm"
-                onClick={() => {
-                  // Append new comment to the list
-                  setCommentConfigList(prev => [
-                    ...prev,
-                    { comment1: currentCommentContent, comment2: currentCommentText }
-                  ]);
-                  // Clear local inputs
-                  setCurrentCommentContent('');
-                  setCurrentCommentText('');
-                }}
-              >
-                Add Comment
-              </button>
-            </div>
-                        </ConfigSection>)}
+                  {/* Typography */}
+                  <ConfigSection
+                    title="Typography & Colors"
+                    icon={Type}
+                    isExpanded={expandedSections.typography}
+                    onToggle={() => toggleSection('typography')}
+                  >
+                    <div className="grid grid-cols-3 gap-4">
+                      <InputField
+                        label="Body Text Size (pt)"
+                        value={docConfig.body_font_size}
+                        onChange={(value) => updateConfig('body_font_size', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Heading Size (pt)"
+                        value={docConfig.heading_font_size}
+                        onChange={(value) => updateConfig('heading_font_size', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Title Size (pt)"
+                        value={docConfig.title_font_size}
+                        onChange={(value) => updateConfig('title_font_size', value)}
+                        type="number"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <InputField
+                        label="Main Title Color"
+                        value={docConfig.title_color}
+                        onChange={(value) => updateConfig('title_color', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Heading Color"
+                        value={docConfig.heading_color}
+                        onChange={(value) => updateConfig('heading_color', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Body Text Color"
+                        value={docConfig.body_color}
+                        onChange={(value) => updateConfig('body_color', value)}
+                        type="color"
+                      />
+                    </div>
+                  </ConfigSection>
 
-            {/* Header & Footer */}
-            { !markdownContent &&(
-              <ConfigSection
-              title="Branding & Headers"
-              icon={Layout}
-              isExpanded={expandedSections.branding}
-              onToggle={() => toggleSection('branding')}
-            >
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Include Header"
-                  value={docConfig.include_header}
-                  onChange={(value) => updateConfig('include_header', value)}
-                  type="checkbox"
-                />
-                <InputField
-                  label="Include Footer"
-                  value={docConfig.include_footer}
-                  onChange={(value) => updateConfig('include_footer', value)}
-                  type="checkbox"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Company Name"
-                  value={docConfig.company_name}
-                  onChange={(value) => updateConfig('company_name', value)}
-                  placeholder="Your Company Name"
-                />
-                <InputField
-                  label="Company Tagline"
-                  value={docConfig.company_tagline}
-                  onChange={(value) => updateConfig('company_tagline', value)}
-                  placeholder="Your tagline or slogan"
-                />
-              </div>
-              
-              <div className="space-y-4">
-                <InputField
-                  label="Footer Left Text"
-                  value={docConfig.footer_left}
-                  onChange={(value) => updateConfig('footer_left', value)}
-                  placeholder="Left footer content"
-                />
-                <InputField
-                  label="Footer Center Text"
-                  value={docConfig.footer_center}
-                  onChange={(value) => updateConfig('footer_center', value)}
-                  placeholder="Center footer content"
-                />
-                <InputField
-                  label="Footer Right Text"
-                  value={docConfig.footer_right}
-                  onChange={(value) => updateConfig('footer_right', value)}
-                  placeholder="Right footer content"
-                />
-              </div>
-              
-              <InputField
-                label="Show Page Numbers"
-                value={docConfig.show_page_numbers}
-                onChange={(value) => updateConfig('show_page_numbers', value)}
-                type="checkbox"
-              />
-            </ConfigSection>)}
-          </div>
-        </div>
+                  {/* Table Styling */}
+                  <ConfigSection
+                    title="Table Styling"
+                    icon={Table}
+                    isExpanded={expandedSections.tables}
+                    onToggle={() => toggleSection('tables')}
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Auto-fit Tables"
+                        value={docConfig.auto_fit_tables}
+                        onChange={(value) => updateConfig('auto_fit_tables', value)}
+                        type="checkbox"
+                      />
+                      <InputField
+                        label="Show Borders"
+                        value={docConfig.show_table_borders}
+                        onChange={(value) => updateConfig('show_table_borders', value)}
+                        type="checkbox"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Table Width (%)"
+                        value={docConfig.table_width}
+                        onChange={(value) => updateConfig('table_width', value)}
+                        type="number"
+                      />
+                      <InputField
+                        label="Table Font Size"
+                        value={docConfig.table_font_size}
+                        onChange={(value) => updateConfig('table_font_size', value)}
+                        type="number"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField
+                        label="Header Background"
+                        value={docConfig.header_background}
+                        onChange={(value) => updateConfig('header_background', value)}
+                        type="color"
+                      />
+                      <InputField
+                        label="Border Color"
+                        value={docConfig.border_color}
+                        onChange={(value) => updateConfig('border_color', value)}
+                        type="color"
+                      />
+                    </div>
+                  </ConfigSection>
+                </>
+              )}
+
+              {showCommentsForPreview && (
+                <ConfigSection
+                  title="Comments"
+                  icon={Text}
+                  isExpanded={true}
+                  onToggle={() => {}}
+                >
+                {commentConfigList.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-sm font-medium text-gray-700">Added Comments</h4>
+                    {commentConfigList.map((comment, index) => (
+                      <div
+                        key={index}
+                        className="p-3 border border-gray-200 rounded bg-gray-50 flex justify-between items-start gap-2"
+                      >
+                        <div className="flex-1">
+                          <p className="text-xs text-gray-500 mb-1">
+                            <span className="font-semibold">Content:</span> {comment.comment1}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            <span className="font-semibold">Comment:</span> {comment.comment2}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 gap-4">
+                  <InputField
+                    label="Content"
+                    value={currentCommentContent}
+                    onChange={(value) => setCurrentCommentContent(value as string)}
+                    placeholder="Enter the Content"
+                    isTextarea={true}
+                    rows={6}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <InputField
+                    label="Comment"
+                    value={currentCommentText}
+                    onChange={(value) => setCurrentCommentText(value as string)}
+                    placeholder="Enter the Comment"
+                    isTextarea={true}
+                    rows={6}
+                  />
+                </div>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    disabled={isDocLocked}
+                    className={`px-4 py-2 rounded text-sm transition-colors ${
+                      isDocLocked
+                        ? 'bg-blue-300 text-white/70 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                    }`}
+                    onClick={() => {
+                      if (isDocLocked) {
+                        return;
+                      }
+                      setCommentConfigList(prev => [
+                        ...prev,
+                        { comment1: currentCommentContent, comment2: currentCommentText }
+                      ]);
+                      setCurrentCommentContent('');
+                      setCurrentCommentText('');
+                    }}
+                  >
+                    Add Comment
+                  </button>
+                </div>
+              </ConfigSection>
+            )}
+
+              {previewMode === "word" && showWordFormatting && (
+                <ConfigSection
+                  title="Branding & Headers"
+                  icon={Layout}
+                  isExpanded={expandedSections.branding}
+                  onToggle={() => toggleSection('branding')}
+                >
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                      label="Include Header"
+                      value={docConfig.include_header}
+                      onChange={(value) => updateConfig('include_header', value)}
+                      type="checkbox"
+                    />
+                    <InputField
+                      label="Include Footer"
+                      value={docConfig.include_footer}
+                      onChange={(value) => updateConfig('include_footer', value)}
+                      type="checkbox"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputField
+                      label="Company Name"
+                      value={docConfig.company_name}
+                      onChange={(value) => updateConfig('company_name', value)}
+                      placeholder="Your Company Name"
+                    />
+                    <InputField
+                      label="Company Tagline"
+                      value={docConfig.company_tagline}
+                      onChange={(value) => updateConfig('company_tagline', value)}
+                      placeholder="Your tagline or slogan"
+                    />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <InputField
+                      label="Footer Left Text"
+                      value={docConfig.footer_left}
+                      onChange={(value) => updateConfig('footer_left', value)}
+                      placeholder="Left footer content"
+                    />
+                    <InputField
+                      label="Footer Center Text"
+                      value={docConfig.footer_center}
+                      onChange={(value) => updateConfig('footer_center', value)}
+                      placeholder="Center footer content"
+                    />
+                    <InputField
+                      label="Footer Right Text"
+                      value={docConfig.footer_right}
+                      onChange={(value) => updateConfig('footer_right', value)}
+                      placeholder="Right footer content"
+                    />
+                  </div>
+                  
+                  <InputField
+                    label="Show Page Numbers"
+                    value={docConfig.show_page_numbers}
+                    onChange={(value) => updateConfig('show_page_numbers', value)}
+                    type="checkbox"
+                  />
+                </ConfigSection>
+              )}
+            </div>
+          )}
 
         {/* Hidden file inputs */}
         <input
@@ -2741,9 +3791,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           className="hidden"
         />
       </div>
-      
+    </div>
+    </div>
     </>
   );
 };
 
 export default UploadPage;
+
