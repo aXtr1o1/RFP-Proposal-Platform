@@ -175,7 +175,6 @@ def regenerate_markdown_with_comments(
             raise ValueError("Empty source markdown — cannot regenerate")
 
         comments = comments or []
-        updated_markdown = ''
         if not comments:
             logger.warning("No comments provided, reusing original markdown")
             updated_markdown = source_markdown
@@ -208,7 +207,6 @@ def regenerate_markdown_with_comments(
             "gen_id": gen_id,
             "language": language,
             "wordLink": urls.get("proposal_word_url"),
-            "updated_markdown": updated_markdown
         }
 
     except Exception as e:
@@ -217,63 +215,92 @@ def regenerate_markdown_with_comments(
 
 def regenerate_markdown_with_comments_streaming(
     uuid: str,
+    source_markdown: str,
     gen_id: str,
     docConfig: Dict[str, Any],
     language: str = "english",
+    comments: Optional[List[Dict[str, str]]] = None,
 ) -> Iterator[bytes]:
     """
-    Streaming regeneration
+    Streaming version of regenerate_markdown_with_comments.
+    Yields SSE chunks as the markdown is regenerated.
     """
     try:
-        yield _sse_event_json("stage", {"stage": "fetching_original_markdown"})
-        original_markdown = _get_latest_markdown_excluding(uuid, exclude_gen_id=gen_id)
+        logger.info(f"[regen-stream] Starting for uuid={uuid}, gen_id={gen_id}")
+        
+        yield _sse_event_json("stage", {"stage": "validating_input"})
+        
+        if not source_markdown:
+            raise ValueError("Empty source markdown — cannot regenerate")
 
-        yield _sse_event_json("stage", {"stage": "fetching_comments"})
-        comments = _get_comments_for_uuid(uuid)
+        comments = comments or []
+        
+        if not comments:
+            logger.warning("No comments provided, reusing original markdown")
+            yield _sse_event_json("stage", {"stage": "no_modifications"})
+            updated_markdown = source_markdown
+            
+            # Save immediately
+            yield _sse_event_json("stage", {"stage": "saving_markdown"})
+            saved = save_generated_markdown(uuid, gen_id, updated_markdown)
+            if not saved:
+                raise RuntimeError(f"Failed to save markdown for gen_id={gen_id}")
+                
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("Missing OPENAI_API_KEY")
 
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("Missing OPENAI_API_KEY")
-        modifier = MarkdownModifier(api_key)
+            modifier = MarkdownModifier(api_key)
+            
+            yield _sse_event_json("stage", {"stage": "processing_with_ai"})
+            
+            buffer_chunks: List[str] = []
+            
+            # Stream the markdown regeneration
+            for chunk_bytes in modifier.process_markdown_streaming(source_markdown, comments, language):
+                # Forward the chunk to client
+                yield chunk_bytes
+                
+                # Capture chunks for final save
+                if b"event: chunk" in chunk_bytes:
+                    try:
+                        txt = chunk_bytes.decode("utf-8")
+                        for line in txt.split("\n"):
+                            if line.startswith("data: "):
+                                data = json.loads(line[6:])
+                                buffer_chunks.append(data)
+                    except Exception as ex:
+                        logger.warning(f"Failed to parse chunk: {ex}")
+                        pass
+            
+            updated_markdown = "".join(buffer_chunks) if buffer_chunks else source_markdown
+            
+            yield _sse_event_json("stage", {"stage": "saving_markdown"})
+            saved = save_generated_markdown(uuid, gen_id, updated_markdown)
+            if not saved:
+                raise RuntimeError(f"Failed to save regenerated markdown for gen_id={gen_id}")
 
-        buffer_chunks: List[str] = []
-        yield _sse_event_json("stage", {"stage": "processing_with_ai"})
-        for chunk in modifier.process_markdown_streaming(original_markdown, comments, language):
-            if b"event: chunk" in chunk:
-                try:
-                    txt = chunk.decode("utf-8")
-                    for line in txt.split("\n"):
-                        if line.startswith("data: "):
-                            data = json.loads(line[6:])
-                            buffer_chunks.append(data)
-                except Exception:
-                    pass
-            yield chunk
-
-        full_markdown = "".join(buffer_chunks) if buffer_chunks else original_markdown
-        yield _sse_event_json("stage", {"stage": "saving_markdown"})
-        saved = save_generated_markdown(uuid, gen_id, full_markdown)
-        if not saved:
-            raise RuntimeError("Failed to save updated markdown")
-
+        # Generate Word document
         yield _sse_event_json("stage", {"stage": "generating_word"})
-        word_res = generate_word_from_markdown(
+        urls = generate_word_from_markdown(
             uuid=uuid,
             gen_id=gen_id,
-            markdown=full_markdown,
+            markdown=updated_markdown,
             doc_config=docConfig,
-            language=(language or "english").lower(),
+            language=language.lower(),
         )
 
         yield _sse_event_json("done", {
             "status": "completed",
             "uuid": uuid,
             "gen_id": gen_id,
-            "updated_markdown": full_markdown,
-            "wordLink": word_res.get("proposal_word_url", ""),
             "language": language,
+            "wordLink": urls.get("proposal_word_url"),
         })
 
+        logger.info(f"[regen-stream] Completed for uuid={uuid}, gen_id={gen_id}")
+
     except Exception as e:
-        logger.exception("Streaming markdown regeneration failed")
+        logger.exception(f"[regen-stream] Failed for uuid={uuid}, gen_id={gen_id}")
         yield _sse_event_json("error", {"message": str(e)})
