@@ -136,7 +136,7 @@ class WordGenAPI:
             )
             task_instructions = f"\nIMPORTANT: The proposal must follow this structure:\n{additive_block}"
             yield _sse_event_json("stage", {"stage": "prompting_model"})
-
+            logger.info(doc_config)
             logger.info("Calling OpenAI Responses API…")
             response = self.client.responses.create(
                 model=P.MODEL,
