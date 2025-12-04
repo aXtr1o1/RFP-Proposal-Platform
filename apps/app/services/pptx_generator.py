@@ -514,14 +514,28 @@ class PptxGenerator:
             position = page_num_config.get(pos_key, page_num_config.get("position_en", {}))
             
             shape_config = page_num_config.get("shape", {})
+
+            # Compute safe position so page number never goes out of slide bounds
+            slide_height = self.constraints.get("layout", {}).get("slide_height", 7.5)
+            slide_width = self.constraints.get("layout", {}).get("slide_width", 13.33)
+
+            offset_x = float(position.get("offset_x", 0.2))
+            offset_y = float(position.get("offset_y", 6.8))
+            shape_w = float(shape_config.get("width", 0.4))
+            shape_h = float(shape_config.get("height", 0.4))
+
+            # Clamp X/Y so the diamond always stays fully inside the slide
+            margin = 0.1
+            safe_x = max(margin, min(offset_x, slide_width - shape_w - margin))
+            safe_y = max(margin, min(offset_y, slide_height - shape_h - margin))
             
             # Create diamond shape
             diamond = slide.shapes.add_shape(
                 MSO_SHAPE.DIAMOND,
-                Inches(position.get("offset_x", 0.2)),
-                Inches(position.get("offset_y", 6.8)),
-                Inches(shape_config.get("width", 0.4)),
-                Inches(shape_config.get("height", 0.4))
+                Inches(safe_x),
+                Inches(safe_y),
+                Inches(shape_w),
+                Inches(shape_h)
             )
             
             # Style diamond
@@ -551,7 +565,7 @@ class PptxGenerator:
             # ✅ FIX: Vertical alignment
             tf.vertical_anchor = MSO_ANCHOR.MIDDLE
             
-            logger.debug(f"✅ Page number {page_num} added at ({position.get('offset_x')}, {position.get('offset_y')})")
+            logger.debug(f"✅ Page number {page_num} added at ({safe_x}, {safe_y})")
             
         except Exception as e:
             logger.warning(f"⚠️  Page number failed: {e}")
@@ -1239,19 +1253,25 @@ class PptxGenerator:
     def _add_title_underline(self, slide, title_element: Dict) -> None:
         """Add horizontal line below title"""
         try:
-            line_config = {
-                'left': 1.0,
-                'top': 1.5,
-                'width': 11.33,
-                'height': 0.02
-            }
-            
+            # Position the underline dynamically based on the title's position/size
+            pos = self.get_position(title_element, 'position')
+            size = title_element.get('size', {})
+
+            left = float(pos.get('left', 1.0))
+            width = float(size.get('width', 11.33))
+
+            # Place the line just below the title box with a small margin
+            title_top = float(pos.get('top', 1.0))
+            title_height = float(size.get('height', 0.8))
+            margin = 0.15
+            top = title_top + title_height + margin
+
             line_shape = slide.shapes.add_shape(
                 MSO_SHAPE.RECTANGLE,
-                Inches(line_config['left']),
-                Inches(line_config['top']),
-                Inches(line_config['width']),
-                Inches(line_config['height'])
+                Inches(left),
+                Inches(top),
+                Inches(width),
+                Inches(0.02)
             )
             
             line_shape.fill.solid()
@@ -1399,6 +1419,8 @@ class PptxGenerator:
 
     def _add_paragraph_text(self, slide, element: Dict, data) -> None:
         """Render paragraph content with proper RTL/LTR support"""
+        from apps.app.utils.text_formatter import should_convert_to_bullets, break_long_paragraph_to_bullets
+        
         pos = self.get_position(element, 'position')
         size = element.get('size', {})
         style = element.get('style', {})
@@ -1414,6 +1436,17 @@ class PptxGenerator:
         if not text:
             logger.warning(f"⚠️  No paragraph text found")
             return
+        
+        # ✅ NEW: Check if text should be converted to bullets for better readability
+        if should_convert_to_bullets(text):
+            logger.info(f"   📝 Converting long paragraph to bullets ({len(text)} chars)")
+            bullets = break_long_paragraph_to_bullets(text)
+            if bullets and len(bullets) > 1:
+                # Set bullets and render as bullet slide instead
+                data.bullets = bullets
+                self._add_bullets_master(slide, element, data)
+                logger.info(f"   ✅ Converted to {len(bullets)} bullet points")
+                return
 
         # Create textbox
         textbox = slide.shapes.add_textbox(
@@ -1498,12 +1531,13 @@ class PptxGenerator:
         style = element.get('style', {})
         bullet_style_cfg = element.get('bullet_style', {})
         
-        # Create textbox
+        # Create textbox – use same positioning conventions as paragraph text
+        # so bullets align visually with paragraphs and make good use of space
         textbox = slide.shapes.add_textbox(
-            Inches(pos.get('left', 0)),
-            Inches(pos.get('top', 0)),
-            Inches(size.get('width', 5)),
-            Inches(size.get('height', 3))
+            Inches(pos.get('left', 1.5)),
+            Inches(pos.get('top', 2.0)),
+            Inches(size.get('width', 10.33)),
+            Inches(size.get('height', 4.8))
         )
         
         tf = textbox.text_frame
@@ -1515,8 +1549,8 @@ class PptxGenerator:
         is_rtl = self.lang_config.get('rtl', False)
         self._set_text_frame_rtl(tf, is_rtl)
         
-        # Language-aware margins
-        padding = float(self.get_style_value(style, 'padding', 0.1))
+        # Language-aware margins (match paragraph padding for consistent start)
+        padding = float(self.get_style_value(style, 'padding', 0.2))
         if is_rtl:
             tf.margin_left = Inches(0.05)
             tf.margin_right = Inches(padding)
@@ -1675,6 +1709,46 @@ class PptxGenerator:
     # CHART - RTL/LTR AWARE
     # ========================================================================
 
+    def _validate_chart_data(self, chart_data_obj) -> Tuple[bool, str]:
+        """Validate chart has required data before rendering"""
+        if not chart_data_obj:
+            return False, "Chart data is None"
+        
+        # Convert to dict
+        if hasattr(chart_data_obj, 'dict'):
+            chart_data = chart_data_obj.dict()
+        elif isinstance(chart_data_obj, dict):
+            chart_data = chart_data_obj
+        else:
+            try:
+                chart_data = chart_data_obj.__dict__
+            except:
+                return False, "Cannot extract chart data"
+        
+        categories = chart_data.get('categories', [])
+        series = chart_data.get('series', [])
+        
+        if not categories or len(categories) == 0:
+            return False, "Categories array is empty"
+        
+        if not series or len(series) == 0:
+            return False, "Series array is empty"
+        
+        # Check first series has values
+        first_series = series[0]
+        if isinstance(first_series, dict):
+            values = first_series.get('values', [])
+        else:
+            values = getattr(first_series, 'values', [])
+        
+        if not values or len(values) == 0:
+            return False, "Series values are empty"
+        
+        if len(values) != len(categories):
+            return False, f"Data mismatch: {len(categories)} categories but {len(values)} values"
+        
+        return True, "Valid"
+
     def _add_chart_master(self, slide, element: Dict, data) -> None:
         """Add chart with RTL/LTR support"""
         if not self.chart_service:
@@ -1685,6 +1759,31 @@ class PptxGenerator:
         
         if not chart_data_obj:
             logger.warning(f"⚠️  No chart_data found")
+            return
+        
+        # ✅ NEW: Validate chart data before rendering
+        is_valid, error_msg = self._validate_chart_data(chart_data_obj)
+        if not is_valid:
+            logger.error(f"❌ Invalid chart data: {error_msg}")
+            logger.error(f"   Chart object: {chart_data_obj}")
+            
+            # Create error message textbox instead of crashing
+            pos = self.get_position(element, 'position')
+            textbox = slide.shapes.add_textbox(
+                Inches(pos.get('left', 2.0)),
+                Inches(pos.get('top', 3.0)),
+                Inches(9.0),
+                Inches(2.0)
+            )
+            tf = textbox.text_frame
+            tf.word_wrap = True
+            p = tf.paragraphs[0]
+            p.text = f"⚠️ Chart Generation Error\n\n{error_msg}\n\nPlease check source data and regenerate."
+            p.font.size = Pt(16)
+            p.font.color.rgb = RGBColor(220, 53, 69)  # Red
+            p.alignment = PP_ALIGN.CENTER
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            logger.warning(f"   Created error placeholder for chart")
             return
         
         pos = self.get_position(element, 'position')
@@ -1837,7 +1936,7 @@ class PptxGenerator:
                 except Exception as e:
                     logger.debug(f"Icon render skipped for box {idx + 1}: {e}")
             
-            # 3. Add text BELOW icon (inside box)
+            # 3. Add text BELOW icon (inside box) - WITH TRUNCATION
             text_top = box_top + Inches(icon_size + box_constraints.get('text_top_offset', 0.35))
             text_height = box_h - Inches(icon_size + 0.5)
             
@@ -1855,8 +1954,21 @@ class PptxGenerator:
             tf.vertical_anchor = MSO_ANCHOR.TOP
             tf.margin_left = tf.margin_right = Inches(0.1)
             
+            # ✅ FIX: Truncate text to prevent overflow (max 100 chars for four-box)
+            box_text = (bullet.text or "").strip()
+            max_box_length = 100  # Strict limit for four-box layouts
+            if len(box_text) > max_box_length:
+                # Truncate at word boundary
+                truncated = box_text[:max_box_length]
+                last_space = truncated.rfind(' ')
+                if last_space > max_box_length * 0.75:
+                    box_text = truncated[:last_space].strip() + "..."
+                else:
+                    box_text = truncated.strip() + "..."
+                logger.warning(f"   Truncated four-box text: {len(bullet.text)} → {len(box_text)} chars")
+            
             p = tf.paragraphs[0]
-            p.text = (bullet.text or "").strip()
+            p.text = box_text
             p.font.name = font_name
             p.font.size = Pt(font_size)
             p.font.bold = True
