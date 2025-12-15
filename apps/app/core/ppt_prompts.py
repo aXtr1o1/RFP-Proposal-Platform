@@ -72,6 +72,13 @@ You output STRICT JSON following the PresentationData schema.
    - ALWAYS include a final "Thank You" section header
    - It should be the LAST slide
    - layout_type="section", title="Thank You"
+   - If contact information available in source, add a follow-up content slide with:
+     * Company/team name
+     * Contact person and title
+     * Email address
+     * Phone number
+     * Website
+     * Social media handles (if applicable)
 
 
 6. **ICON GENERATION** (MANDATORY):
@@ -92,6 +99,7 @@ You output STRICT JSON following the PresentationData schema.
 3. **Each agenda item** corresponds to a section header slide in the presentation
 4. **Format**: Clean, concise section names (not full titles)
 5. **Max 5-6 items per agenda slide** (create multiple agenda slides if needed)
+6. **ALWAYS include the final 'Thank You' / 'Thank You & Next Steps' section as the LAST agenda item**
 
 
 **Agenda Slide Structure:**
@@ -107,7 +115,8 @@ You output STRICT JSON following the PresentationData schema.
     {{"text": "Approach & Methodology", "sub_bullets": []}},
     {{"text": "Timeline & Milestones", "sub_bullets": []}},
     {{"text": "Team & Resources", "sub_bullets": []}},
-    {{"text": "Expected Outcomes", "sub_bullets": []}}
+    {{"text": "Expected Outcomes", "sub_bullets": []}},
+    {{"text": "Thank You & Next Steps", "sub_bullets": []}}
   ]
 }}
 ```
@@ -128,6 +137,7 @@ You output STRICT JSON following the PresentationData schema.
    - Identify ALL major sections, subsections, and topics
    - Convert each section into appropriate slide types
    - Do NOT skip any meaningful content
+   - **PRESERVE TECHNICAL DETAILS AND SPECIFICS** from the original
 
 
 2. **Content Type Mapping:**
@@ -151,16 +161,34 @@ You output STRICT JSON following the PresentationData schema.
 4. **Visual Representation Strategy:**
    - If content has numbers/percentages → Create chart
    - If content has categories/phases → Create four-box or table
-   - If content describes timeline → Create column chart
-   - If content shows distribution → Create pie chart
-   - If content shows comparison → Create bar chart or table
+   - If content describes timeline → Create column chart with specific milestones
+   - If content shows distribution → Create pie chart with actual percentages
+   - If content shows comparison → Create bar chart or table with real data
 
 
-5. **Content Completeness:**
+5. **Content Completeness and Detail Preservation:**
    - Ensure NO section from the input is skipped
    - If input has 10 sections, output should have 10+ section headers
    - Maintain the logical flow and sequence from the original
    - Expand brief points into full slides when appropriate
+   - **CRITICAL: Do NOT condense or genericize content**
+   - **Preserve specific frameworks, methodologies, and technical terms**
+   - **Include all procedural details, tools, and timeframes mentioned**
+   - **Keep specific numbers, percentages, and KPIs from the source**
+
+
+6. **Content Depth Requirements (ABSOLUTELY MANDATORY):**
+   - For technical framework slides: Include SPECIFIC framework names, components, and how they work together (not "combines methods")
+   - For methodology slides: Include DETAILED procedural steps, specific tools used, and timeframes (not "multiple phases")
+   - For team slides: Include specific roles, detailed responsibilities, years of experience, and percentage time allocation
+   - For deliverables: Include DETAILED descriptions of what's included in each deliverable (not just "Report")
+   - For payment/budget: Include EXACT percentages, milestone descriptions, and timing (not "as agreed")
+   - For KPIs: Include SPECIFIC target numbers, measurement methods, frequency, and success criteria
+   - For timeline: Include specific activities per phase, duration in weeks, and key outputs
+   - For assumptions: List specific assumptions with context (not generic statements)
+   - **DO NOT USE GENERIC PLACEHOLDERS** like "Various tools", "Multiple techniques", "As needed", "Best practices"
+   - **EXTRACT EXACT DETAILS** from source markdown - do not summarize or paraphrase unless necessary for brevity
+   - **PRESERVE TECHNICAL TERMINOLOGY** - if source says "SWOT Analysis", don't change it to "strategic analysis"
 
 
 =========================================================
@@ -255,35 +283,123 @@ You output STRICT JSON following the PresentationData schema.
 🎯 **TABLE GENERATION (MANDATORY - DO NOT SKIP)**
 
 
-**YOU MUST CREATE AT LEAST 1 TABLE WITH ACTUAL DATA**
+**YOU MUST CREATE AT LEAST 3-5 TABLES WITH DETAILED DATA**
 
 
-**Table Example:**
+**Required Tables - Generate ALL of these with actual data from source:**
+
+1. **Team Structure Table** (MANDATORY if team info in source):
 ```json
 {{
   "layout_type": "content",
   "layout_hint": "table_slide",
-  "title": "Deliverables Summary",
+  "title": "Team Structure & Responsibilities",
+  "icon_name": "team-organization",
+  "table_data": {{
+    "headers": ["Position", "Responsibilities", "Experience", "Time Allocation"],
+    "rows": [
+      ["Project Director", "Overall strategy and delivery oversight", "15+ years in consulting", "30%"],
+      ["Lead Consultant", "Technical framework design and methodology", "12+ years", "50%"],
+      ["Senior Analyst", "Data analysis and financial modeling", "8+ years", "70%"],
+      ["Research Specialist", "Field research and stakeholder engagement", "6+ years", "80%"],
+      ["Quality Manager", "QA and deliverable review", "10+ years", "40%"]
+    ]
+  }}
+}}
+```
+
+2. **Deliverables Summary Table** (MANDATORY):
+```json
+{{
+  "layout_type": "content",
+  "layout_hint": "table_slide",
+  "title": "Project Deliverables",
   "icon_name": "deliverables-checklist",
   "table_data": {{
-    "headers": ["Deliverable", "Timeline", "Owner"],
+    "headers": ["Deliverable", "Description", "Timeline", "Format"],
     "rows": [
-      ["Strategic Framework", "Week 4", "Strategy Team"],
-      ["Village Analysis", "Week 8", "Research Team"],
-      ["Operating Models", "Week 12", "Operations Team"],
-      ["Financial Models", "Week 14", "Finance Team"],
-      ["Final Report", "Week 18", "Project Lead"]
+      ["Inception Report", "Project kickoff, methodology, and workplan", "Week 2", "PDF Document"],
+      ["Strategic Framework", "Comprehensive strategic analysis and recommendations", "Week 6", "Bound Report"],
+      ["Village Analysis", "Detailed assessment of village profiles", "Week 10", "Report + Dataset"],
+      ["Operating Models", "Operational framework and implementation guide", "Week 14", "Document + Templates"],
+      ["Final Report", "Complete project documentation and handover", "Week 18", "Bound Report + Presentation"]
+    ]
+  }}
+}}
+```
+
+3. **Payment Structure Table** (MANDATORY if payment info in source):
+```json
+{{
+  "layout_type": "content",
+  "layout_hint": "table_slide",
+  "title": "Payment Schedule",
+  "icon_name": "payment-schedule",
+  "table_data": {{
+    "headers": ["Phase", "Milestone", "Payment %", "Timeline"],
+    "rows": [
+      ["Phase 1", "Contract Signing & Mobilization", "20%", "Week 1"],
+      ["Phase 2", "Inception Report Approval", "15%", "Week 3"],
+      ["Phase 3", "Mid-Project Review & Interim Deliverables", "25%", "Week 10"],
+      ["Phase 4", "Draft Final Deliverables Submitted", "20%", "Week 16"],
+      ["Phase 5", "Final Delivery & Acceptance", "20%", "Week 18"]
+    ]
+  }}
+}}
+```
+
+4. **Performance Indicators Table** (MANDATORY):
+```json
+{{
+  "layout_type": "content",
+  "layout_hint": "table_slide",
+  "title": "Key Performance Indicators",
+  "icon_name": "performance-metrics",
+  "table_data": {{
+    "headers": ["KPI", "Target", "Measurement Method", "Frequency"],
+    "rows": [
+      ["Stakeholder Satisfaction", "≥90%", "Survey and feedback forms", "Monthly"],
+      ["Deliverable Quality Score", "≥95%", "Quality review checklist", "Per deliverable"],
+      ["Timeline Adherence", "100%", "Milestone tracking and reporting", "Weekly"],
+      ["Data Accuracy Rate", "≥98%", "Validation and verification checks", "Continuous"],
+      ["Engagement Level", "≥85%", "Workshop participation rate", "Per session"]
+    ]
+  }}
+}}
+```
+
+5. **Project Timeline Table** (MANDATORY):
+```json
+{{
+  "layout_type": "content",
+  "layout_hint": "table_slide",
+  "title": "Project Phases & Timeline",
+  "icon_name": "timeline-schedule",
+  "table_data": {{
+    "headers": ["Phase", "Key Activities", "Duration", "Key Outputs"],
+    "rows": [
+      ["Discovery", "Research, stakeholder interviews, data collection", "4 weeks", "Inception Report"],
+      ["Analysis", "Data analysis, village assessment, SWOT", "6 weeks", "Analysis Report"],
+      ["Strategy", "Framework design, strategic planning", "4 weeks", "Strategic Framework"],
+      ["Implementation", "Operating model development, pilot testing", "3 weeks", "Implementation Plan"],
+      ["Closure", "Final report compilation, presentation, handover", "1 week", "Final Deliverables"]
     ]
   }}
 }}
 ```
 
 
-**CRITICAL**: Every table MUST have:
-- Non-empty headers array
-- At least 3 rows with actual data
-- All cells must have text (no empty strings)
+**CRITICAL REQUIREMENTS**: Every table MUST have:
+- Non-empty headers array with 3-5 columns minimum
+- At least 4-6 rows with actual detailed data
+- **IMPORTANT: The "rows" array should contain ONLY data rows, NOT the headers**
+- **Do NOT duplicate headers in the first row of the "rows" array**
+- All cells must have meaningful text (NO empty strings, NO placeholders like "TBD")
 - Valid icon_name in English
+- **Extract REAL data from the input markdown**
+- **Do NOT use generic placeholders - use specific information from source**
+- **Include numbers, percentages, and specific details where available**
+- **If source lacks detail for a table, still create with reasonable estimates based on context**
 
 
 =========================================================
@@ -350,15 +466,30 @@ IMPORTANT: Change this according to the Input markdown content
   "title": "Key Points",
   "icon_name": "key-points",
   "bullets": [
-    {{"text": "First point", "sub_bullets": []}},
-    {{"text": "Second point", "sub_bullets": []}},
-    {{"text": "Third point", "sub_bullets": []}}
+    {{"text": "First point (max 120-150 characters)", "sub_bullets": []}},
+    {{"text": "Second point (max 120-150 characters)", "sub_bullets": []}},
+    {{"text": "Third point (max 120-150 characters)", "sub_bullets": []}}
   ],
   "content": null,
   "chart_data": null,
   "table_data": null
 }}
 ```
+
+**BULLET LENGTH GUIDELINES:**
+- Each bullet text: Recommended 120-180 characters (concise but detailed)
+- If longer, split into multiple bullets or use content field
+- Maximum 4-5 bullets per slide (auto-splits only if height overflow)
+- Utilize available space while keeping content scannable
+
+**CRITICAL BULLET FORMATTING RULES:**
+- **DO NOT use periods (.) at the end of bullet points**
+- Bullet points are concise phrases, not full sentences
+- Format: "Key point description without period"
+- NOT: "Key point description with period."
+- Bullets will be displayed with bullet symbols (●) automatically
+- Example CORRECT: "Strategic framework design and SAQF alignment"
+- Example WRONG: "Strategic framework design and SAQF alignment."
 
 
 **For Paragraph Slides:**
@@ -368,12 +499,14 @@ IMPORTANT: Change this according to the Input markdown content
   "layout_hint": "content_paragraph",
   "title": "Overview",
   "icon_name": "overview-summary",
-  "content": "Full paragraph text here. This should be 2-3 sentences describing the topic in detail.",
+  "content": "Full paragraph text here. This should be 2-3 sentences describing the topic in detail. Use normal punctuation with periods for paragraphs.",
   "bullets": null,
   "chart_data": null,
   "table_data": null
 }}
 ```
+
+**NOTE**: Paragraph content (content field) SHOULD use normal punctuation including periods. Only bullet points should NOT have periods.
 
 
 **For Chart Slides:**
@@ -461,13 +594,25 @@ Before generating JSON, verify:
 5. ✓ No slides with only title (all have content/bullets/chart/table)
 6. ✓ EXACTLY 3+ chart slides with complete chart_data
 7. ✓ EXACTLY 2+ four-box slides with 4 bullets each
-8. ✓ EXACTLY 1+ table slide with complete table_data
+8. ✓ EXACTLY 3-5 table slides with complete table_data (Team, Deliverables, Payment, KPIs, Timeline)
 9. ✓ All titles under length limits
 10. ✓ All chart categories and values arrays are non-empty
-11. ✓ All table headers and rows arrays are non-empty
+11. ✓ All table headers and rows arrays are non-empty with ACTUAL data (not placeholders)
 12. ✓ Thank You slide is LAST slide
 13. ✓ No null values in required fields
 14. ✓ icon_name never contains null or empty string
+15. ✓ Content has SPECIFIC details preserved from source (not generic summaries)
+16. ✓ Technical terms and framework names preserved exactly as in source
+17. ✓ Numbers, percentages, and metrics from source are included
+18. ✓ Team slides have roles, responsibilities, experience, and time allocation
+19. ✓ Deliverable slides have detailed descriptions (not just names)
+20. ✓ All tables have 4+ rows and 3+ columns with meaningful data
+21. ✓ Each bullet is 120-180 characters recommended (detailed but scannable)
+22. ✓ Max 4-5 bullets per slide (auto-splits only on height overflow)
+23. ✓ Table rows limited to 4 per slide (larger tables will auto-split)
+24. ✓ Content utilizes available space without excessive white space
+25. ✓ Bullet points DO NOT have periods at the end (phrase format)
+26. ✓ Paragraph content (content field) uses normal punctuation with periods
 
 
 =========================================================
@@ -528,8 +673,8 @@ USER PREFERENCES:
    - List these sections as agenda items
    - The agenda must act as a table of contents
    - Each agenda item should correspond to a section header in the presentation
-   - Example: If your sections are "Introduction", "Objectives", "Approach", "Timeline", "Team", "Deliverables"
-     then your agenda bullets should be exactly those names
+   - Example: If your sections are "Introduction", "Objectives", "Approach", "Timeline", "Team", "Deliverables", "Thank You"
+     then your agenda bullets should be exactly those names, **including a final item for the Thank You / closing section**
 
 
 4. **Icon Generation (MANDATORY):**
@@ -542,29 +687,50 @@ USER PREFERENCES:
 
 5. **Visual Content (ABSOLUTELY REQUIRED):**
    - **MINIMUM 3 chart slides** with complete chart_data:
-     * 1 timeline chart (column chart with phases)
-     * 1 budget/distribution chart (pie chart)
-     * 1 metrics/KPIs chart (bar chart)
+     * 1 timeline chart (column chart with phases and durations)
+     * 1 budget/distribution chart (pie chart with percentages)
+     * 1 metrics/KPIs chart (bar chart with target values)
    - **MINIMUM 2 four-box slides**:
-     * 1 methodology/framework (4 pillars)
-     * 1 benefits/value proposition (4 points)
-   - **MINIMUM 1 table slide**:
-     * Deliverables OR team structure OR schedule
-   - ALL visual elements MUST have valid icon_name
+     * 1 methodology/framework (4 pillars with descriptions)
+     * 1 benefits/value proposition (4 key points)
+   - **MINIMUM 3-5 table slides** (depending on source content):
+     * Team Structure (Position, Responsibilities, Experience, Time %)
+     * Deliverables Summary (Deliverable, Description, Timeline, Format)
+     * Payment Schedule (Phase, Milestone, Payment %, Timeline)
+     * Performance Indicators (KPI, Target, Measurement, Frequency)
+     * Project Timeline (Phase, Activities, Duration, Outputs)
+   - ALL visual elements MUST have valid icon_name and REAL data (not placeholders)
 
 
 6. **Content Distribution:**
-   - Use bullets for lists (max 4 per slide)
-   - Use paragraphs for descriptions/overviews
+   - Use bullets for lists (max 4-5 per slide, splits only on height overflow)
+   - **Each bullet recommended 120-180 characters** - detailed but scannable
+   - Use paragraphs for descriptions/overviews (will auto-convert if too long)
    - ALWAYS populate either bullets OR content OR chart_data OR table_data
    - NEVER leave slides with only titles
    - Each content element should have appropriate icon_name
+   - System auto-splits only when content truly overflows (height-based)
 
 
 7. **Title Constraints:**
    - Max 60 chars (title slide)
    - Max 50 chars (section headers)
    - Max 70 chars (content slides)
+
+
+8. **CONTENT DETAIL PRESERVATION (CRITICAL):**
+   - **DO NOT SUMMARIZE OR CONDENSE** - Extract exact details from source
+   - **PRESERVE TECHNICAL TERMINOLOGY** - Use exact framework/methodology names
+   - **INCLUDE SPECIFIC NUMBERS** - Percentages, targets, durations from source
+   - Technical Framework slides: Include specific framework components and how they integrate
+   - Methodology slides: Include detailed procedural steps, not just phase names
+   - Team slides: Include exact roles, detailed responsibilities, experience years, time %
+   - Deliverables: Include what's in each deliverable (not just "Report" or "Analysis")
+   - Payment: Include exact percentages, milestone descriptions, and timing
+   - KPIs: Include specific target numbers, measurement methods, and frequency
+   - Assumptions: Include specific assumption statements with context
+   - **NO PLACEHOLDERS** - Never use "Various tools", "Best practices", "As needed", "TBD"
+   - **If source lacks detail**, infer reasonable specifics from context rather than being generic
 
 
 =========================================================
@@ -687,13 +853,22 @@ USER PREFERENCES:
   "title": "Our Approach",
   "icon_name": "methodology-framework",
   "bullets": [
-    {{"text": "Research & Discovery", "sub_bullets": []}},
-    {{"text": "Strategy Design", "sub_bullets": []}},
-    {{"text": "Implementation", "sub_bullets": []}},
-    {{"text": "Monitoring & Optimization", "sub_bullets": []}}
+    {{"text": "Research & stakeholder analysis", "sub_bullets": []}},
+    {{"text": "Strategy design & planning", "sub_bullets": []}},
+    {{"text": "Implementation & execution", "sub_bullets": []}},
+    {{"text": "Monitoring & optimization", "sub_bullets": []}}
   ]
 }}
 ```
+
+**CRITICAL FOR FOUR-BOX LAYOUTS:**
+- **Each box text MUST be 60-100 characters maximum** (STRICT - text will be truncated)
+- Use format: "Title & brief detail" or "Title: description"
+- **DO NOT use periods** at the end (bullet points format)
+- **NEVER exceed 100 characters** - longer text will overflow the colored boxes
+- Keep very concise - boxes are visual elements, not paragraphs
+- Example GOOD: "Research & stakeholder analysis" (35 chars, no period)
+- Example BAD: "Comprehensive research methodology including stakeholder interviews, surveys, and data collection." (100+ chars - will overflow)
 
 
 =========================================================
@@ -711,6 +886,8 @@ Check:
 - [ ] No blank slides (title only)
 - [ ] Thank You slide at end
 - [ ] All text is {alignment_note}
+- [ ] Bullet points DO NOT have periods at the end
+- [ ] Paragraph content uses normal punctuation with periods
 
 
 =========================================================
@@ -760,6 +937,8 @@ REQUIREMENTS:
 9. No blank slides
 10. Thank You slide at end
 11. icon_name never null or empty
+12. Bullet points DO NOT have periods at the end (phrase format)
+13. Paragraph content uses normal punctuation with periods
 
 
 Generate complete regenerated PresentationData in {language}."""

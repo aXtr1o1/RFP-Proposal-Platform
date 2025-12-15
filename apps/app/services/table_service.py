@@ -93,22 +93,61 @@ class TableService:
                 headers = getattr(table_data, 'headers', [])
                 rows = getattr(table_data, 'rows', [])
 
-            if not headers or not rows:
-                self.logger.warning("  Table missing headers or rows")
-                return None
+            # ✅ FIX: Remove duplicate headers if first row matches headers
+            if headers and rows and len(rows) > 0:
+                first_row = rows[0]
+                # Check if first row is the same as headers (case-insensitive)
+                if len(first_row) == len(headers):
+                    first_row_clean = [str(cell).strip().lower() for cell in first_row]
+                    headers_clean = [str(h).strip().lower() for h in headers]
+                    
+                    if first_row_clean == headers_clean:
+                        self.logger.warning("   ⚠️  Duplicate headers detected in first row - removing")
+                        rows = rows[1:]  # Skip the duplicate header row
+
+            # ✅ ENHANCED VALIDATION - Prevent empty tables
+            if not headers or len(headers) == 0:
+                self.logger.error(f"❌ Table has no headers")
+                self.logger.error(f"   Table data received: {table_data}")
+                # Create error placeholder table
+                headers = ["Column 1", "Column 2", "Column 3"]
+                rows = [["No data", "Table not generated", "Check source content"]]
+                self.logger.warning("   ⚠️  Creating error placeholder table")
+            
+            if not rows or len(rows) == 0:
+                self.logger.error(f"❌ Table has no rows")
+                self.logger.error(f"   Headers were: {headers}")
+                # Create placeholder row
+                rows = [["No data provided" for _ in headers]]
+                self.logger.warning("   ⚠️  Creating placeholder row")
             
             # Clean headers
-            headers = [str(h).strip() for h in headers]
+            headers = [str(h).strip() if h else f"Column {i+1}" for i, h in enumerate(headers)]
             
             # Validate rows (use max_rows from constraints)
             validated_rows = []
-            for row in rows[:self.max_rows_per_slide]:
+            num_cols = len(headers)
+            
+            for row_idx, row in enumerate(rows[:self.max_rows_per_slide]):
+                # Convert row to list if needed
+                if not isinstance(row, list):
+                    row = list(row) if hasattr(row, '__iter__') else [str(row)]
+                
+                # Clean and pad/truncate row
                 clean_row = [str(cell).strip() if cell else '' for cell in row]
-                if len(clean_row) < len(headers):
-                    clean_row.extend([''] * (len(headers) - len(clean_row)))
-                elif len(clean_row) > len(headers):
-                    clean_row = clean_row[:len(headers)]
+                
+                if len(clean_row) < num_cols:
+                    self.logger.warning(f"   Row {row_idx} has only {len(clean_row)} cells, padding to {num_cols}")
+                    clean_row.extend([''] * (num_cols - len(clean_row)))
+                elif len(clean_row) > num_cols:
+                    self.logger.warning(f"   Row {row_idx} has {len(clean_row)} cells, truncating to {num_cols}")
+                    clean_row = clean_row[:num_cols]
+                
                 validated_rows.append(clean_row)
+            
+            rows = validated_rows
+            
+            self.logger.info(f"   ✅ Table validated: {num_cols} columns × {len(rows)} rows")
 
             num_cols = len(headers)
             num_rows = len(validated_rows) + 1
