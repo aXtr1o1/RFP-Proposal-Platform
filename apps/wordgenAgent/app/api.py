@@ -69,8 +69,172 @@ class WordGenAPI:
         cleaned_url = (url or "").split("?")[0]
         logger.debug(f"Cleaned URL: {cleaned_url}")
         return cleaned_url
+    
+    def _get_mime_type(self, filename: str) -> str:
+        """Add this new method to detect MIME type from filename"""
+        ext = filename.lower().split('.')[-1]
+        mime_types = {
+            'pdf': 'application/pdf',
+            'doc': 'application/msword',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'ppt': 'application/vnd.ms-powerpoint',
+            'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'txt': 'text/plain',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png'
+        }
+        return mime_types.get(ext, 'application/octet-stream')
+    
+    def _convert_to_pdf(self, file_bytes: bytes, filename: str) -> Tuple[bytes, str]:
+        """Convert document formats to PDF"""
+        import io
+        import subprocess
+        import tempfile
+        import os
+        ext = filename.lower().split('.')[-1]
+        
+        # If already PDF, return as-is
+        if ext == 'pdf':
+            logger.info(f"{filename} is already PDF")
+            return file_bytes, filename
+        
+        # For text-based formats, create simple PDF
+        if ext in ['txt', 'md', 'markdown']:
+            try:
+                from reportlab.lib.pagesizes import letter
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                from reportlab.lib.styles import getSampleStyleSheet
+                
+                # Decode text
+                text = file_bytes.decode('utf-8', errors='ignore')
+                
+                # Create PDF in memory
+                pdf_buffer = io.BytesIO()
+                doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+                styles = getSampleStyleSheet()
+                story = []
+                
+                # Add text paragraphs
+                for line in text.split('\n'):
+                    if line.strip():
+                        para = Paragraph(line, styles['Normal'])
+                        story.append(para)
+                        story.append(Spacer(1, 12))
+                
+                doc.build(story)
+                pdf_bytes = pdf_buffer.getvalue()
+                new_filename = filename.rsplit('.', 1)[0] + '.pdf'
+                logger.info(f"Converted {filename} to {new_filename}")
+                return pdf_bytes, new_filename
+            except Exception as e:
+                logger.error(f"Failed to convert {filename} to PDF: {e}")
+                raise RuntimeError(f"Cannot convert text to PDF: {str(e)}")
+        
+        # For DOCX/PPTX, use LibreOffice (best quality)
+        if ext in ['docx', 'doc', 'pptx', 'ppt']:
+            try:
+                # Create temporary files
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp_input:
+                    tmp_input.write(file_bytes)
+                    tmp_input_path = tmp_input.name
+                
+                tmp_output_dir = tempfile.mkdtemp()
+                
+                # Convert using LibreOffice
+                cmd = [
+                    'libreoffice',
+                    '--headless',
+                    '--convert-to', 'pdf',
+                    '--outdir', tmp_output_dir,
+                    tmp_input_path
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                
+                if result.returncode != 0:
+                    raise RuntimeError(f"LibreOffice conversion failed: {result.stderr}")
+                
+                # Read converted PDF
+                base_name = os.path.splitext(os.path.basename(tmp_input_path))[0]
+                pdf_path = os.path.join(tmp_output_dir, f"{base_name}.pdf")
+                
+                if not os.path.exists(pdf_path):
+                    raise RuntimeError("PDF output file not created")
+                
+                with open(pdf_path, 'rb') as f:
+                    pdf_bytes = f.read()
+                
+                # Cleanup
+                os.unlink(tmp_input_path)
+                os.unlink(pdf_path)
+                os.rmdir(tmp_output_dir)
+                
+                new_filename = filename.rsplit('.', 1)[0] + '.pdf'
+                logger.info(f"Converted {filename} to {new_filename} using LibreOffice ({len(pdf_bytes)} bytes)")
+                return pdf_bytes, new_filename
+                
+            except FileNotFoundError:
+                logger.error("LibreOffice not installed. Falling back to text extraction.")
+                # Fallback: extract text and create simple PDF
+                return self._convert_office_to_pdf_fallback(file_bytes, filename, ext)
+            except Exception as e:
+                logger.error(f"LibreOffice conversion failed: {e}. Falling back to text extraction.")
+                return self._convert_office_to_pdf_fallback(file_bytes, filename, ext)
+        
+        raise RuntimeError(f"Unsupported file format for PDF conversion: {ext}")
 
-    def _download_pdf(self, url: str) -> bytes:
+
+    def _convert_office_to_pdf_fallback(self, file_bytes: bytes, filename: str, ext: str) -> Tuple[bytes, str]:
+        """Fallback: Extract text from Office files and create simple PDF"""
+        import io
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
+        
+        text_lines = []
+        
+        # Extract text from DOCX
+        if ext == 'docx':
+            from docx import Document
+            doc = Document(io.BytesIO(file_bytes))
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    text_lines.append(para.text)
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = ' | '.join(cell.text.strip() for cell in row.cells)
+                    if row_text.strip():
+                        text_lines.append(row_text)
+        
+        # Extract text from PPTX
+        elif ext == 'pptx':
+            from pptx import Presentation
+            prs = Presentation(io.BytesIO(file_bytes))
+            for slide_num, slide in enumerate(prs.slides, 1):
+                text_lines.append(f"Slide {slide_num}")
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        text_lines.append(shape.text)
+        
+        # Create PDF
+        pdf_buffer = io.BytesIO()
+        doc = SimpleDocTemplate(pdf_buffer, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
+        
+        for line in text_lines:
+            para = Paragraph(line.replace('<', '&lt;').replace('>', '&gt;'), styles['Normal'])
+            story.append(para)
+            story.append(Spacer(1, 12))
+        
+        doc.build(story)
+        pdf_bytes = pdf_buffer.getvalue()
+        new_filename = filename.rsplit('.', 1)[0] + '.pdf'
+        logger.info(f"Converted {filename} to {new_filename} (text extraction fallback)")
+        return pdf_bytes, new_filename
+
+    def _download_file(self, url: str) -> bytes:
         cleaned_url = self._clean_url(url)
         logger.info(f"Starting download of PDF: {cleaned_url}")
         response = requests.get(cleaned_url, timeout=60)
@@ -78,31 +242,54 @@ class WordGenAPI:
         logger.info(f"Finished download of PDF: {cleaned_url} ({len(response.content)} bytes)")
         return response.content
 
-    def _download_two_pdfs(self, rfp_url: str, supporting_url: str) -> Tuple[bytes, bytes]:
+    def _download_two_files(self, rfp_url: str, supporting_url: str) -> Tuple[bytes, bytes]:
         logger.info("Beginning parallel download of two PDFs")
         with ThreadPoolExecutor() as executor:
-            future_rfp = executor.submit(self._download_pdf, rfp_url)
-            future_sup = executor.submit(self._download_pdf, supporting_url)
+            future_rfp = executor.submit(self._download_file, rfp_url)
+            future_sup = executor.submit(self._download_file, supporting_url)
             rfp_bytes = future_rfp.result()
             sup_bytes = future_sup.result()
         logger.info("Completed parallel download of two PDFs")
         return rfp_bytes, sup_bytes
 
-    def _upload_pdf_bytes_to_openai(self, pdf_bytes: bytes, filename: str) -> str:
-        logger.info(f"Uploading {filename} to OpenAI")
-        file_obj = self.client.files.create(file=(filename, pdf_bytes, "application/pdf"), purpose="user_data")
-        logger.info(f"Uploaded {filename} as file ID: {file_obj.id}")
+    def _upload_file_bytes_to_openai(self, file_bytes: bytes, filename: str) -> str:
+        logger.info(f"Processing {filename} for OpenAI upload")
+        
+        # Convert to PDF
+        pdf_bytes, pdf_filename = self._convert_to_pdf(file_bytes, filename)
+        
+        mime_type = 'application/pdf'
+        logger.info(f"Uploading {pdf_filename} (MIME: {mime_type}) to OpenAI")
+        
+        file_obj = self.client.files.create(
+            file=(pdf_filename, pdf_bytes, mime_type), 
+            purpose="user_data"
+        )
+        logger.info(f"Uploaded {pdf_filename} as file ID: {file_obj.id}")
         return file_obj.id
-
-    def _upload_pdf_urls_to_openai(self, rfp_url: str, supporting_url: str) -> Tuple[str, str]:
-        rfp_bytes, sup_bytes = self._download_two_pdfs(rfp_url, supporting_url)
-        logger.info("Beginning parallel upload of two PDFs to OpenAI")
+    
+    def _extract_filename_from_url(self, url: str) -> str:
+        """Extract filename from URL, default if not found"""
+        from urllib.parse import urlparse, unquote
+        path = urlparse(url).path
+        filename = unquote(path.split('/')[-1])
+        return filename if filename else "document"
+    
+    def _upload_file_urls_to_openai(self, rfp_url: str, supporting_url: str) -> Tuple[str, str]:
+        rfp_bytes, sup_bytes = self._download_two_files(rfp_url, supporting_url)
+        logger.info("Beginning parallel upload of two files to OpenAI")
+        
+        # Extract filenames from URLs
+        rfp_filename = self._extract_filename_from_url(rfp_url)
+        sup_filename = self._extract_filename_from_url(supporting_url)
+        
         with ThreadPoolExecutor() as executor:
-            future_rfp = executor.submit(self._upload_pdf_bytes_to_openai, rfp_bytes, "RFP.pdf")
-            future_sup = executor.submit(self._upload_pdf_bytes_to_openai, sup_bytes, "Supporting.pdf")
+            future_rfp = executor.submit(self._upload_file_bytes_to_openai, rfp_bytes, rfp_filename)
+            future_sup = executor.submit(self._upload_file_bytes_to_openai, sup_bytes, sup_filename)
             rfpf_id = future_rfp.result()
             supf_id = future_sup.result()
-        logger.info(f"Completed parallel upload of PDFs with IDs: rfp={rfpf_id}, supporting={supf_id}")
+        
+        logger.info(f"Completed parallel upload of files with IDs: rfp={rfpf_id}, supporting={supf_id}")
         return rfpf_id, supf_id
 
     def generate_complete_proposal(
@@ -119,7 +306,7 @@ class WordGenAPI:
         try:
             yield _sse_event_json("stage", {"stage": "starting"})
             yield _sse_event_json("stage", {"stage": "uploading_files"})
-            rfp_id, sup_id = self._upload_pdf_urls_to_openai(rfp_url, supporting_url)
+            rfp_id, sup_id = self._upload_file_urls_to_openai(rfp_url, supporting_url)
 
             rfp_label = "RFP/BRD: requirements, evaluation criteria, project details, and timelines"
             supporting_label = "Supporting: company profile, portfolio, capabilities, certifications, differentiators"

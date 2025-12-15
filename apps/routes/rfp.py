@@ -392,7 +392,7 @@ async def list_available_templates():
                 
                 if config_file.exists():
                     import json
-                    with open(config_file, 'r') as f:
+                    with open(config_file, 'r', encoding='utf-8') as f:
                         config = json.load(f)
                     
                     templates.append({
