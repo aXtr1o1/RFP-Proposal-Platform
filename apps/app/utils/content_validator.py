@@ -303,7 +303,7 @@ def _has_valid_chart(chart_data) -> bool:
 
 
 def will_overflow(slide: SlideContent) -> bool:
-    """Balanced overflow detection - prevents cramping while avoiding excessive splitting"""
+    """Strict overflow detection: 4 bullets max, each bullet strictly 2 lines max"""
     layout_hint = getattr(slide, 'layout_hint', None) or getattr(slide, 'content_type', '')
     
     # Agenda slides
@@ -323,37 +323,51 @@ def will_overflow(slide: SlideContent) -> bool:
             logger.info(f"📊 Table overflow detected: {len(table_rows)} rows (max {TABLE_MAX_ROWS})")
             return True
     
-    # Bullet overflow detection - balance between fit and readability
+    # Bullet overflow detection - STRICT: 4 bullets max, each strictly 2 lines max
     if slide.bullets:
         bullet_count = len(slide.bullets)
         
-        # ✅ FIRST: Estimate visual height
-        estimated_height = estimate_content_height(slide.bullets)
+        # Rule 1: More than 4 bullets = overflow
+        if bullet_count > MAX_BULLETS_PER_SLIDE:
+            logger.info(f"📝 Bullet count overflow: {bullet_count} bullets (max {MAX_BULLETS_PER_SLIDE})")
+            return True
         
-        # Primary check: Height overflow (most accurate)
+        # Rule 2: Check if any bullet exceeds 2 lines (strictly)
+        # Using ~55 characters per line, so max 110 characters per bullet for 2 lines
+        MAX_CHARS_PER_BULLET = 110  # Strictly 2 lines max
+        
+        for idx, bullet in enumerate(slide.bullets):
+            bullet_text = getattr(bullet, 'text', '') or ''
+            bullet_len = len(bullet_text)
+            
+            # Check main bullet text
+            if bullet_len > MAX_CHARS_PER_BULLET:
+                logger.info(f"📝 Bullet {idx+1} exceeds 2 lines: {bullet_len} chars (max {MAX_CHARS_PER_BULLET})")
+                return True
+            
+            # Check sub-bullets (if any sub-bullet exceeds 2 lines, overflow)
+            if bullet.sub_bullets:
+                for sub_idx, sub in enumerate(bullet.sub_bullets[:MAX_SUB_BULLETS_PER_BULLET]):
+                    sub_text = getattr(sub, 'text', sub) if hasattr(sub, 'text') else str(sub)
+                    sub_len = len(sub_text or "")
+                    if sub_len > MAX_CHARS_PER_BULLET:
+                        logger.info(f"📝 Sub-bullet {idx+1}.{sub_idx+1} exceeds 2 lines: {sub_len} chars (max {MAX_CHARS_PER_BULLET})")
+                        return True
+        
+        # Rule 3: Estimate height as secondary check (shouldn't exceed max height)
+        estimated_height = estimate_content_height(slide.bullets)
         if estimated_height > MAX_CONTENT_HEIGHT_INCHES:
             logger.info(f"📏 Height overflow: {estimated_height:.2f} inches (max {MAX_CONTENT_HEIGHT_INCHES})")
             return True
         
-        # Secondary: WAY too many bullets (7+)
-        if bullet_count > 6:
-            logger.info(f"📝 Excessive bullets: {bullet_count} bullets (split at 7+)")
-            return True
-        
-        # Tertiary: Single bullet that's EXTREMELY long (250+ chars)
-        max_bullet_len = max((len(getattr(b, 'text', '') or '') for b in slide.bullets), default=0)
-        if max_bullet_len > 250:
-            logger.info(f"📝 Extremely long bullet: {max_bullet_len} chars (limit 250)")
-            return True
-        
-        # Otherwise: TRY TO FIT - don't split!
-        logger.debug(f"   ✅ Fits: {bullet_count} bullets, {estimated_height:.2f} inches")
+        # All checks passed - fits within limits
+        logger.debug(f"   ✅ Fits: {bullet_count} bullets (max {MAX_BULLETS_PER_SLIDE}), all ≤2 lines, {estimated_height:.2f} inches")
     
     return False
 
 
 def estimate_content_height(bullets: List[BulletPoint]) -> float:
-    """Enhanced content height estimation with more accurate calculations"""
+    """Content height estimation - assumes max 2 lines per bullet for 4 bullets max"""
     if not bullets:
         return 0.5
     
@@ -364,20 +378,19 @@ def estimate_content_height(bullets: List[BulletPoint]) -> float:
         main_text = getattr(bullet, 'text', '') or ''
         main_text_len = len(main_text)
         
-        # More accurate line estimation (template text box is narrower than 70 chars)
-        # Use ~55 characters per line for bullets to better match visual wrapping
-        main_lines = max(1, (main_text_len + 54) // 55)
-        main_height = 0.35 * main_lines  # Slightly increased for better spacing
+        # Use ~55 characters per line for bullets to match visual wrapping
+        # For strict 2-line limit, cap at 2 lines
+        main_lines = max(1, min(2, (main_text_len + 54) // 55))  # Cap at 2 lines
+        main_height = 0.35 * main_lines
         
-        # Calculate sub-bullets height
+        # Calculate sub-bullets height (also capped at 2 lines each)
         sub_height = 0.0
         if bullet.sub_bullets:
-            num_subs = min(len(bullet.sub_bullets), MAX_SUB_BULLETS_PER_BULLET)
             for sub in bullet.sub_bullets[:MAX_SUB_BULLETS_PER_BULLET]:
                 sub_text = getattr(sub, 'text', sub) if hasattr(sub, 'text') else str(sub)
                 sub_len = len(sub_text or "")
-                # Sub-bullets tend to be longer; assume ~45 chars per line
-                sub_lines = max(1, (sub_len + 44) // 45)
+                # Sub-bullets also capped at 2 lines
+                sub_lines = max(1, min(2, (sub_len + 44) // 45))  # Cap at 2 lines
                 sub_height += 0.28 * sub_lines
         
         # Add spacing between bullets

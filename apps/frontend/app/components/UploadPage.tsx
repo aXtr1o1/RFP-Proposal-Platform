@@ -598,7 +598,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   const [activePptGenId, setActivePptGenId] = useState<string | null>(null);
   const [pptSummary, setPptSummary] = useState<{ title?: string; template_id?: string; language?: string; stats?: PptStats } | null>(null);
   const [pptTemplates, setPptTemplates] = useState<PptTemplateInfo[]>([]);
-  const [selectedPptTemplate, setSelectedPptTemplate] = useState<string>("arweqah");
+  const [selectedPptTemplate, setSelectedPptTemplate] = useState<string>("standard");
   const [pptTemplatesLoading, setPptTemplatesLoading] = useState(false);
   const [pptTemplatesError, setPptTemplatesError] = useState<string | null>(null);
   const [pptActionStatus, setPptActionStatus] = useState<string | null>(null);
@@ -671,10 +671,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         if (isMounted) {
           setPptTemplates(templates);
           setSelectedPptTemplate((current) => {
+            // If current selection exists in templates, keep it
             if (current && templates.some((tpl: PptTemplateInfo) => tpl.id === current)) {
               return current;
             }
-            return templates[0]?.id || current;
+            // Prefer "standard" template if available
+            const standardTemplate = templates.find((tpl: PptTemplateInfo) => tpl.id === "standard");
+            if (standardTemplate) {
+              return "standard";
+            }
+            // Otherwise use first available template
+            return templates[0]?.id || current || "standard";
           });
         }
       } catch (err) {
@@ -1641,11 +1648,19 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           const url = `${pdfLink}${pdfLink.includes('?') ? '&' : '?'}download=${encodeURIComponent(
             pdfFileName
           )}&t=${t}`;
-          const response = await fetch(url);
+          console.log("Downloading PDF from:", url);
+          const response = await fetch(url, {
+            method: 'GET',
+            mode: 'cors',
+          });
           if (!response.ok) {
-            throw new Error(`Failed to download PDF (${response.status})`);
+            const errorText = await response.text().catch(() => '');
+            throw new Error(`Failed to download PDF: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
           }
           const blob = await response.blob();
+          if (!blob || blob.size === 0) {
+            throw new Error("Downloaded PDF file is empty");
+          }
           const objectUrl = URL.createObjectURL(blob);
           setPdfLinkSafely(objectUrl);
 
@@ -1657,7 +1672,14 @@ const UploadPage: React.FC<UploadPageProps> = () => {
           anchor.remove();
         } catch (error) {
           console.error("Failed to download PDF", error);
-          setPdfError("Unable to download PDF. Please try again.");
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          if (errorMessage.includes('CORS') || errorMessage.includes('Failed to fetch')) {
+            setPdfError("Network error: Unable to access PDF. Please check your connection or try downloading the Word document instead.");
+          } else if (errorMessage.includes('404')) {
+            setPdfError("PDF file not found. Please regenerate the document.");
+          } else {
+            setPdfError(`Unable to download PDF: ${errorMessage}`);
+          }
         } finally {
           setIsPdfConverting(false);
         }
@@ -1678,12 +1700,22 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       const downloadUrl = `${wordLink}${wordLink.includes('?') ? '&' : '?'}download=${encodeURIComponent(
         wordFileName
       )}&t=${t}`;
-      const wordResponse = await fetch(downloadUrl);
+      console.log("Downloading Word document from:", downloadUrl);
+      const wordResponse = await fetch(downloadUrl, {
+        method: 'GET',
+        mode: 'cors',
+      });
       if (!wordResponse.ok) {
-        throw new Error(`Failed to download Word document (${wordResponse.status})`);
+        const errorText = await wordResponse.text().catch(() => '');
+        throw new Error(`Failed to download Word document: ${wordResponse.status} ${wordResponse.statusText}${errorText ? ` - ${errorText}` : ''}`);
       }
 
       const wordBlob = await wordResponse.blob();
+      if (!wordBlob || wordBlob.size === 0) {
+        throw new Error("Downloaded Word document is empty");
+      }
+      console.log("Word document downloaded, size:", wordBlob.size, "bytes");
+      
       const originalName = wordFileName;
       const hasExtension = /\.[^./\\]+$/.test(originalName);
       const normalizedName = hasExtension ? originalName : `${originalName}.docx`;
@@ -1701,6 +1733,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         })
       );
 
+      console.log("Converting Word to PDF via /nextapi/convert");
       const convertResponse = await fetch("/nextapi/convert", {
         method: "POST",
         body: formData,
@@ -1724,6 +1757,11 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       }
 
       const pdfBlob = await convertResponse.blob();
+      if (!pdfBlob || pdfBlob.size === 0) {
+        throw new Error("PDF conversion returned empty file");
+      }
+      console.log("PDF conversion successful, size:", pdfBlob.size, "bytes");
+      
       const pdfUrl = URL.createObjectURL(pdfBlob);
       setPdfLinkSafely(pdfUrl);
 
@@ -1735,7 +1773,16 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       anchor.remove();
     } catch (error) {
       console.error("Failed to convert Word to PDF", error);
-      setPdfError("Unable to download PDF. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('LibreOffice') || errorMessage.includes('conversion failed')) {
+        setPdfError(`PDF conversion failed: ${errorMessage}. Please ensure LibreOffice is installed on the server.`);
+      } else if (errorMessage.includes('CORS') || errorMessage.includes('Failed to fetch')) {
+        setPdfError("Network error: Unable to download Word document. Please check your connection.");
+      } else if (errorMessage.includes('404')) {
+        setPdfError("Word document not found. Please regenerate the document.");
+      } else {
+        setPdfError(`Unable to download PDF: ${errorMessage}`);
+      }
     } finally {
       setIsPdfConverting(false);
     }
@@ -2628,13 +2675,17 @@ const UploadPage: React.FC<UploadPageProps> = () => {
             <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">PPT Template</label>
             <div className="mt-1 flex items-center gap-2">
               <select
-                value={pptTemplates.length ? selectedPptTemplate : ""}
-                onChange={(e) => setSelectedPptTemplate(e.target.value)}
+                value={selectedPptTemplate || (pptTemplates.length > 0 ? pptTemplates[0]?.id : "")}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setSelectedPptTemplate(e.target.value);
+                  }
+                }}
                 disabled={pptTemplatesLoading || isPptLocked || !pptTemplates.length}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:ring-1 focus:ring-gray-400 focus:border-gray-400 disabled:bg-gray-50 disabled:cursor-not-allowed"
               >
                 {pptTemplates.length === 0 ? (
-                  <option value="">No templates detected</option>
+                  <option value="">{pptTemplatesLoading ? "Loading templates..." : "No templates detected"}</option>
                 ) : (
                   pptTemplates.map((tpl) => (
                     <option key={tpl.id} value={tpl.id}>

@@ -679,7 +679,10 @@ class PptxGenerator:
         self._clear_default_placeholders(slide)
 
         bg_config = layout_config.get('background', {})
-        if bg_config.get('type') == 'image':
+        if isinstance(bg_config, str):
+            # Look up background from config.json backgrounds section
+            bg_config = self.config.get('backgrounds', {}).get(bg_config, {})
+        if isinstance(bg_config, dict) and bg_config.get('type') == 'image':
             self._add_background(slide, bg_config)
 
         elements = layout_config.get('elements', [])
@@ -786,7 +789,10 @@ class PptxGenerator:
         """Enhanced agenda with RTL/LTR support and proper localization"""
         # Background
         bg_config = layout_config.get('background', {})
-        if bg_config.get('type') == 'image':
+        if isinstance(bg_config, str):
+            # Look up background from config.json backgrounds section
+            bg_config = self.config.get('backgrounds', {}).get(bg_config, {})
+        if isinstance(bg_config, dict) and bg_config.get('type') == 'image':
             self._add_background(slide, bg_config)
         
         # *** FIX 1: Use localized agenda title ***
@@ -968,9 +974,12 @@ class PptxGenerator:
             slide = self.prs.slides.add_slide(slide_layout)
             self._clear_default_placeholders(slide)
             
-            # Background
+            # Background - handle both string references and dict configs
             bg_config = layout_config.get('background', {})
-            if bg_config.get('type') == 'image':
+            if isinstance(bg_config, str):
+                # Look up background from config.json backgrounds section
+                bg_config = self.config.get('backgrounds', {}).get(bg_config, {})
+            if isinstance(bg_config, dict) and bg_config.get('type') == 'image':
                 self._add_background(slide, bg_config)
             
             # Special: Agenda
@@ -994,7 +1003,10 @@ class PptxGenerator:
                 layout_config = self.get_layout_for_content(content_type, data)
                 
                 bg_config = layout_config.get('background', {})
-                if bg_config.get('type') == 'image':
+                if isinstance(bg_config, str):
+                    # Look up background from config.json backgrounds section
+                    bg_config = self.config.get('backgrounds', {}).get(bg_config, {})
+                if isinstance(bg_config, dict) and bg_config.get('type') == 'image':
                     self._add_background(slide, bg_config)
                     logger.info(f"✓ Section background added: {bg_config.get('path')}")
                 

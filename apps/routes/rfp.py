@@ -386,32 +386,48 @@ async def list_available_templates():
         templates_dir = Path(settings.TEMPLATES_DIR)
         
         if not templates_dir.exists():
-            return {"templates": [], "error": "Templates directory not found"}
+            logger.warning(f"Templates directory not found: {templates_dir}")
+            return {"templates": [], "error": f"Templates directory not found: {templates_dir}"}
         
         templates = []
         for template_dir in templates_dir.iterdir():
             if template_dir.is_dir() and not template_dir.name.startswith('.'):
                 config_file = template_dir / "config.json"
                 
-                if config_file.exists():
-                    import json
-                    with open(config_file, 'r') as f:
-                        config = json.load(f)
-                    
-                    templates.append({
-                        "id": template_dir.name,
-                        "name": config.get("name", template_dir.name),
-                        "description": config.get("description", ""),
-                        "version": config.get("version", "1.0.0")
-                    })
-                else:
-                    templates.append({
-                        "id": template_dir.name,
-                        "name": template_dir.name,
-                        "description": "Template configuration not found",
-                        "version": "unknown"
-                    })
+                try:
+                    if config_file.exists():
+                        import json
+                        with open(config_file, 'r', encoding='utf-8') as f:
+                            config = json.load(f)
+                        
+                        templates.append({
+                            "id": template_dir.name,
+                            "name": config.get("name", template_dir.name),
+                            "description": config.get("description", ""),
+                            "version": config.get("version", "1.0.0")
+                        })
+                    else:
+                        logger.warning(f"Config file not found for template: {template_dir.name}")
+                        templates.append({
+                            "id": template_dir.name,
+                            "name": template_dir.name,
+                            "description": "Template configuration not found",
+                            "version": "unknown"
+                        })
+                except UnicodeDecodeError as e:
+                    logger.error(f"Encoding error reading {config_file}: {e}")
+                    # Skip this template but continue with others
+                    continue
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON decode error in {config_file}: {e}")
+                    # Skip this template but continue with others
+                    continue
+                except Exception as e:
+                    logger.error(f"Error loading template {template_dir.name}: {e}")
+                    # Skip this template but continue with others
+                    continue
         
+        logger.info(f"Loaded {len(templates)} templates from {templates_dir}")
         return {
             "templates": templates,
             "total": len(templates)
