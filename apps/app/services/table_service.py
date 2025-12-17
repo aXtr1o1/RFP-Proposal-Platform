@@ -81,6 +81,55 @@ class TableService:
             color_hex = colors_fallback.get(key, default)
         
         return self._hex_to_rgb(color_hex)
+    
+    def _add_formatted_text_to_cell(self, cell, text: str, font_size: int, font_name: str, text_color: Tuple[int, int, int], col_idx: int, num_cols: int):
+        """
+        Parse markdown bold (**text**) and apply formatting to cell text.
+        Supports mixed bold and regular text in the same cell.
+        """
+        import re
+        
+        # Get the text frame's first paragraph
+        paragraph = cell.text_frame.paragraphs[0]
+        paragraph.font.size = Pt(font_size)
+        paragraph.font.color.rgb = RGBColor(*text_color)
+        paragraph.font.name = font_name
+        paragraph.line_spacing = 1.2
+        
+        # Language-specific alignment (from constraints)
+        if col_idx == 0:
+            paragraph.alignment = self._get_alignment(self.body_alignment)
+        else:
+            paragraph.alignment = PP_ALIGN.CENTER
+        
+        # Parse markdown bold formatting: **text**
+        # Pattern matches: **text** (bold) or regular text
+        pattern = r'\*\*(.+?)\*\*|([^*]+)'
+        matches = re.findall(pattern, text)
+        
+        if not matches:
+            # No markdown found, just set plain text
+            paragraph.text = text
+            return
+        
+        # Build text with formatting
+        for bold_text, normal_text in matches:
+            if bold_text:
+                # Add bold text
+                run = paragraph.add_run()
+                run.text = bold_text
+                run.font.bold = True
+                run.font.size = Pt(font_size)
+                run.font.name = font_name
+                run.font.color.rgb = RGBColor(*text_color)
+            elif normal_text:
+                # Add normal text
+                run = paragraph.add_run()
+                run.text = normal_text
+                run.font.bold = False
+                run.font.size = Pt(font_size)
+                run.font.name = font_name
+                run.font.color.rgb = RGBColor(*text_color)
 
     def add_table(self, slide, table_data: Union[Dict, object], position: Dict, size: Dict):
         """Add table with RTL/LTR support - fully styled from constraints (NO rounded background)"""
@@ -195,7 +244,9 @@ class TableService:
             for row_idx, row_data in enumerate(validated_rows, start=1):
                 for col_idx, cell_value in enumerate(row_data):
                     cell = table.cell(row_idx, col_idx)
-                    cell.text = cell_value
+                    
+                    # ✅ FIX: Process markdown bold formatting
+                    cell.text = ""  # Clear default text
                     cell.text_frame.word_wrap = True
                     cell.text_frame.margin_left = Inches(self.cell_padding)
                     cell.text_frame.margin_right = Inches(self.cell_padding)
@@ -209,6 +260,20 @@ class TableService:
                     else:
                         cell.fill.solid()
                         cell.fill.fore_color.rgb = RGBColor(255, 255, 255)
+                    
+                    # ✅ NEW: Parse and apply bold formatting
+                    self._add_formatted_text_to_cell(
+                        cell=cell,
+                        text=cell_value,
+                        font_size=self.body_font_size,
+                        font_name=self.body_font,
+                        text_color=self.text_color,
+                        col_idx=col_idx,
+                        num_cols=num_cols
+                    )
+                    
+                    cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+                    self._add_subtle_inner_borders(cell, row_idx, col_idx, num_rows, num_cols)
                     
                     # Body text (from constraints)
                     paragraph = cell.text_frame.paragraphs[0]
