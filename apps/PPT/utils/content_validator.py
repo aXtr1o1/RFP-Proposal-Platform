@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict, Any
-from apps.app.models.presentation import SlideContent, BulletPoint
+from apps.PPT.models.presentation import SlideContent, BulletPoint
 
 logger = logging.getLogger("content_validator")
 
@@ -96,7 +96,7 @@ def validate_presentation(slides: List[SlideContent]) -> List[SlideContent]:
         
         # ✅ CLEAN BULLET TEXT: Remove periods from bullet points
         if has_bullets and slide.bullets:
-            from apps.app.utils.text_formatter import clean_bullet_text
+            from apps.PPT.utils.text_formatter import clean_bullet_text
             for bullet in slide.bullets:
                 if hasattr(bullet, 'text') and bullet.text:
                     original_text = bullet.text

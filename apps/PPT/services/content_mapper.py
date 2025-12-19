@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional, Tuple
-from apps.app.models.presentation import SlideContent, BulletPoint, PresentationData
-from apps.app.utils.markdown_parser import MarkdownParser
+from apps.PPT.models.presentation import SlideContent, BulletPoint, PresentationData
+from apps.PPT.utils.markdown_parser import MarkdownParser
 import logging
 
 logger = logging.getLogger(__name__)

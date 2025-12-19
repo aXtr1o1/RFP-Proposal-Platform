@@ -1,6 +1,5 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-python-multipart==0.0.6
 pydantic==2.9.2
 python-dotenv==1.0.1
 requests==2.32.3
@@ -20,7 +19,33 @@ lxml==5.2.1
 
 python-pptx==1.0.2
 <<<<<<< HEAD
+<<<<<<< HEAD
 reportlab==4.4.4
 =======
 reportlab==4.4.4
+>>>>>>> vinee-dev
+=======
+reportlab==4.4.4
+
+
+
+# FastAPI and Server
+python-multipart==0.0.9
+
+
+# Document Processing
+markdown==3.7
+
+# Image/SVG Processing
+cairosvg==2.7.1
+svglib==1.5.1
+
+# Chart Generation
+matplotlib==3.9.2
+seaborn==0.13.2
+pandas==2.2.3
+numpy==2.1.2
+
+# Data Validation
+pydantic-settings==2.5.2
 >>>>>>> vinee-dev

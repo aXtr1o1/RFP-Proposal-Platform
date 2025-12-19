@@ -229,7 +229,6 @@
     "offset_ar": 0.6,
     "offset_en": 0.3
   },
-  
   "agenda": {
     "max_items": 6,
     "title_font_size": 54,
@@ -240,19 +239,24 @@
     "item_spacing": 0.85,
     "use_icons": true,
     "position_ar": {
-      "content_left": 6.83,
+      "content_left": 0.5,
       "content_top": 1.8,
-      "title_left": 7.5,
-      "title_top": 3.0
+      "content_width": 6.0,
+      "title_left": 7.2,
+      "title_top": 2.5,
+      "title_width": 5.0,
+      "title_height": 2.0
     },
     "position_en": {
       "content_left": 0.7,
       "content_top": 1.8,
+      "content_width": 5.8,
       "title_left": 7.5,
-      "title_top": 3.0
+      "title_top": 3.0,
+      "title_width": 4.5,
+      "title_height": 1.5
     }
   },
-  
   "boxes": {
     "max_boxes": 4,
     "layout": "2x2",

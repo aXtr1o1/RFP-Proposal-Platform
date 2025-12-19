@@ -12,9 +12,9 @@ from apps.api.services.supabase_service import (
 )
 from apps.wordgenAgent.app.document import generate_word_from_markdown
 
-from apps.app.core.ppt_generation import run_initial_generation
-from apps.app.core.ppt_regeneration import run_regeneration
-from apps.app.core.supabase_service import get_proposal_url
+from apps.PPT.core.ppt_generation import run_initial_generation
+from apps.PPT.core.ppt_regeneration import run_regeneration
+from apps.PPT.core.supabase_service import get_proposal_url
 
 logger = logging.getLogger("routes.rfp")
 router = APIRouter()
@@ -247,7 +247,7 @@ async def ppt_initialgen(body: PPTInitialGenRequest):
         
         # Validate template exists locally
         from pathlib import Path
-        from apps.app.config import settings
+        from apps.PPT.config import settings
         
         template_path = Path(settings.TEMPLATES_DIR) / body.template_id
         if not template_path.exists():
@@ -309,7 +309,7 @@ async def ppt_regeneration(body: PPTRegenRequest):
         
         # Validate template exists locally
         from pathlib import Path
-        from apps.app.config import settings
+        from apps.PPT.config import settings
         
         template_path = Path(settings.TEMPLATES_DIR) / body.template_id
         if not template_path.exists():
@@ -378,7 +378,7 @@ async def list_available_templates():
     """List all available local templates"""
     try:
         from pathlib import Path
-        from apps.app.config import settings
+        from apps.PPT.config import settings
         
         templates_dir = Path(settings.TEMPLATES_DIR)
         
