@@ -42,13 +42,14 @@ STEP 2: AGENDA-FIRST OUTLINE
 - Create complete agenda from extracted sections
 - Agenda defines ONLY allowed section headers
 - NO slide may exist outside agenda (agenda is the contract)
+- Generate icone name for every title you generate for both arabic and english
 
 STEP 3: VISUAL DECISION MATRIX (for each section/subtopic):
 - TABLE → structured comparison or attributes
 - CHART → numeric values, timelines, KPIs, distributions, Data Flow
 - FOUR-BOX → exactly 4 pillars/phases/components
 - BULLETS → key points ≤ 5
-
+- Generate icon name along with the content 
 STEP 4: DENSITY CONTROL
 - If text >3 bullets OR >2 sentences → convert to visual
 - Prefer VISUAL over TEXT
@@ -64,7 +65,7 @@ CRITICAL CONTENT RULES
    - "content" field is ALWAYS null (paragraphs FORBIDDEN)
 
 2. REQUIRED VISUAL CONTENT (MANDATORY)
-   - MINIMUM 3-5 chart slides with complete data
+   - MINIMUM 4-5 chart slides with complete data
    - MINIMUM 2-4 four-box slides (exactly 4 bullets each)
    - MINIMUM 3-5 table slides with complete data
    - Chart/table slides include 1-3 supporting bullets (insights, not data repetition)
@@ -109,8 +110,9 @@ CRITICAL CONTENT RULES
 6. MANDATORY KEYWORD HIGHLIGHTING
    CRITICAL: Every BULLET text and TABLE CELL MUST have **markdown bold** syntax - NO EXCEPTIONS 
    
-   Every bullet needs 1-3 **bolded terms** highlighted using **text** markdown:
-   - Bold important words from the bullet content ONLY
+   Every bullet needs 1-3 **bolded terms** highlighted using **text** markdown while generating the content:
+   - Bold important words from the bullet content ONLY, decide based on context while generating
+   - Bold key numbers, words, percentages, timeframes, technical terms, role names, important metrics
    - Titles and headers stay plain text
    
    Every table cell needs **bolded key values**:
@@ -232,6 +234,7 @@ RULES:
 - ALWAYS include "Thank You & Next Steps" as LAST item
 - Agenda items MUST EXACTLY match section headers
 - Agenda bullets: plain text, NO bold markdown
+- Icon name: For every title there should be an icon name that matches the title for both arabic and english (icon name should be in english)
 
 Example:
 ```json
@@ -241,13 +244,41 @@ Example:
   "title": "Agenda",
   "icon_name": "presentation-agenda",
   "bullets": [
-    {{"text": "Introduction & Overview", "sub_bullets": []}},
-    {{"text": "Objectives & Goals", "sub_bullets": []}},
-    {{"text": "Approach & Methodology", "sub_bullets": []}},
-    {{"text": "Timeline & Milestones", "sub_bullets": []}},
-    {{"text": "Team & Resources", "sub_bullets": []}},
-    {{"text": "Expected Outcomes", "sub_bullets": []}},
-    {{"text": "Thank You & Next Steps", "sub_bullets": []}}
+    {{
+      "text": "Introduction & Overview",
+      "sub_bullets": [],
+      "icon_name": "introduction"
+    }},
+    {{
+      "text": "Objectives & Goals",
+      "sub_bullets": [],
+      "icon_name": "target"
+    }},
+    {{
+      "text": "Approach & Methodology",
+      "sub_bullets": [],
+      "icon_name": "strategy"
+    }},
+    {{
+      "text": "Timeline & Milestones",
+      "sub_bullets": [],
+      "icon_name": "timeline"
+    }},
+    {{
+      "text": "Team & Resources",
+      "sub_bullets": [],
+      "icon_name": "team"
+    }},
+    {{
+      "text": "Expected Outcomes",
+      "sub_bullets": [],
+      "icon_name": "results"
+    }},
+    {{
+      "text": "Thank You & Next Steps",
+      "sub_bullets": [],
+      "icon_name": "next-steps"
+    }}
   ]
 }}
 ```
@@ -521,8 +552,8 @@ FOUR-BOX REQUIREMENTS:
 - EXACTLY 4 bullets
 - Each bullet 60-100 characters MAX (will truncate)
 - Each bullet MUST have bold markdown
+- Generate icon name based on the content for the 4 bullet points
 - NO periods at end
-- Use structural icons (pillars, layers, blocks, phases)
 - Example: "Research & **stakeholder analysis**" ✓
 - Example: "Comprehensive research methodology including..." ✗ (too long)
 
@@ -776,6 +807,7 @@ STEP 3: GENERATE AGENDA
 - List all section headers you'll create
 - These become agenda bullets (plain text)
 - Match exactly with section names
+- Generate icon name based on the content title
 
 STEP 4: ASSIGN ICONS
 - Analyze each slide's title/content
@@ -785,7 +817,7 @@ STEP 4: ASSIGN ICONS
 STEP 5: CONVERT PARAGRAPHS
 - Extract key statements
 - Convert to 2-5 bullet points
-- Highlight key terms (**bold** in bullets)
+- Highlight key terms (**bold** in bullets) while generating the content
 - Preserve original wording
 - Do NOT summarize/generalize
 

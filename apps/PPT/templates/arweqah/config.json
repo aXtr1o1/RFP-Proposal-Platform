@@ -90,7 +90,7 @@
       "fallback_color": "#F5F0E8"
     },
     "section_header_dark": {
-      "path": "Background/image2.jpeg",
+      "path": "Background/image4.jpeg",
       "description": "Dark teal background for section headers",
       "fallback_color": "#01415C"
     },
@@ -100,17 +100,17 @@
       "fallback_color": "#B1D8BE"
     },
     "section_header_orange": {
-      "path": "Background/image4.jpeg",
+      "path": "Background/image7.jpeg",
       "description": "Orange background for section headers",
       "fallback_color": "#E09059"
     },
     "agenda_slide": {
-      "path": "Background/image5.jpeg",
+      "path": "Background/image2.jpg",
       "description": "Split background for agenda",
       "fallback_color": "#FFFDED"
     },
     "content_slide": {
-      "path": "Background/image7.jpeg",
+      "path": "Background/image8.jpeg",
       "description": "Light background for content slides",
       "fallback_color": "#FFFDED"
     },
@@ -130,7 +130,7 @@
       "fallback_color": "#F5F0E8"
     },
     "closing_slide": {
-      "path": "Background/image11.png",
+      "path": "Background/image10.jpeg",
       "description": "Background for closing/thank you slide",
       "fallback_color": "#01415C"
     }

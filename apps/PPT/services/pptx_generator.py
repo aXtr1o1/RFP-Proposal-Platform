@@ -13,11 +13,11 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.oxml import parse_xml
 from pptx.util import Inches, Pt
 
-from apps.app.config import settings
-from apps.app.models.presentation import PresentationData, SlideContent, TableData, BulletPoint
-from apps.app.services.chart_service import ChartService
-from apps.app.services.icon_service import IconService
-from apps.app.utils.content_validator import validate_presentation
+from apps.PPT.config import settings
+from apps.PPT.models.presentation import PresentationData, SlideContent, TableData, BulletPoint
+from apps.PPT.services.chart_service import ChartService
+from apps.PPT.services.icon_service import IconService
+from apps.PPT.utils.content_validator import validate_presentation
 
 logger = logging.getLogger("pptx_generator")
 
@@ -778,44 +778,72 @@ class PptxGenerator:
             p.font.color.rgb = RGBColor(*self.hex_to_rgb(text_color))
             p.alignment = PP_ALIGN.CENTER
 
-    # ========================================================================
-    # AGENDA SLIDE - ENHANCED WITH RTL SUPPORT
+# ========================================================================
+    # AGENDA SLIDE - ENHANCED WITH RTL SUPPORT AND IMPROVED TEXT VISIBILITY
     # ========================================================================
 
     def _create_agenda_slide_enhanced(self, slide, layout_config: Dict, data) -> None:
-        """Enhanced agenda with RTL/LTR support and proper localization"""
+        """
+        ✅ FIXED: Enhanced agenda with RTL/LTR support and improved text visibility
+        - Fixed vertical centering to ensure all text is visible
+        - Improved spacing calculation
+        - Better handling of long text
+        """
         # Background
         bg_config = layout_config.get('background', {})
         if bg_config.get('type') == 'image':
             self._add_background(slide, bg_config)
         
-        # *** FIX 1: Use localized agenda title ***
+        # Get localized agenda title
         localization = self.config.get('localization', {})
         lang_strings = localization.get(self.target_language, {})
         agenda_title_text = lang_strings.get('agenda_title', 'Agenda')
+        
+        # Get agenda constraints
+        agenda_config = self.constraints.get('agenda', {})
+        is_rtl = self.lang_config.get('rtl', False)
+        
+        # Get language-specific positioning
+        lang_suffix = f"_{self.target_language}"
+        pos_key = f"position{lang_suffix}"
+        position_config = agenda_config.get(pos_key, agenda_config.get('position_en', {}))
         
         # Add "Agenda" text on dark side
         elements = layout_config.get('elements', [])
         agenda_title_elem = next((e for e in elements if e.get('id') == 'agenda_title'), None)
         
         if agenda_title_elem:
+            # Get position from constraints first, then fallback to element
+            title_left = position_config.get('title_left', 7.5)
+            title_top = position_config.get('title_top', 3.0)
+            title_width = position_config.get('title_width', 4.5)
+            title_height = position_config.get('title_height', 1.5)
+            
+            # Override with element position if available
             pos = self.get_position(agenda_title_elem, 'position')
-            size = agenda_title_elem.get('size', {})
-            style = agenda_title_elem.get('style', {})
+            if pos:
+                title_left = pos.get('left', title_left)
+                title_top = pos.get('top', title_top)
+            
+            # Get size - check for language-specific size first
+            size_key = f"size{lang_suffix}"
+            size = agenda_title_elem.get(size_key, agenda_title_elem.get('size', {}))
+            if size:
+                title_width = size.get('width', title_width)
+                title_height = size.get('height', title_height)
             
             agenda_textbox = slide.shapes.add_textbox(
-                Inches(pos.get('left', 7.5)),
-                Inches(pos.get('top', 3.0)),
-                Inches(size.get('width', 4.5)),
-                Inches(size.get('height', 1.5))
+                Inches(title_left),
+                Inches(title_top),
+                Inches(title_width),
+                Inches(title_height)
             )
             
             tf = agenda_textbox.text_frame
             tf.clear()
             tf.vertical_anchor = MSO_ANCHOR.MIDDLE
             
-            # *** FIX: Set RTL for agenda title ***
-            is_rtl = self.lang_config.get('rtl', False)
+            # Set RTL for agenda title
             self._set_text_frame_rtl(tf, is_rtl)
             
             p = tf.paragraphs[0]
@@ -824,9 +852,12 @@ class PptxGenerator:
             p.font.name = self.get_font('heading')
             p.font.bold = True
             
+            style = agenda_title_elem.get('style', {})
             text_color = self.get_style_value(style, 'color', '#FFFCEC')
             p.font.color.rgb = RGBColor(*self.hex_to_rgb(text_color))
             p.alignment = PP_ALIGN.CENTER
+            
+            logger.debug(f"✅ Agenda title positioned: ({title_left}, {title_top}) size: ({title_width}x{title_height})")
         
         # Logo
         logo_elem = next((e for e in elements if e.get('id') == 'logo'), None)
@@ -846,51 +877,109 @@ class PptxGenerator:
             logger.warning("⚠️  Agenda slide has no content")
             return
         
-        # Get agenda constraints
-        agenda_config = self.constraints.get('agenda', {})
+        # Get max items
         max_items = agenda_config.get('max_items', 5)
         bullets = bullets[:max_items]
         
         # Get positioning
+        content_left = position_config.get('content_left', 0.7)
+        content_top = position_config.get('content_top', 1.8)
+        content_width = position_config.get('content_width', 5.8)
+        
+        # Override with element position if available
         pos = self.get_position(content_elem, 'position')
         size = content_elem.get('size', {})
-        style = content_elem.get('style', {})
-        bullet_style = content_elem.get('bullet_style', {})
         
-        # Calculate vertical centering
+        if pos:
+            content_left = pos.get('left', content_left)
+            content_top = pos.get('top', content_top)
+        
+        if size:
+            content_width = size.get('width', content_width)
+        
+        # ✅ FIXED: Calculate vertical centering with better spacing
         num_items = len(bullets)
         item_spacing = agenda_config.get('item_spacing', 0.85)
+        
+        # Calculate total height needed for all items
         total_height = num_items * item_spacing
-        start_y = (7.5 - total_height) / 2
+        
+        # Available height for content (slide height - margins)
+        slide_height = self.constraints['layout']['slide_height']
+        available_height = slide_height - content_top - 0.5  # 0.5 bottom margin
+        
+        # ✅ FIXED: Adjust spacing if content doesn't fit
+        if total_height > available_height:
+            # Reduce spacing to fit all items
+            item_spacing = available_height / num_items
+            logger.warning(f"   ⚠️  Reduced agenda item spacing to {item_spacing:.2f} to fit {num_items} items")
+        
+        # Recalculate total height with adjusted spacing
+        total_height = num_items * item_spacing
+        
+        # ✅ FIXED: Start from top instead of center for better visibility
+        # Center vertically only if there's enough space
+        if total_height < available_height:
+            start_y = content_top + (available_height - total_height) / 2
+        else:
+            start_y = content_top
+        
+        logger.info(f"   📐 Agenda layout: {num_items} items, spacing={item_spacing:.2f}, start_y={start_y:.2f}")
         
         # Text styling
+        style = content_elem.get('style', {})
         text_color = self.get_style_value(style, 'color', '#0D2026')
         text_rgb = self.hex_to_rgb(text_color)
         font_name = self.get_font('body')
-        font_size = agenda_config.get('item_font_size', 20)
+        
+        # ✅ FIXED: Adjust font size if too many items
+        base_font_size = agenda_config.get('item_font_size', 20)
+        if num_items > 6:
+            font_size = max(16, base_font_size - 2)
+        else:
+            font_size = base_font_size
+        
         line_spacing = agenda_config.get('line_spacing', 1.8)
         
         # Icon configuration
+        bullet_style = content_elem.get('bullet_style', {})
         icon_size = bullet_style.get('icon_size', 0.45)
-        is_rtl = self.lang_config.get('rtl', False)
         
         # Get icon positioning based on language
         if is_rtl:
             icon_offset = bullet_style.get('icon_offset_ar', 0.6)
-            text_left = pos.get('left', 6.83)
+            text_left = content_left
             icon_align = 'right'
         else:
             icon_offset = bullet_style.get('icon_offset_en', 0.3)
-            text_left = pos.get('left', 0.7) + icon_size + icon_offset
+            text_left = content_left + icon_size + icon_offset
             icon_align = 'left'
+        
+        # ✅ FIXED: Calculate text box height dynamically
+        text_box_height = item_spacing * 0.9  # Leave small gap between items
         
         # Render each agenda item
         for idx, bullet in enumerate(bullets):
             item_y = start_y + (idx * item_spacing)
             
+            # ✅ FIXED: Extract icon_name from bullet if available
+            icon_name_from_bullet = None
+            if hasattr(bullet, 'icon_name') and bullet.icon_name:
+                icon_name_from_bullet = bullet.icon_name
+                logger.debug(f"   🎯 Agenda item {idx+1} has icon_name: {icon_name_from_bullet}")
+            
             # Add icon
             if self.icon_service and agenda_config.get('use_icons', True):
-                icon_name = self.icon_service.auto_select_icon(bullet.text or "", "")
+                # ✅ FIXED: Use icon_name from bullet if available
+                if icon_name_from_bullet:
+                    icon_name = self.icon_service.auto_select_icon(
+                        bullet.text or "", 
+                        "", 
+                        icon_name=icon_name_from_bullet
+                    )
+                else:
+                    icon_name = self.icon_service.auto_select_icon(bullet.text or "", "")
+                
                 try:
                     icon_data = self.icon_service.render_to_png(
                         icon_name,
@@ -899,13 +988,14 @@ class PptxGenerator:
                     )
                     if icon_data:
                         if is_rtl:
-                            # *** FIX: Icon on the RIGHT for RTL ***
-                            icon_left = Inches(text_left + size.get('width', 5.8) - icon_size - 0.2)
+                            # Icon on the RIGHT for RTL
+                            icon_left = Inches(content_left + content_width - icon_size - 0.2)
                         else:
                             # Icon on the left for LTR
-                            icon_left = Inches(pos.get('left', 0.7))
+                            icon_left = Inches(content_left)
                         
-                        icon_top = Inches(item_y + 0.15)
+                        # ✅ FIXED: Center icon vertically with text
+                        icon_top = Inches(item_y + (text_box_height - icon_size) / 2)
                         
                         slide.shapes.add_picture(
                             icon_data,
@@ -914,42 +1004,58 @@ class PptxGenerator:
                             width=Inches(icon_size),
                             height=Inches(icon_size)
                         )
+                        logger.debug(f"   ✅ Icon added: {icon_name} at item {idx+1}")
                 except Exception as e:
-                    logger.debug(f"Icon skip: {e}")
+                    logger.debug(f"   Icon skip for item {idx+1}: {e}")
             
             # Add text
-            text_width = size.get('width', 5.8) - icon_size - icon_offset
+            text_width = content_width - icon_size - icon_offset
+            
+            # ✅ FIXED: Truncate text if too long to prevent overflow
+            bullet_text = (bullet.text or "").strip()
+            max_text_length = 120 if num_items <= 5 else 100
+            if len(bullet_text) > max_text_length:
+                # Truncate at word boundary
+                truncated = bullet_text[:max_text_length]
+                last_space = truncated.rfind(' ')
+                if last_space > max_text_length * 0.75:
+                    bullet_text = truncated[:last_space].strip() + "..."
+                else:
+                    bullet_text = truncated.strip() + "..."
+                logger.warning(f"   ⚠️  Truncated agenda item {idx+1}: {len(bullet.text)} → {len(bullet_text)} chars")
+            
             text_box = slide.shapes.add_textbox(
                 Inches(text_left),
                 Inches(item_y),
                 Inches(text_width),
-                Inches(0.7)
+                Inches(text_box_height)
             )
             
             tf = text_box.text_frame
             tf.clear()
             tf.word_wrap = True
-            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE  # ✅ FIXED: Center text vertically
             tf.margin_left = tf.margin_right = Inches(0.05)
+            tf.margin_top = tf.margin_bottom = Inches(0.05)
             
-            # *** FIX: Set RTL for agenda items ***
+            # Set RTL for agenda items
             self._set_text_frame_rtl(tf, is_rtl)
             
             p = tf.paragraphs[0]
-            p.text = (bullet.text or "").strip()
+            p.text = bullet_text
             p.font.size = Pt(font_size)
             p.font.name = font_name
             p.font.color.rgb = RGBColor(*text_rgb)
             p.font.bold = False
             
-            # *** FIX: Use constraint-based alignment ***
+            # Use constraint-based alignment
             alignment_config = self.constraints.get('alignment', {})
             lang_alignment = alignment_config.get(self.target_language, {})
             agenda_alignment = lang_alignment.get('agenda', 'left')
             p.alignment = self._alignment_enum(agenda_alignment)
             p.line_spacing = line_spacing
         
-        logger.info(f"✅ Agenda created: {len(bullets)} items, RTL={is_rtl}")
+        logger.info(f"✅ Agenda created: {len(bullets)} items, RTL={is_rtl}, start_y={start_y:.2f}, spacing={item_spacing:.2f}")
 
     # ========================================================================
     # SLIDE CREATION FROM JSON
@@ -1171,7 +1277,7 @@ class PptxGenerator:
                 # Icon on the left for LTR
                 icon_left = lang_pos.get('icon_offset', 1.0)
             
-            icon_top = pos.get('top', 0.6) + 0.05
+            icon_top = pos.get('top', 0.65) + 0.05
             
             icon_config = self.constraints.get('icons', {})
             icon_size = icon_config.get('size', 0.5)
@@ -1419,7 +1525,7 @@ class PptxGenerator:
 
     def _add_paragraph_text(self, slide, element: Dict, data) -> None:
         """Render paragraph content with proper RTL/LTR support"""
-        from apps.app.utils.text_formatter import should_convert_to_bullets, break_long_paragraph_to_bullets
+        from apps.PPT.utils.text_formatter import should_convert_to_bullets, break_long_paragraph_to_bullets
         
         pos = self.get_position(element, 'position')
         size = element.get('size', {})
@@ -1682,7 +1788,7 @@ class PptxGenerator:
         style = element.get('style', {})
         
         # *** FIX: Import and initialize TableService with language ***
-        from apps.app.services.table_service import TableService
+        from apps.PPT.services.table_service import TableService
         
         try:
             # Initialize TableService with template and language

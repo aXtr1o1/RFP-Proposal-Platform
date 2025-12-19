@@ -8,7 +8,7 @@ from pathlib import Path
 import logging
 import json
 
-from apps.app.config import settings
+from apps.PPT.config import settings
 
 logger = logging.getLogger("chart_service")
 

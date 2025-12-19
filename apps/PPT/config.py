@@ -46,13 +46,13 @@ class Settings(BaseSettings):
     
     @property
     def TEMPLATES_DIR(self) -> Path:
-        """Templates directory (app/templates)"""
-        return self.BASE_DIR / "app" / "templates"
+        """Templates directory (PPT/templates)"""
+        return self.BASE_DIR / "PPT" / "templates"
     
     @property
     def ASSETS_DIR(self) -> Path:
-        """Assets directory (app/assets)"""
-        return self.BASE_DIR / "app" / "assets"
+        """Assets directory (PPT/assets)"""
+        return self.BASE_DIR / "PPT" / "assets"
     
     @property
     def CACHE_DIR(self) -> Path:
