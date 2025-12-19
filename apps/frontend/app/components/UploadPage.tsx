@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
 import { saveAllComments, safeJsonParse } from "./utils";
 
-const DEFAULT_API_BASE_URL = `http://${process.env.NEXT_PUBLIC_API_HOST}:8000/api`; 
+const DEFAULT_API_BASE_URL = `http://localhost:8000/api`; 
 const resolveApiBaseUrl = () => {
   const raw = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
   if (!raw) {

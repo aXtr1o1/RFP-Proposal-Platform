@@ -1,6 +1,9 @@
 from typing import List, Dict, Optional, Tuple
 from apps.app.models.presentation import SlideContent, BulletPoint, PresentationData
 from apps.app.utils.markdown_parser import MarkdownParser
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ContentMapper:
@@ -278,10 +281,104 @@ class ContentMapper:
             ))
         
         return slides
+    
+    # ✅ NEW METHOD: Validate bold formatting without modification
+    def validate_bold_formatting(self, presentation: PresentationData) -> Dict:
+        """
+        Validate that bullets have bold markdown (**text**).
+        Does NOT modify content - only reports issues.
+        
+        Returns:
+            Dict with validation results:
+            {
+                'is_valid': bool,
+                'missing_bold_count': int,
+                'total_bullets': int,
+                'compliance_rate': float,
+                'problematic_slides': List[Dict]
+            }
+        """
+        missing_bold_count = 0
+        total_bullets = 0
+        problematic_slides = []
+        
+        for slide_idx, slide in enumerate(presentation.slides):
+            if not slide.bullets:
+                continue
+            
+            slide_issues = []
+            
+            for bullet_idx, bullet in enumerate(slide.bullets):
+                total_bullets += 1
+                text = bullet.text or ""
+                
+                # Check if bullet has bold markdown
+                if '**' not in text:
+                    missing_bold_count += 1
+                    slide_issues.append({
+                        'bullet_num': bullet_idx + 1,
+                        'text': text[:80] + "..." if len(text) > 80 else text
+                    })
+            
+            if slide_issues:
+                problematic_slides.append({
+                    'slide_num': slide_idx + 1,
+                    'title': slide.title,
+                    'missing_count': len(slide_issues),
+                    'issues': slide_issues[:3]  # First 3 issues only
+                })
+        
+        # Calculate compliance rate
+        compliance_rate = ((total_bullets - missing_bold_count) / total_bullets * 100) if total_bullets > 0 else 100.0
+        is_valid = missing_bold_count == 0
+        
+        # Log results
+        if not is_valid:
+            logger.warning(f"⚠️  BOLD FORMATTING: {missing_bold_count}/{total_bullets} bullets missing markdown ({compliance_rate:.1f}% compliant)")
+            print(f"\n⚠️  BOLD FORMATTING VALIDATION")
+            print(f"   Missing: {missing_bold_count}/{total_bullets} bullets ({compliance_rate:.1f}% compliant)")
+            print(f"   Problematic slides: {len(problematic_slides)}\n")
+            
+            # Show first 3 problematic slides
+            for problem in problematic_slides[:3]:
+                print(f"   Slide {problem['slide_num']}: {problem['title']} ({problem['missing_count']} issues)")
+                for issue in problem['issues']:
+                    print(f"      Bullet {issue['bullet_num']}: {issue['text']}")
+                print()
+            
+            if len(problematic_slides) > 3:
+                print(f"   ... and {len(problematic_slides) - 3} more slides with issues\n")
+            
+            print(f"   💡 FIX: Update AI prompt to ensure bullets contain **markdown bold**\n")
+        else:
+            logger.info(f"✅ Bold formatting: {total_bullets}/{total_bullets} bullets compliant (100%)")
+        
+        return {
+            'is_valid': is_valid,
+            'missing_bold_count': missing_bold_count,
+            'total_bullets': total_bullets,
+            'compliance_rate': compliance_rate,
+            'problematic_slides': problematic_slides
+        }
 
 
 # Convenience functions
-def quick_map(markdown_content: str) -> PresentationData:
-    """Quick mapping function"""
+def quick_map(markdown_content: str, validate: bool = False) -> PresentationData:
+    """
+    Quick mapping function with optional validation
+    
+    Args:
+        markdown_content: Raw markdown text
+        validate: If True, runs bold formatting validation (logs only)
+        
+    Returns:
+        PresentationData object
+    """
     mapper = ContentMapper()
-    return mapper.map_markdown_to_slides(markdown_content)
+    presentation = mapper.map_markdown_to_slides(markdown_content)
+    
+    if validate:
+        # Validate bold formatting (doesn't modify, just logs)
+        mapper.validate_bold_formatting(presentation)
+    
+    return presentation

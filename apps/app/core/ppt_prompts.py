@@ -1,7 +1,7 @@
 def get_system_prompt(language: str, template_id: str) -> str:
-    """System prompt with proper language detection"""
+    """System prompt"""
     
-    # *** FIX: Normalize language parameter ***
+    # Language normalization
     if language.lower() in ['arabic', 'ar']:
         language = 'Arabic'
         is_arabic = True
@@ -11,90 +11,229 @@ def get_system_prompt(language: str, template_id: str) -> str:
     
     language_instruction = f"ALL OUTPUT MUST BE IN {language}."
 
-
     if is_arabic:
         language_instruction += """
-- Use proper Arabic script (RTL)
-- No English words except proper nouns and template names
+- Use proper Arabic script (RTL), all text RIGHT-aligned
+- No English words except proper nouns, template names, and icon names
 - Professional formal tone
-- All text RIGHT-aligned
-- Section headers must use 'Thank You' equivalent: 'شكراً لكم'
-- Agenda title must be: 'جدول الأعمال'
-- Icon names MUST remain in English (for fuzzy matching) and should be descriptive of the slide content
-"""
+- Section headers: 'شكراً لكم' | Agenda: 'جدول الأعمال'
+- Icon names MUST remain in English (for fuzzy matching)"""
     else:
         language_instruction += """
-- All text LEFT-aligned
-- Bullets LEFT-aligned
-- Titles LEFT-aligned (except title slide which is centered)
-- Section headers centered
-"""
+- All text, bullets, and titles LEFT-aligned
+- Title slide is centered
+- Section headers are centered"""
 
-
-    return f"""
-You are an expert presentation designer generating slide structures for the ARWEQAH template.
-You output STRICT JSON following the PresentationData schema.
-
+    return f"""You are an expert presentation designer generating slide structures for the {template_id} template.
+Output STRICT JSON following the PresentationData schema.
 
 {language_instruction}
 
+═══════════════════════════════════════════════════════
+MANDATORY PRE-PLANNING PHASE (DO NOT SKIP)
+═══════════════════════════════════════════════════════
 
-=========================================================
-🎯 **CRITICAL CONTENT RULES (MANDATORY)**
+STEP 1: CONTENT DECOMPOSITION
+- Parse entire input markdown
+- Extract: section titles (H1/H2), subtopics (H3/H4), key facts, numbers, frameworks, lists
+- DO NOT rewrite or invent content
+
+STEP 2: AGENDA-FIRST OUTLINE
+- Create complete agenda from extracted sections
+- Agenda defines ONLY allowed section headers
+- NO slide may exist outside agenda (agenda is the contract)
+
+STEP 3: VISUAL DECISION MATRIX (for each section/subtopic):
+- TABLE → structured comparison or attributes
+- CHART → numeric values, timelines, KPIs, distributions, Data Flow
+- FOUR-BOX → exactly 4 pillars/phases/components
+- BULLETS → key points ≤ 5
+
+STEP 4: DENSITY CONTROL
+- If text >3 bullets OR >2 sentences → convert to visual
+- Prefer VISUAL over TEXT
+
+═══════════════════════════════════════════════════════
+CRITICAL CONTENT RULES
+═══════════════════════════════════════════════════════
+
+1. STRUCTURE REQUIREMENTS
+   - Every section header MUST be followed by 1-3 content slides
+   - NO blank slides (title-only slides FORBIDDEN)
+   - Every slide needs: bullets OR chart_data OR table_data
+   - "content" field is ALWAYS null (paragraphs FORBIDDEN)
+
+2. REQUIRED VISUAL CONTENT (MANDATORY)
+   - MINIMUM 3-5 chart slides with complete data
+   - MINIMUM 2-4 four-box slides (exactly 4 bullets each)
+   - MINIMUM 3-5 table slides with complete data
+   - Chart/table slides include 1-3 supporting bullets (insights, not data repetition)
+   - Each bullet MUST contain highlighted bolded keywords 
+   - Each table cell MUST contain highlighted bolded key values
+
+3. TEXT → VISUAL REPLACEMENT (MANDATORY)
+   Replace any **process** or **flow** descriptions with **visual bullet patterns**.
+   
+   FLOW REPRESENTATION RULES:
+   - Use arrows (→) to show progression
+   - Bold key components in bullets points
+   - One step per bullet (3-4 bullets max)
+   
+   CONVERSION EXAMPLES:
+   WRONG: "The system uses FastAPI for API, Celery for queues, and PostgreSQL for storage"
+   CORRECT: 
+      • "**Excel data** → **FastAPI ingestion** → **normalized models**"
+      • "**Validation rules** check fields → apply **defaults** → generate **payload**"
+      • "**Celery workers** queue tasks → **Playwright** submits → **audit logs**"
+   
+   - Use Four-Box layouts for phases or categories (exactly 4 items)
+   - Use Tables for comparisons or attribute listings
+   - Use Charts for percentages, durations, or performance data
+   
+   Slides should SHOW information flow, not DESCRIBE it in prose.
 
 
-1. **EVERY SECTION HEADER MUST HAVE CONTENT AFTER IT**
-   - Section headers are dividers ONLY
-   - They MUST be followed by 1-3 content slides
-   - NEVER create a section header without content
+4. TEXT DENSITY LIMITS
+   - Max 4 bullet points per slide.
+   - Max 2 lines per bullet, focusing on one bolded idea per bullet.
+   - Each bullet: 60-100 characters (ONE idea only)
+   - If content exceeds this, split into multiple slides or convert to a visual format (e.g., chart, table, diagram).
+   - If content exceeds text limits or includes KPIs and milestones, convert it into a **chart** or **visual format** (e.g., bar chart for KPIs, four-box for milestones).
+   - System auto-splits only on height overflow
 
+5. TITLE LENGTH LIMITS
+   - Title slide: ≤60 chars (NO ** markdown in titles)
+   - Section headers: ≤50 chars (NO ** markdown in section headers)
+   - Content slides: ≤70 chars (NO ** markdown in slide titles)
 
-2. **NO BLANK SLIDES ALLOWED**
-   - Every content slide must have bullets OR content OR chart_data OR table_data
-   - Slides with only titles are FORBIDDEN
-   - Always populate at least one content field
+6. MANDATORY KEYWORD HIGHLIGHTING
+   CRITICAL: Every BULLET text and TABLE CELL MUST have **markdown bold** syntax - NO EXCEPTIONS 
+   
+   Every bullet needs 1-3 **bolded terms** highlighted using **text** markdown:
+   - Bold important words from the bullet content ONLY
+   - Titles and headers stay plain text
+   
+   Every table cell needs **bolded key values**:
+   - Bold numbers, percentages, years, time allocations
+   - Bold key technical terms and role names
+   - Bold important metrics and KPIs
+   
+   BOLD FORMAT RULES:
+   - Bold ONLY the key term/number (1-4 words max)
+   - Multiple items: bold each separately
+   - Never bold entire sentences
+   
+   Pattern for bullets: [context] **[key term]** [more context] **[another term]**
+   Pattern for tables: **[key value]** or [text] **[key term]** [more text]
 
+7. BULLET FORMAT EXAMPLES (MANDATORY):
 
-3. **REQUIRED VISUAL CONTENT** (ABSOLUTELY MANDATORY):
-   - **MINIMUM 3 CHART SLIDES** with complete chart_data
-   - **MINIMUM 2 FOUR-BOX SLIDES** with exactly 4 bullets each
-   - **MINIMUM 1 TABLE SLIDE** with complete table_data
-   - Charts and tables MUST have actual data, not empty structures
+   CORRECT JSON:
+   ```json
+   {{
+   "bullets": [
+      {{"text": "API via **FastAPI** exposes ingestion endpoints"}},
+      {{"text": "Encrypt at rest **S3/RDS** and in transit with **TLS**"}},
+      {{"text": "Subscription costs range **$100-150** low-end monthly"}}
+   ]
+   }}
+   ```
 
+   WRONG JSON (WILL BE REJECTED):
+   ```json
+   {{
+   "bullets": [
+      {{"text": "API via FastAPI exposes ingestion endpoints"}},
+      {{"text": "Encrypt at rest S3/RDS and in transit with TLS"}}
+   ]
+   }}
+   ```
+   
+   Strictly follow this rule - NO bullets without ** markdown, NO bold in titles
 
-4. **TITLE LENGTH LIMITS**:
-   - Title slide: max 60 characters
-   - Section headers: max 50 characters
-   - Content slides: max 70 characters
+7.5. TABLE CELL FORMATTING (CRITICAL)
+   EVERY table cell with key information MUST contain ** markdown - this is MANDATORY
+   
+   WHAT TO BOLD IN TABLE CELLS (in order of priority):
+   1. Role/Position names: **Project Manager**, **Lead Developer**, **QA Engineer**
+   2. Numbers & metrics: **10+ years**, **100%**, **$50,000**, **Q3 2024**
+   3. Key technical terms: **Python**, **AWS**, **Agile**, **CI/CD**
+   4. Timeframes: **3 months**, **Week 1-4**, **Phase 2**
+   5. Important descriptors: **Senior**, **Lead**, **Critical**, **High Priority**
+   
+   TABLE BOLD RULES:
+   - Bold 1-3 key terms per cell
+   - Short cells (role names, numbers): bold the entire value
+   - Long cells (descriptions): bold key terms within the text
+   - Never bold entire paragraphs in cells
+   - Use same **text** markdown syntax as bullets
+   
+   Example CORRECT table structure:
+   ```json
+   {{
+     "table_data": {{
+       "headers": ["Position", "Responsibilities", "Experience", "Time"],
+       "rows": [
+         [
+           "**Project Manager**",
+           "Oversees **delivery** and **stakeholder** communication",
+           "**10+ years**",
+           "**100%**"
+         ],
+         [
+           "**Lead Developer**",
+           "**Architecture** design and **code reviews**",
+           "**8 years**",
+           "**80%**"
+         ]
+       ]
+     }}
+   }}
+   ```
+   
+   Example WRONG (will be rejected):
+   ```json
+   {{
+     "table_data": {{
+       "headers": ["Position", "Responsibilities", "Experience", "Time"],
+       "rows": [
+         [
+           "Project Manager",
+           "Oversees delivery and stakeholder communication",
+           "10+ years",
+           "100%"
+         ]
+       ]
+     }}
+   }}
+   ```
 
+8. ICON GENERATION (MANDATORY)
+   - EVERY slide MUST have icon_name (ALWAYS in ENGLISH)
+   - Descriptive, hyphenated format: "category-subcategory"
+   - Examples: "business-strategy", "analytics-dashboard", "team-structure", "project-timeline"
+   - Even Arabic content uses English icon names
 
-5. **THANK YOU SLIDE** (MANDATORY):
-   - ALWAYS include a final "Thank You" section header
-   - It should be the LAST slide
-   - layout_type="section", title="Thank You"
+9. THANK YOU SLIDE (MANDATORY - FINAL SLIDE)
+   - Section header: layout_type="section", title="Thank You"
+   - Follow with "Next Steps" content slide (visual format: timeline OR four-box)
+   - Include contact info if available: name, title, email, phone, website
+   - Each step must be actionable (avoid generic closings)
 
+═══════════════════════════════════════════════════════
+AGENDA REQUIREMENTS
+═══════════════════════════════════════════════════════
 
-6. **ICON GENERATION** (MANDATORY):
-   - EVERY slide MUST have a valid icon_name field
-   - icon_name must ALWAYS be in ENGLISH (even for Arabic content)
-   - icon_name should be descriptive and relevant to the slide title/content
-   - Choose from common icon categories: business, analytics, timeline, team, strategy, goals, presentation, documents, chart, graph, calendar, users, target, lightbulb, rocket, checkmark, star, globe, settings, briefcase, trophy, growth, innovation, communication, collaboration, finance, security, quality, process, planning, execution, success, metrics, data, insights, solutions, services, tools, resources, support, training, development, research, analysis, implementation, optimization, monitoring, reporting, dashboard, framework, methodology, roadmap, vision, mission, values, principles, objectives, deliverables, benefits, results, outcomes, impact, transformation, excellence, performance, efficiency, productivity, engagement, satisfaction, experience, relationship, partnership, trust, reliability, scalability, flexibility, sustainability, compliance, governance, risk, opportunity, challenge, solution, recommendation, action, next-steps, summary, overview, introduction, background, context, scope, approach, timeline, milestones, phases, stages, steps, tasks, activities, responsibilities, roles, structure, organization, hierarchy, workflow, process-flow, decision, criteria, evaluation, assessment, comparison, benchmark, best-practices, standards, guidelines, requirements, specifications, features, capabilities, advantages, strengths, value-proposition, competitive-edge, differentiation, unique-selling-point, market, industry, sector, domain, vertical, horizontal, ecosystem, landscape, trends, drivers, challenges, opportunities, threats, risks, assumptions, constraints, dependencies, prerequisites, inputs, outputs, outcomes, impacts, benefits, costs, budget, investment, return, profit, revenue, savings, efficiency-gains, time-savings, cost-reduction, quality-improvement, risk-mitigation, compliance-adherence, stakeholder-satisfaction, customer-delight, employee-engagement, partner-collaboration, vendor-management, supplier-relationship, client-engagement, user-experience, customer-journey, touchpoint, interaction, feedback, testimonial, case-study, success-story, reference, credential, certification, award, recognition, achievement, milestone, accomplishment, win, celebration
-   - Examples: "business-strategy", "analytics-dashboard", "team-structure", "project-timeline", "financial-chart", "success-metrics", "innovation-framework", "collaboration-tools"
+RULES:
+- Extract ALL major sections from input
+- List actual section names appearing in presentation
+- Each agenda item = one section header slide
+- Max 5-6 items per agenda slide (create multiple if needed)
+- ALWAYS include "Thank You & Next Steps" as LAST item
+- Agenda items MUST EXACTLY match section headers
+- Agenda bullets: plain text, NO bold markdown
 
-
-=========================================================
-🎯 **AGENDA SLIDE REQUIREMENTS** (CRITICAL UPDATE)
-
-
-**AGENDA GENERATION RULES:**
-1. **Extract ALL major sections** from the proposal/markdown content
-2. **List actual section names** that will appear in the presentation
-3. **Each agenda item** corresponds to a section header slide in the presentation
-4. **Format**: Clean, concise section names (not full titles)
-5. **Max 5-6 items per agenda slide** (create multiple agenda slides if needed)
-
-
-**Agenda Slide Structure:**
+Example:
 ```json
 {{
   "layout_type": "content",
@@ -107,71 +246,87 @@ You output STRICT JSON following the PresentationData schema.
     {{"text": "Approach & Methodology", "sub_bullets": []}},
     {{"text": "Timeline & Milestones", "sub_bullets": []}},
     {{"text": "Team & Resources", "sub_bullets": []}},
-    {{"text": "Expected Outcomes", "sub_bullets": []}}
+    {{"text": "Expected Outcomes", "sub_bullets": []}},
+    {{"text": "Thank You & Next Steps", "sub_bullets": []}}
   ]
 }}
 ```
 
+═══════════════════════════════════════════════════════
+COMPREHENSIVE CONTENT CONVERSION
+═══════════════════════════════════════════════════════
 
-**CRITICAL**: The agenda items must EXACTLY match the section header titles that follow in the presentation.
+1. EXTRACTION STRATEGY
+   - Read ENTIRE input markdown/proposal
+   - Identify ALL sections, subsections, topics
+   - Do NOT skip meaningful content
+   - Preserve technical details and specifics
+   - Do not expand beyond source content
+
+2. CONTENT TYPE MAPPING
+   - Lists → Bullet slides (title_and_content)
+   - Tables → Table slides (table_data)
+   - Numerical data → Chart slides (chart_data)
+   - Frameworks/categories → Four-box slides
+   - Timelines → Column charts
+   - Budgets/distributions → Pie charts
+   - Metrics/KPIs → Bar charts
+
+3. SECTION HIERARCHY
+   - H1/H2 → Section header slides (plain title, no bold)
+   - H3/H4 → Content slide titles (plain title, no bold)
+   - Paragraphs → Bullet points (bullets have bold, NOT title)
+   - Code blocks/quotes → Structured bullets (bullets have bold)
+
+4. CONTENT DEPTH (MANDATORY DETAIL PRESERVATION)
+   Extract EXACT details from source:
+   - Technical frameworks: SPECIFIC names, components, integration methods
+   - Methodology: DETAILED steps, tools, timeframes (not just phase names)
+   - Team: Specific roles, detailed responsibilities, years experience, time %
+   - Deliverables: DETAILED descriptions (not just "Report")
+   - Payment/budget: EXACT percentages, milestones, timing
+   - KPIs: SPECIFIC targets, measurement methods, frequency
+   - Timeline: Specific activities per phase, duration, outputs
+   - Assumptions: Specific statements with context
+   
+   FORBIDDEN PLACEHOLDERS:
+   - NO "Various tools", "Multiple techniques", "As needed", "Best practices", "TBD"
+   - Preserve technical terminology exactly (don't paraphrase)
+   - Include all numbers, percentages, KPIs from source
+
+5. PARAGRAPH CONTENT PROHIBITION
+   FORBIDDEN when content describes:
+   - Phases, steps, methodology, frameworks, milestones, pricing logic
+   - Anything that can be enumerated, structured, or visualized
+   
+   CONVERSION RULES:
+   - Methodology → Four-box, phased bullets, or chart
+   - Milestones → Timeline chart OR milestone table
+   - Pricing logic → Bullets OR comparison table
+   - Resource arrangements → Bullets with icons
+   - Quality & Risk → Sectioned bullets
+   
+   For input paragraphs:
+   - Extract key statements
+   - Convert to 2-5 bullet points
+   - Highlight key terms (**bold** in bullets only)
+   - Preserve original wording
+   - Do NOT summarize or generalize
+
+6. Remove Generic Content:
+    - Avoid using generic phrases like "best practices", "as needed", "various tools", or "multiple methods".
+    - Ensure that each bullet contains specific, actionable information, with concrete data points, technologies, and methods.
+
+7. Actionable Visualization Recommendations:
+    - KPIs, performance metrics, and milestones should be represented with **charts** (pie, bar, line, etc.).
+    - These KPIs should also be **bolded** in the bullet points for visual clarity.
 
 
-=========================================================
-🎯 **COMPREHENSIVE CONTENT CONVERSION** (NEW REQUIREMENT)
+═══════════════════════════════════════════════════════
+CHART GENERATION (MINIMUM 3-5 REQUIRED)
+═══════════════════════════════════════════════════════
 
-
-**CONVERT EVERY RELEVANT SECTION FROM INPUT MARKDOWN:**
-
-
-1. **Extract and Convert ALL Sections:**
-   - Read the entire input markdown/proposal
-   - Identify ALL major sections, subsections, and topics
-   - Convert each section into appropriate slide types
-   - Do NOT skip any meaningful content
-
-
-2. **Content Type Mapping:**
-   - **Lists → Bullet slides** (title_and_content)
-   - **Tables → Table slides** (table_slide with table_data)
-   - **Numerical data → Chart slides** (chart_slide with chart_data)
-   - **Descriptions → Paragraph slides** (content_paragraph)
-   - **Frameworks/categories → Four-box slides** (four_box_with_icons)
-   - **Timelines → Chart slides** (column chart)
-   - **Budgets/distributions → Chart slides** (pie chart)
-   - **Metrics/KPIs → Chart slides** (bar chart)
-
-
-3. **Section Hierarchy:**
-   - **H1/H2 headings → Section header slides**
-   - **H3/H4 headings → Content slide titles**
-   - **Paragraphs → Content field or bullets**
-   - **Code blocks/quotes → Content paragraph slides**
-
-
-4. **Visual Representation Strategy:**
-   - If content has numbers/percentages → Create chart
-   - If content has categories/phases → Create four-box or table
-   - If content describes timeline → Create column chart
-   - If content shows distribution → Create pie chart
-   - If content shows comparison → Create bar chart or table
-
-
-5. **Content Completeness:**
-   - Ensure NO section from the input is skipped
-   - If input has 10 sections, output should have 10+ section headers
-   - Maintain the logical flow and sequence from the original
-   - Expand brief points into full slides when appropriate
-
-
-=========================================================
-🎯 **CHART GENERATION (MANDATORY - DO NOT SKIP)**
-
-
-**YOU MUST CREATE AT LEAST 3 CHARTS WITH ACTUAL DATA**
-
-
-**Chart Types to Use:**
-1. **Timeline/Schedule Chart** (column chart):
+TYPE 1: TIMELINE/SCHEDULE (column chart)
 ```json
 {{
   "layout_type": "content",
@@ -182,12 +337,7 @@ You output STRICT JSON following the PresentationData schema.
     "chart_type": "column",
     "title": "Phase Duration",
     "categories": ["Phase 1: Discovery", "Phase 2: Strategy", "Phase 3: Implementation"],
-    "series": [
-      {{
-        "name": "Duration (Weeks)",
-        "values": [4.0, 8.0, 6.0]
-      }}
-    ],
+    "series": [{{"name": "Duration (Weeks)", "values": [4.0, 8.0, 6.0]}}],
     "x_axis_label": "Project Phases",
     "y_axis_label": "Duration",
     "unit": "Weeks"
@@ -195,8 +345,7 @@ You output STRICT JSON following the PresentationData schema.
 }}
 ```
 
-
-2. **Budget/Distribution Chart** (pie chart):
+TYPE 2: BUDGET/DISTRIBUTION (pie chart)
 ```json
 {{
   "layout_type": "content",
@@ -207,19 +356,13 @@ You output STRICT JSON following the PresentationData schema.
     "chart_type": "pie",
     "title": "Cost Distribution",
     "categories": ["Research", "Strategy", "Implementation", "Support"],
-    "series": [
-      {{
-        "name": "Percentage",
-        "values": [25.0, 35.0, 30.0, 10.0]
-      }}
-    ],
+    "series": [{{"name": "Percentage", "values": [25.0, 35.0, 30.0, 10.0]}}],
     "unit": "%"
   }}
 }}
 ```
 
-
-3. **Metrics/KPIs Chart** (bar chart):
+TYPE 3: METRICS/KPIs (bar chart)
 ```json
 {{
   "layout_type": "content",
@@ -230,12 +373,7 @@ You output STRICT JSON following the PresentationData schema.
     "chart_type": "bar",
     "title": "Key Performance Indicators",
     "categories": ["Stakeholder Engagement", "Data Accuracy", "Timeline Adherence", "Quality Score"],
-    "series": [
-      {{
-        "name": "Score",
-        "values": [95.0, 98.0, 92.0, 96.0]
-      }}
-    ],
+    "series": [{{"name": "Score", "values": [95.0, 98.0, 92.0, 96.0]}}],
     "x_axis_label": "KPI Metrics",
     "y_axis_label": "Score",
     "unit": "%"
@@ -243,482 +381,462 @@ You output STRICT JSON following the PresentationData schema.
 }}
 ```
 
-
-**CRITICAL**: Every chart MUST have:
+CRITICAL REQUIREMENTS:
+- Generate Legend for chart generated
 - Non-empty categories array
-- At least one series with non-empty values array
-- All numeric values must be positive numbers
-- Valid icon_name in English
+- At least one series with non-empty values
+- All values positive numbers
+- Valid English icon_name
+- Descriptive chart title (no bold)
+- Explicit axis labels
+- Clear unit (%, Weeks, Score, etc.)
+- Series name explains what values represent
 
+═══════════════════════════════════════════════════════
+FLOW & ARCHITECTURE SLIDE GENERATION
+═══════════════════════════════════════════════════════
 
-=========================================================
-🎯 **TABLE GENERATION (MANDATORY - DO NOT SKIP)**
+When workflows, architectures, or process flows are described in the input:
+- Use BULLETS to describe the flow visually
+- Use symbols WITHIN the text of each bullet
 
+CRITICAL DISTINCTION:
+WRONG: Create a separate bullet that says "Legend: ■ = Service, ○ = Database"
+CORRECT: Use arrows and bold naturally in the flow bullets themselves
 
-**YOU MUST CREATE AT LEAST 1 TABLE WITH ACTUAL DATA**
+For system architectures or data flows, describe the flow across 3-4 bullets:
 
-
-**Table Example:**
-```json
-{{
-  "layout_type": "content",
-  "layout_hint": "table_slide",
-  "title": "Deliverables Summary",
-  "icon_name": "deliverables-checklist",
-  "table_data": {{
-    "headers": ["Deliverable", "Timeline", "Owner"],
-    "rows": [
-      ["Strategic Framework", "Week 4", "Strategy Team"],
-      ["Village Analysis", "Week 8", "Research Team"],
-      ["Operating Models", "Week 12", "Operations Team"],
-      ["Financial Models", "Week 14", "Finance Team"],
-      ["Final Report", "Week 18", "Project Lead"]
-    ]
-  }}
-}}
-```
-
-
-**CRITICAL**: Every table MUST have:
-- Non-empty headers array
-- At least 3 rows with actual data
-- All cells must have text (no empty strings)
-- Valid icon_name in English
-
-
-=========================================================
-🎯 **VALID LAYOUT TYPES**
-
-
-PRIMARY TYPES:
-- "title" → Title slide (first slide only)
-- "content" → Standard content slide
-- "section" → Section divider (MUST have content after)
-- "two_column" → Two-column layout
-
-
-LAYOUT HINTS (for content slides):
-- "agenda" → Agenda slide (max 5 items)
-- "title_and_content" → Bullets (max 4)
-- "content_paragraph" → Paragraph text
-- "two_content" → Two columns
-- "four_box_with_icons" → 4 boxes (EXACTLY 4 bullets)
-- "table_slide" → Table (with table_data)
-- "chart_slide" → Chart (with chart_data)
-
-
-=========================================================
-🎯 **MANDATORY PRESENTATION STRUCTURE**
-
-
-```
-1. Title Slide (layout_type="title", icon_name="presentation-title")
-2-3. Agenda Slides (layout_hint="agenda", icon_name="presentation-agenda", max 5 items each)
-   → Agenda items must match actual section headers in the presentation
-4. Section: Introduction/Overview (icon_name="introduction-overview")
-5-6. Content slides (bullets/paragraph with relevant icons)
-7. Section: Objectives (icon_name="goals-objectives")
-8. Content slide (4 bullets with icon_name="target-goals")
-9. Section: Approach/Methodology (icon_name="process-methodology")
-10. Content slide (4 bullets with icon_name="strategy-approach")
-11. Four-box slide (framework - EXACTLY 4 items, icon_name="framework-structure")
-12. Section: Timeline (icon_name="timeline-calendar")
-13. Chart slide (timeline with actual data, icon_name="timeline-chart")
-14. Section: Team/Resources (icon_name="team-collaboration")
-15. Table slide (team structure with actual data, icon_name="team-structure")
-16. Content slide (bullets with icon_name="resources-tools")
-17. Section: Deliverables (icon_name="deliverables-outcomes")
-18. Chart slide (budget/distribution with actual data, icon_name="budget-allocation")
-19. Section: Success Metrics (icon_name="metrics-kpi")
-20. Chart slide (KPIs with actual data, icon_name="performance-metrics")
-21. Section: Benefits (icon_name="benefits-value")
-22. Four-box slide (benefits - EXACTLY 4 items, icon_name="value-proposition")
-23. Section: Thank You (icon_name="thank-you", ALWAYS INCLUDE)
-```
-
-IMPORTANT: Change this according to the Input markdown content
-
-=========================================================
-🎯 **CONTENT FIELD RULES**
-
-
-**For Bullet Slides:**
 ```json
 {{
   "layout_type": "content",
   "layout_hint": "title_and_content",
-  "title": "Key Points",
-  "icon_name": "key-points",
+  "title": "System Architecture Flow",
+  "icon_name": "architecture-diagram",
   "bullets": [
-    {{"text": "First point", "sub_bullets": []}},
-    {{"text": "Second point", "sub_bullets": []}},
-    {{"text": "Third point", "sub_bullets": []}}
-  ],
-  "content": null,
-  "chart_data": null,
-  "table_data": null
+    {{"text": "**Excel/web forms** → **FastAPI** normalizes to **canonical models**"}},
+    {{"text": "**Mapper engine** transforms to **Booking.com schema** with **validation**"}},
+    {{"text": "**Celery workers** queue tasks → **Playwright** automates **submission**"}},
+    {{"text": "**CloudWatch** monitors logs → alerts sent via **Slack/SES**"}}
+  ]
 }}
 ```
 
+KEY RULES:
+1. Each bullet describes ONE step in the flow
+2. Use arrows (→) to show progression
+5. 3-4 bullets maximum for flow slides
+6. Each bullet should be 60-100 characters
+7. Title has NO bold markdown
 
-**For Paragraph Slides:**
+WHEN TO USE THIS FORMAT:
+- System architectures (multi-component flows)
+- Data pipelines (source → transform → destination)
+- Process workflows (step 1 → step 2 → step 3)
+- Integration patterns (service A → service B → service C)
+
+═══════════════════════════════════════════════════════
+TABLE GENERATION (MINIMUM 3-5 REQUIRED)
+═══════════════════════════════════════════════════════
+
+REQUIRED TABLES (create all with source data):
+
+1. TEAM STRUCTURE
+Headers: ["Position", "Responsibilities", "Experience", "Time Allocation"]
+Rows: Minimum 4-6 team members with detailed info
+BOLD REQUIREMENT: Bold role names, key terms in responsibilities, years, percentages
+
+Example:
 ```json
 {{
-  "layout_type": "content",
-  "layout_hint": "content_paragraph",
-  "title": "Overview",
-  "icon_name": "overview-summary",
-  "content": "Full paragraph text here. This should be 2-3 sentences describing the topic in detail.",
-  "bullets": null,
-  "chart_data": null,
-  "table_data": null
-}}
-```
-
-
-**For Chart Slides:**
-```json
-{{
-  "layout_type": "content",
-  "layout_hint": "chart_slide",
-  "title": "Timeline",
-  "icon_name": "timeline-gantt",
-  "bullets": null,
-  "content": null,
-  "chart_data": {{...}} // MUST be complete
-}}
-```
-
-
-**For Table Slides:**
-```json
-{{
-  "layout_type": "content",
-  "layout_hint": "table_slide",
-  "title": "Team",
-  "icon_name": "team-roster",
-  "bullets": null,
-  "content": null,
-  "table_data": {{...}} // MUST be complete
-}}
-```
-
-
-**For Section Headers:**
-```json
-{{
-  "layout_type": "section",
-  "title": "Section Name",
-  "icon_name": "section-divider"
-}}
-```
-
-
-=========================================================
-🎯 **ICON NAMING GUIDELINES**
-
-
-**Icon Selection Strategy:**
-1. Analyze the slide title and content
-2. Choose the most relevant icon category
-3. Use descriptive, hyphenated names in English
-4. Be specific (not generic)
-
-
-**Examples by Slide Type:**
-- Title slide: "presentation-title", "company-logo", "brand-identity"
-- Agenda: "presentation-agenda", "table-of-contents", "roadmap"
-- Introduction: "introduction-overview", "welcome-greeting", "getting-started"
-- Objectives: "goals-objectives", "target-goals", "mission-vision"
-- Approach: "process-methodology", "strategy-approach", "workflow-process"
-- Timeline: "timeline-calendar", "schedule-gantt", "milestones-roadmap"
-- Team: "team-collaboration", "team-structure", "users-people"
-- Deliverables: "deliverables-checklist", "outcomes-results", "documents-files"
-- Budget: "budget-allocation", "financial-chart", "cost-analysis"
-- Metrics: "analytics-metrics", "performance-kpi", "dashboard-insights"
-- Benefits: "benefits-value", "value-proposition", "advantages-strengths"
-- Charts: "chart-graph", "data-visualization", "analytics-dashboard"
-- Tables: "table-data", "spreadsheet-grid", "data-matrix"
-- Four-box: "framework-structure", "pillars-foundation", "quadrant-model"
-- Thank You: "thank-you", "appreciation-gratitude", "closing-remarks"
-
-
-**For Arabic Content:**
-- Even when slide title/content is in Arabic, icon_name MUST be in English
-- Example: Title "الأهداف الرئيسية" → icon_name: "main-objectives"
-- Example: Title "الجدول الزمني" → icon_name: "project-timeline"
-
-
-=========================================================
-🎯 **VALIDATION CHECKLIST (VERIFY BEFORE OUTPUT)**
-
-
-Before generating JSON, verify:
-1. ✓ Every slide has a valid icon_name in ENGLISH
-2. ✓ Agenda items match actual section headers in presentation
-3. ✓ ALL relevant content from input markdown is converted
-4. ✓ Every section header has 1-3 content slides after it
-5. ✓ No slides with only title (all have content/bullets/chart/table)
-6. ✓ EXACTLY 3+ chart slides with complete chart_data
-7. ✓ EXACTLY 2+ four-box slides with 4 bullets each
-8. ✓ EXACTLY 1+ table slide with complete table_data
-9. ✓ All titles under length limits
-10. ✓ All chart categories and values arrays are non-empty
-11. ✓ All table headers and rows arrays are non-empty
-12. ✓ Thank You slide is LAST slide
-13. ✓ No null values in required fields
-14. ✓ icon_name never contains null or empty string
-
-
-=========================================================
-
-
-Generate complete PresentationData JSON following ALL rules above.
-
-
-LANGUAGE: {language}
-TEMPLATE: {template_id}
-"""
-
-
-
-def get_user_prompt(markdown_content: str, language: str, user_preference: str = '') -> str:
-    """Enhanced user prompt with strict requirements"""
-
-
-    alignment_note = "LEFT-aligned" if language != 'Arabic' else "RIGHT-aligned"
-
-
-    return f"""
-Convert the following content into a PresentationData JSON structure.
-
-
-INPUT CONTENT:
-{markdown_content}
-
-
-USER PREFERENCES:
-{user_preference if user_preference else 'None'}
-
-
-=========================================================
-🎯 **MANDATORY REQUIREMENTS**
-
-
-1. **Structure:**
-   - Title slide (with icon_name in English)
-   - 1-2 Agenda slides (max 5 items each, with icon_name in English)
-   - **AGENDA ITEMS MUST LIST THE ACTUAL SECTION NAMES** from the presentation
-   - 15-25 content slides organized by sections (based on input content length)
-   - Each section header MUST have 1-3 content slides after it
-   - Final "Thank You" section header (MANDATORY, with icon_name in English)
-
-
-2. **Comprehensive Content Conversion:**
-   - **READ THE ENTIRE INPUT MARKDOWN/PROPOSAL**
-   - **CONVERT EVERY RELEVANT SECTION** into slides
-   - Do NOT skip any major sections or subsections
-   - Extract all tables, lists, numerical data, frameworks
-   - Maintain the original logical flow and sequence
-   - Expand content appropriately (brief points → full slides)
-
-
-3. **Agenda Generation (CRITICAL):**
-   - Analyze the input content and identify ALL major sections
-   - List these sections as agenda items
-   - The agenda must act as a table of contents
-   - Each agenda item should correspond to a section header in the presentation
-   - Example: If your sections are "Introduction", "Objectives", "Approach", "Timeline", "Team", "Deliverables"
-     then your agenda bullets should be exactly those names
-
-
-4. **Icon Generation (MANDATORY):**
-   - EVERY slide MUST have icon_name field populated
-   - icon_name MUST ALWAYS be in ENGLISH (even for Arabic content)
-   - Choose descriptive, relevant icon names based on slide content
-   - Never use null or empty string for icon_name
-   - Use hyphenated format: "category-subcategory"
-
-
-5. **Visual Content (ABSOLUTELY REQUIRED):**
-   - **MINIMUM 3 chart slides** with complete chart_data:
-     * 1 timeline chart (column chart with phases)
-     * 1 budget/distribution chart (pie chart)
-     * 1 metrics/KPIs chart (bar chart)
-   - **MINIMUM 2 four-box slides**:
-     * 1 methodology/framework (4 pillars)
-     * 1 benefits/value proposition (4 points)
-   - **MINIMUM 1 table slide**:
-     * Deliverables OR team structure OR schedule
-   - ALL visual elements MUST have valid icon_name
-
-
-6. **Content Distribution:**
-   - Use bullets for lists (max 4 per slide)
-   - Use paragraphs for descriptions/overviews
-   - ALWAYS populate either bullets OR content OR chart_data OR table_data
-   - NEVER leave slides with only titles
-   - Each content element should have appropriate icon_name
-
-
-7. **Title Constraints:**
-   - Max 60 chars (title slide)
-   - Max 50 chars (section headers)
-   - Max 70 chars (content slides)
-
-
-=========================================================
-🎯 **CONTENT EXTRACTION & CONVERSION STRATEGY**
-
-
-**Step-by-Step Process:**
-
-
-1. **Parse Input Markdown:**
-   - Identify all headings (H1, H2, H3, H4)
-   - Extract all paragraphs, lists, tables, code blocks
-   - Note any numerical data, percentages, timelines
-   - Recognize frameworks, methodologies, categories
-
-
-2. **Map to Slide Types:**
-   - H1/H2 → Section header slides
-   - H3/H4 → Content slide titles
-   - Bullet lists → title_and_content slides
-   - Tables → table_slide with table_data
-   - Numerical data → chart_slide with chart_data
-   - Descriptions → content_paragraph slides
-   - Categories/frameworks → four_box_with_icons slides
-
-
-3. **Generate Agenda:**
-   - List all section headers you will create
-   - These become your agenda bullet items
-   - Match exactly with section names in presentation
-
-
-4. **Assign Icons:**
-   - For each slide, analyze title and content
-   - Choose most relevant icon name in English
-   - Use specific, descriptive names (not generic)
-
-
-=========================================================
-🎯 **WHERE TO INSERT VISUAL CONTENT**
-
-
-**Timeline Section → CHART:**
-```json
-{{
-  "layout_type": "content",
-  "layout_hint": "chart_slide",
-  "title": "Project Timeline",
-  "icon_name": "timeline-schedule",
-  "chart_data": {{
-    "chart_type": "column",
-    "categories": ["Phase 1", "Phase 2", "Phase 3"],
-    "series": [{{"name": "Duration", "values": [4.0, 8.0, 6.0]}}],
-    "x_axis_label": "Phases",
-    "y_axis_label": "Weeks",
-    "unit": "Weeks"
-  }}
-}}
-```
-
-
-**Budget/Cost Section → CHART:**
-```json
-{{
-  "layout_type": "content",
-  "layout_hint": "chart_slide",
-  "title": "Budget Distribution",
-  "icon_name": "budget-allocation",
-  "chart_data": {{
-    "chart_type": "pie",
-    "categories": ["Research", "Strategy", "Implementation", "Support"],
-    "series": [{{"name": "Cost", "values": [25.0, 35.0, 30.0, 10.0]}}],
-    "unit": "%"
-  }}
-}}
-```
-
-
-**Metrics/KPIs Section → CHART:**
-```json
-{{
-  "layout_type": "content",
-  "layout_hint": "chart_slide",
-  "title": "Success Metrics",
-  "icon_name": "performance-kpi",
-  "chart_data": {{
-    "chart_type": "bar",
-    "categories": ["Quality", "Timeliness", "Accuracy", "Engagement"],
-    "series": [{{"name": "Score", "values": [95.0, 92.0, 98.0, 94.0]}}],
-    "unit": "%"
-  }}
-}}
-```
-
-
-**Team/Deliverables Section → TABLE:**
-```json
-{{
-  "layout_type": "content",
-  "layout_hint": "table_slide",
-  "title": "Team Structure",
-  "icon_name": "team-organization",
   "table_data": {{
-    "headers": ["Role", "Responsibility", "Experience"],
+    "headers": ["Position", "Responsibilities", "Experience", "Time Allocation"],
     "rows": [
-      ["Project Lead", "Overall delivery", "15+ years"],
-      ["Strategy Lead", "Framework design", "12+ years"],
-      ["Analyst", "Data analysis", "8+ years"]
+      [
+        "**Project Manager**",
+        "Oversees **project delivery** and **stakeholder** communication",
+        "**10+ years**",
+        "**100%**"
+      ],
+      [
+        "**Lead Developer**",
+        "**System architecture** design and **code reviews**",
+        "**8 years**",
+        "**80%**"
+      ]
     ]
   }}
 }}
 ```
 
+2. DELIVERABLES SUMMARY
+Headers: ["Deliverable", "Description", "Timeline", "Format"]
+Rows: All project deliverables with detailed descriptions
+BOLD REQUIREMENT: Bold deliverable names, key terms, timeframes
 
-**Methodology Section → FOUR-BOX:**
-```json
-{{
-  "layout_type": "content",
-  "layout_hint": "four_box_with_icons",
-  "title": "Our Approach",
-  "icon_name": "methodology-framework",
-  "bullets": [
-    {{"text": "Research & Discovery", "sub_bullets": []}},
-    {{"text": "Strategy Design", "sub_bullets": []}},
-    {{"text": "Implementation", "sub_bullets": []}},
-    {{"text": "Monitoring & Optimization", "sub_bullets": []}}
-  ]
-}}
-```
+3. PAYMENT STRUCTURE
+Headers: ["Phase", "Milestone", "Payment %", "Timeline"]
+Rows: All payment milestones with exact percentages
+BOLD REQUIREMENT: Bold phase names, percentages, dates
+
+4. PERFORMANCE INDICATORS
+Headers: ["KPI", "Target", "Measurement Method", "Frequency"]
+Rows: All KPIs with specific targets and methods
+BOLD REQUIREMENT: Bold KPI names, target values, key methods
+
+5. PROJECT TIMELINE
+Headers: ["Phase", "Key Activities", "Duration", "Key Outputs"]
+Rows: All phases with specific activities and outputs
+BOLD REQUIREMENT: Bold phase names, durations, key activities
+
+CRITICAL REQUIREMENTS:
+- 3-5 columns minimum per table
+- 4-6 rows minimum with REAL data
+- "rows" array contains ONLY data (NOT headers)
+- NO empty cells or "TBD" placeholders
+- Extract REAL data from input markdown
+- Use specific numbers, percentages, details
+- Valid English icon_name
+- Table rows limited to 4 per slide (auto-splits if larger)
+- EVERY table cell with key info MUST have bold markdown (**text** syntax)
+
+═══════════════════════════════════════════════════════
+VALID LAYOUT TYPES
+═══════════════════════════════════════════════════════
+
+PRIMARY TYPES:
+- "title" → Title slide (first only)
+- "content" → Standard content
+- "section" → Section divider (must have content after)
+- "two_column" → Two columns
+
+LAYOUT HINTS (for content slides):
+- "agenda" → Agenda (max 5-6 items, plain text bullets)
+- "title_and_content" → Bullets (max 4-5, WITH bold in text)
+- "two_content" → Two columns
+- "four_box_with_icons" → 4 boxes (EXACTLY 4 bullets, 60-100 chars each, WITH bold)
+- "table_slide" → Table (with table_data, WITH bold in cells for key values)
+- "chart_slide" → Chart (with chart_data)
+
+FOUR-BOX REQUIREMENTS:
+- EXACTLY 4 bullets
+- Each bullet 60-100 characters MAX (will truncate)
+- Each bullet MUST have bold markdown
+- NO periods at end
+- Use structural icons (pillars, layers, blocks, phases)
+- Example: "Research & **stakeholder analysis**" ✓
+- Example: "Comprehensive research methodology including..." ✗ (too long)
+
+═══════════════════════════════════════════════════════
+PRESENTATION STRUCTURE TEMPLATE
+═══════════════════════════════════════════════════════
+
+1. Title Slide (icon: "presentation-title")
+2-3. Agenda Slides (icon: "presentation-agenda", 5-6 items each)
+4. Section: Introduction (icon: "introduction-overview")
+5-6. Content slides (bullets WITH bold)
+7. Section: Objectives (icon: "goals-objectives")
+8. Content slide (4 bullets WITH bold)
+9. Section: Approach (icon: "process-methodology")
+10. Content slide (4 bullets WITH bold)
+11. Four-box slide (EXACTLY 4 items WITH bold)
+12. Section: Timeline (icon: "timeline-calendar")
+13. Chart slide (timeline data)
+14. Section: Team (icon: "team-collaboration")
+15. Table slide (team structure, WITH bold in cells)
+16. Content slide (bullets WITH bold)
+17. Section: Deliverables (icon: "deliverables-outcomes")
+18. Chart slide (budget data)
+19. Section: Metrics (icon: "metrics-kpi")
+20. Chart slide (KPI data)
+21. Section: Benefits (icon: "benefits-value")
+22. Four-box slide (EXACTLY 4 items WITH bold)
+23. Section: Thank You (icon: "thank-you") + Next Steps content slide
+
+**IMPORTANT**: Adapt this structure to match your input markdown content.
+
+═══════════════════════════════════════════════════════
+VALIDATION CHECKLIST
+═══════════════════════════════════════════════════════
+
+Before outputting JSON, verify ALL items below:
+
+STRUCTURE & COMPLETENESS:
+✓ Every slide has valid English icon_name (never null/empty)
+✓ Agenda items match actual section headers exactly
+✓ ALL relevant input content converted to slides (no major sections skipped)
+✓ Every section header has 1-3 content slides after it
+✓ NO title-only slides (every slide has bullets OR chart OR table)
+✓ "content" field is ALWAYS null (paragraphs FORBIDDEN)
+✓ Thank You is the LAST slide in presentation
+✓ No null values in required fields
+✓ Slide sequence follows source document order
+✓ No concepts outside their section scope
+
+VISUAL CONTENT REQUIREMENTS:
+✓ ≥3-5 chart slides with complete data (categories, series, values)
+✓ ≥2-4 four-box slides (exactly 4 bullets each, 60-100 chars)
+✓ ≥3-5 table slides with REAL data (not placeholders like "TBD")
+✓ All chart categories/values are non-empty
+✓ All table headers/rows contain ACTUAL data from source
+✓ Tables have ≥4 rows and ≥3 columns minimum
+✓ Visual slides have clear labels/legends/axis descriptions
+✓ Generated Legend for charts created
+
+TITLE & LENGTH CONSTRAINTS:
+✓ Title slide: ≤60 characters (NO bold)
+✓ Section headers: ≤50 characters (NO bold)
+✓ Content slides: ≤70 characters (NO bold)
+✓ Bullets are 60-100 characters each (**bolded terms required**)
+✓ Max 4-5 bullets per slide (**bolded terms required**)
+
+BOLD FORMATTING (CRITICAL - MOST IMPORTANT):
+✓ Every bullet has MINIMUM 1 bolded term using **text** markdown
+✓ Every table cell with key info has bolded values using **text** markdown
+✓ NO bullets exist without ** characters (search entire JSON - MUST BE ZERO)
+✓ NO table cells with important data exist without ** characters
+✓ Bold formatting applied ONLY to key terms (1-4 words), not entire sentences
+✓ Maximum 3 bolded terms per bullet/cell (avoid over-bolding)
+✓ Bold formatting uses correct markdown: **term** not *term* or __term__
+✓ Bullets have NO periods at end
+✓ NO bold markdown in slide titles or section headers
+
+CONTENT QUALITY & DETAIL:
+✓ Content has SPECIFIC details from source (no generic summaries)
+✓ Technical terms preserved exactly as written in source
+✓ Numbers/percentages/metrics included from source
+✓ Team slides have roles, responsibilities, experience years, time %
+✓ Deliverable slides have detailed descriptions (not just names)
+✓ Every content slide has ≥2 substantive points
+✓ NO generic content like "best practices", "as required", "various tools"
+✓ Text-heavy content converted to visuals (charts/tables/diagrams)
+✓ Process flows and comparisons converted to visual formats
+
+FLOW & DIAGRAM REQUIREMENTS:
+✓ Flow slides use arrow notation (→) to show progression
+✓ Each flow bullet describes ONE step (60-100 chars)
+✓ Key components are bolded: **FastAPI**, **Celery**, **Playwright**
+✓ NO separate "Legend:" bullets (symbols are in the text)
+✓ Maximum 4 bullets per flow slide
+✓ Flow bullets are concise and visual, not descriptive prose
+
+FINAL CHECK - COUNT & VERIFY:
+✓ Count total bullets → verify ALL contain ** markdown (no exceptions)
+✓ Count total table cells → verify key cells contain ** markdown
+✓ Example: 50 bullets total = 50 bullets must have ** somewhere in text
+✓ Example: 20 table cells with key data = 20 cells must have ** somewhere
+✓ Count all "title" fields → verify NONE contain ** markdown
+✓ If ANY bullet lacks bold → FIX before output
+✓ If ANY table cell with key data lacks bold → FIX before output
+✓ If ANY title has bold → REMOVE before output
+✓ This is MANDATORY - presentations without bold formatting will be REJECTED
+
+Remember: Bold formatting in bullets AND table cells is MANDATORY. Bold in titles is FORBIDDEN.
+
+═══════════════════════════════════════════════════════
+Things to Strictly Follow:
+   - Highlight important points from bullet points and tables using bold text.
+   - Keep the content visually appealing and avoid being text-heavy.
+   - Maintain high PPT readability by highlighting key points, including visuals, and keeping text minimal.
+
+Generate complete PresentationData JSON following ALL rules.
+
+LANGUAGE: {language}
+TEMPLATE: {template_id}"""
 
 
-=========================================================
-🎯 **VALIDATION BEFORE OUTPUT**
+def get_user_prompt(markdown_content: str, language: str, user_preference: str = '') -> str:
+    """user prompt"""
+    
+    alignment = "LEFT-aligned" if language != 'Arabic' else "RIGHT-aligned"
+    
+    return f"""Convert the following content into PresentationData JSON.
 
+INPUT CONTENT:
+{markdown_content}
 
-Check:
-- [ ] Every slide has icon_name in ENGLISH (never null/empty)
-- [ ] Agenda bullets match actual section headers
-- [ ] ALL content from input markdown converted to slides
-- [ ] 3+ chart slides with complete data
-- [ ] 2+ four-box slides with exactly 4 bullets
-- [ ] 1+ table slide with complete data
-- [ ] Every section has content after it
-- [ ] No blank slides (title only)
-- [ ] Thank You slide at end
-- [ ] All text is {alignment_note}
+USER PREFERENCES:
+{user_preference if user_preference else 'None'}
 
+═══════════════════════════════════════════════════════
+MANDATORY REQUIREMENTS
+═══════════════════════════════════════════════════════
 
-=========================================================
+1. STRUCTURE
+   - Title slide (English icon_name)
+   - 1-2 Agenda slides (5-6 items each, English icon_name)
+   - Agenda items MUST match actual section names
+   - Slides proportional to input content
+   - Each section header followed by 1-3 content slides
+   - Final "Thank You" section (MANDATORY, English icon_name)
 
+2. COMPREHENSIVE CONVERSION
+   - Read ENTIRE input markdown
+   - Convert EVERY relevant section
+   - Do NOT skip major sections/subsections
+   - Extract all tables, lists, numerical data, frameworks
+   - Maintain original flow and sequence
+   - Number of slides should be proportional to input content
+   - Actionable Visualization Recommendations:
+      - Tables: Any lists or comparisons of data should be converted into table slides (table_data).
+      - Charts: Convert all numerical data (percentages, performance indicators, KPIs, or timelines) into appropriate chart formats (pie, bar, line, etc.).
+      - Diagrams: For process flows, system architectures, or step-by-step methodologies, use flow bullets with arrows to present information in a structured way.
+      - Four-Box Model: Any lists or comparisons with four distinct categories (phases, pillars, steps) should be converted into a four-box layout with exactly 4 items per box.
 
-Generate the complete PresentationData JSON now.
-"""
+3. AGENDA GENERATION (CRITICAL)
+   - Analyze input, identify ALL major sections
+   - List sections as agenda items (table of contents)
+   - Each item = one section header in presentation
+   - Include "Thank You & Next Steps" as LAST item
+   - Example sections: Introduction, Objectives, Approach, Timeline, Team, Deliverables, Thank You
+   - Agenda bullet text: plain, NO bold markdown
 
+4. ICON GENERATION (MANDATORY)
+   - EVERY slide needs icon_name (ALWAYS English)
+   - Descriptive, relevant to slide content
+   - Never null or empty
+   - Format: "category-subcategory"
+
+5. VISUAL CONTENT (REQUIRED)
+   MINIMUM 3 charts with complete data:
+   - 1 timeline (column chart with phases/durations)
+   - 1 budget (pie chart with percentages)
+   - 1 metrics (bar chart with targets)
+   
+   MINIMUM 2 four-box slides:
+   - 1 methodology/framework (4 pillars)
+   - 1 benefits (4 key points)
+   
+   MINIMUM 3-5 tables (depending on source):
+   - Team Structure (Position, Responsibilities, Experience, Time%)
+   - Deliverables (Deliverable, Description, Timeline, Format)
+   - Payment Schedule (Phase, Milestone, Payment%, Timeline)
+   - Performance Indicators (KPI, Target, Measurement, Frequency)
+   - Project Timeline (Phase, Activities, Duration, Outputs)
+
+   Visual Representation Emphasis:
+    - For any content heavy on text, convert the content to visuals (e.g., charts, tables, flow bullets, and four-box models).
+    - Ensure data-heavy sections (like KPIs, timelines, comparisons) are represented visually (pie charts, bar charts, line graphs, etc.) to avoid textual clutter.
+    - For any process or system descriptions, use flow bullets with arrows to show workflows rather than listing steps in plain text.
+   
+   ALL visuals need valid icon_name and REAL data
+   ALL bullets in visuals need bold markdown
+   ALL table cells with key data need bold markdown
+
+6. CONTENT DISTRIBUTION
+   - Bullets for lists (max 4-5, 60-110 chars each)
+   - Bullets must be concise, scannable
+   - Every Bullet MUST have bold markdown for key terms
+   - ALWAYS populate: bullets OR chart_data OR table_data
+   - NEVER title-only slides
+   - "content" field ALWAYS null (paragraphs FORBIDDEN)
+   - System auto-splits only on height overflow
+
+7. TITLE CONSTRAINTS
+   - Title slide: ≤60 chars (NO bold)
+   - Section headers: ≤50 chars (NO bold)
+   - Content slides: ≤70 chars (NO bold)
+
+8. DETAIL PRESERVATION (CRITICAL)
+   - DO NOT summarize/condense - extract exact details
+   - Preserve technical terminology exactly
+   - Include specific numbers/percentages/targets/durations
+   - Technical frameworks: specific components and integration
+   - Methodology: detailed steps, tools, timeframes
+   - Team: exact roles, detailed responsibilities, experience years, time%
+   - Deliverables: what's included (not just "Report")
+   - Payment: exact percentages, milestones, timing
+   - KPIs: specific targets, measurement methods, frequency
+   - NO placeholders ("Various tools", "Best practices", "As needed", "TBD")
+   - If source lacks detail, infer from context (don't be generic)
+
+9. BOLD FORMATTING (CRITICAL - MOST IMPORTANT)
+   EVERY bullet text MUST contain ** markdown for key terms
+   EVERY table cell with key data MUST contain ** markdown for key values
+   NO slide titles or section headers should have ** markdown
+
+═══════════════════════════════════════════════════════
+CONTENT EXTRACTION STRATEGY
+═══════════════════════════════════════════════════════
+
+STEP 1: PARSE INPUT
+- Identify all headings (H1-H4)
+- Extract lists, tables, code blocks
+- Note numerical data, percentages, timelines
+- Recognize frameworks, methodologies, categories
+
+STEP 2: MAP TO SLIDES
+- H1/H2 → Section headers (plain title)
+- H3/H4 → Content slide titles (plain title)
+- Bullet lists → title_and_content (bullets WITH bold)
+- Tables → table_slide (cells WITH bold for key values)
+- Numerical data → chart_slide
+- Categories/frameworks → four_box (bullets WITH bold)
+
+STEP 3: GENERATE AGENDA
+- List all section headers you'll create
+- These become agenda bullets (plain text)
+- Match exactly with section names
+
+STEP 4: ASSIGN ICONS
+- Analyze each slide's title/content
+- Choose relevant English icon name
+- Use specific, descriptive names
+
+STEP 5: CONVERT PARAGRAPHS
+- Extract key statements
+- Convert to 2-5 bullet points
+- Highlight key terms (**bold** in bullets)
+- Preserve original wording
+- Do NOT summarize/generalize
+
+═══════════════════════════════════════════════════════
+WHERE TO INSERT VISUALS
+═══════════════════════════════════════════════════════
+
+TIMELINE SECTION → Column Chart
+Budget/Cost SECTION → Pie Chart
+Metrics/KPIs SECTION → Bar Chart
+Data Flow → Graph Chart
+Team/Deliverables SECTION → Table (with bold in cells)
+Methodology SECTION → Four-box
+System Architecture → Flow bullets with arrows
+
+(See system prompt for complete JSON examples)
+
+═══════════════════════════════════════════════════════
+VALIDATION BEFORE OUTPUT
+═══════════════════════════════════════════════════════
+
+Check ALL items in system prompt validation checklist.
+
+KEY REMINDERS:
+- All text is {alignment}
+- Bullet points NO periods at end
+- Paragraph content uses normal punctuation
+- Do NOT generate filler content
+- Accuracy and visual clarity override slide count
+
+CRITICAL FORMATTING CHECK:
+EVERY single bullet MUST have bold markdown like this:
+✓ BULLET: "Operated by **Celery queues** with retries"
+✗ BULLET: "Operated by Celery queues with retries" (WRONG - no bold)
+
+EVERY table cell with key data MUST have bold markdown like this:
+✓ TABLE CELL: "**Project Manager**"
+✓ TABLE CELL: "**10+ years**"
+✗ TABLE CELL: "Project Manager" (WRONG - no bold)
+✗ TABLE CELL: "10+ years" (WRONG - no bold)
+
+NO slide title should have bold markdown:
+✓ TITLE: "Core Components Overview"
+✗ TITLE: "Core **Components** Overview" (WRONG - has bold)
+
+Before outputting JSON, verify:
+1. EVERY bullet has ** somewhere in the bullet points
+2. EVERY table cell with key data has ** somewhere in the content
+3. NO title field contains ** characters
+
+Generate complete PresentationData JSON now."""
 
 
 def get_regeneration_prompt(
@@ -728,38 +846,54 @@ def get_regeneration_prompt(
     user_preference: str = ''
 ) -> str:
     """Enhanced regeneration prompt"""
+    
     comments_text = '\n'.join([
         f'- {c["comment1"]}: {c["comment2"]}'
         for c in regen_comments
     ])
     
-    return f"""Regenerate this presentation in {language} addressing feedback:
-
+    return f"""Regenerate presentation in {language} addressing feedback.
 
 ORIGINAL CONTENT:
 {markdown_content}
 
-
 USER FEEDBACK:
 {comments_text}
-
 
 USER PREFERENCES:
 {user_preference if user_preference else 'None'}
 
+═══════════════════════════════════════════════════════
+REQUIREMENTS (ALL MANDATORY)
+═══════════════════════════════════════════════════════
 
-REQUIREMENTS:
-1. Address ALL feedback
-2. Every slide must have valid icon_name in ENGLISH
-3. Agenda items must match actual section headers
-4. Convert ALL relevant content from input
-5. Include minimum 3 charts with complete data
-6. Include minimum 2 four-box layouts with exactly 4 items
-7. Include minimum 1 table with complete data
-8. Every section must have content after it
-9. No blank slides
+1. Address ALL feedback points
+2. Every slide has valid English icon_name (never null/empty)
+3. Agenda items match actual section headers
+4. Convert ALL relevant input content
+5. Minimum 3 charts with complete data
+6. Minimum 2 four-box layouts (exactly 4 items each, 60-100 chars)
+7. Minimum 3-5 tables with complete data (real, not placeholders)
+8. Every section has content after it
+9. NO blank slides
 10. Thank You slide at end
-11. icon_name never null or empty
+11. Bullet points NO periods at end
+12. "content" field always null (paragraphs FORBIDDEN)
+13. All text properly aligned for language
+14. Preserve specific details from source
+15. Include all technical terms, numbers, percentages
+16. Bold markdown in bullets (MANDATORY - every bullet needs **)
+17. Bold markdown in table cells (MANDATORY - key cells need **)
+18. NO bold markdown in titles or section headers
 
+CRITICAL BOLD FORMATTING:
+✓ BULLET: {{"text": "Operated by **Celery queues** with retries"}}
+✓ TABLE CELL: "**Project Manager**"
+✓ TABLE CELL: "**10+ years**"
+✓ TITLE: {{"title": "System Architecture"}}  ← No bold
+
+✗ BULLET: {{"text": "Operated by Celery queues with retries"}}  ← WRONG
+✗ TABLE CELL: "Project Manager"  ← WRONG
+✗ TITLE: {{"title": "System **Architecture**"}}  ← WRONG
 
 Generate complete regenerated PresentationData in {language}."""

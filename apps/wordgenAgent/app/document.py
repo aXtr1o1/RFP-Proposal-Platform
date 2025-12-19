@@ -176,12 +176,13 @@ def generate_word_from_markdown(
 
         logger.info(f"Building Word for uuid={uuid}, gen_id={gen_id}")
         docx_abs = build_word_from_proposal(
-            proposal_dict=proposal_json,
-            user_config=effective_config,
-            output_path=str(docx_path),
-            language=language,
-            visible=False,
-        )
+                    proposal=proposal_json,
+                    user_config=effective_config,
+                    output_path=str(docx_path),
+                    lang=language,
+                    visible=False,
+                )
+
 
         proposal_word_url = ""
         if os.path.exists(docx_abs):

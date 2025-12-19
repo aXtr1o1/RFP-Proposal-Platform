@@ -104,8 +104,15 @@
     "data_label_color": "#FFFFFF",
     "show_data_labels": true,
     "show_gridlines": true,
-    "rtl_support": true
-  },
+    "rtl_support": true,
+    "legend": {
+      "show_legend": true,
+      "position": "BOTTOM",
+      "font_size": 14,
+      "font_color": "#FFFFFF",
+      "include_in_layout": false
+    }
+},
   
   "typography": {
     "fonts": {
