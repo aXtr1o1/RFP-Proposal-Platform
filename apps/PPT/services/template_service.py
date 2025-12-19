@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
-from apps.app.config import settings
+from apps.PPT.config import settings
 
 class TemplateService:
     def __init__(self):

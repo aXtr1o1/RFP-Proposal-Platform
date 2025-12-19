@@ -75,14 +75,13 @@
       }
     ]
   },
-  
   "agenda_slide": {
     "name": "Agenda Slide",
-    "description": "Split agenda slide with language-specific layout",
+    "description": "Split agenda slide with improved Arabic positioning",
     "master_layout": "blank",
     "background": {
       "type": "image",
-      "path": "Background/image2.jpeg",
+      "path": "Background/image2.jpg",
       "fit": "fill"
     },
     "elements": [
@@ -109,14 +108,18 @@
         "type": "text",
         "placeholder": "agenda_title",
         "position_ar": {
-          "left": 7.5,
+          "left": 8.5,
           "top": 3.0
         },
         "position_en": {
           "left": 7.5,
           "top": 3.0
         },
-        "size": {
+        "size_ar": {
+          "width": 5.0,
+          "height": 2.0
+        },
+        "size_en": {
           "width": 4.5,
           "height": 1.5
         },
@@ -133,50 +136,49 @@
         }
       },
       {
-      "id": "content",
-      "type": "text_bullets",
-      "placeholder": "content",
-      "position_ar": {
-        "left": 1.0,
-        "top": 1.8
-      },
-      "position_en": {
-        "left": 0.7,
-        "top": 1.8
-      },
-      "size": {
-        "width": 5.8,
-        "height": 5.2
-      },
-      "style": {
-        "font": "Tajawal",
-        "font_size": 20,
-        "bold": false,
-        "color": "#0D2026",
-        "alignment_ar": "right",
-        "alignment_en": "left",
-        "line_spacing": 1.8,
-        "padding": 0.1,
-        "max_items": 6,
-        "rtl_support": true
-      },
-      "bullet_style": {
-        "bullet_char": "custom_icon",
-        "bullet_color": "#01415C",
-        "indent_ar": 10.5,
-        "indent_en": 0.3,
-        "spacing_before": 8,
-        "spacing_after": 8,
-        "icon_size": 0.45,
-        "icon_position_ar": "right",
-        "icon_position_en": "left",
-        "icon_offset_ar": 1.2,
-        "icon_offset_en": 0.3
-      }
+        "id": "content",
+        "type": "text_bullets",
+        "placeholder": "content",
+        "position_ar": {
+          "left": 0.5,
+          "top": 1.8
+        },
+        "position_en": {
+          "left": 0.7,
+          "top": 1.8
+        },
+        "size": {
+          "width": 6.0,
+          "height": 5.2
+        },
+        "style": {
+          "font": "Tajawal",
+          "font_size": 20,
+          "bold": false,
+          "color": "#0D2026",
+          "alignment_ar": "right",
+          "alignment_en": "left",
+          "line_spacing": 1.8,
+          "padding": 0.1,
+          "max_items": 6,
+          "rtl_support": true
+        },
+        "bullet_style": {
+          "bullet_char": "custom_icon",
+          "bullet_color": "#01415C",
+          "indent_ar": 10.5,
+          "indent_en": 0.3,
+          "spacing_before": 8,
+          "spacing_after": 8,
+          "icon_size": 0.45,
+          "icon_position_ar": "right",
+          "icon_position_en": "left",
+          "icon_offset_ar": 0.6,
+          "icon_offset_en": 0.3
+        }
       }
     ]
   },
-  
   "title_and_content": {
     "name": "Title and Content",
     "description": "Standard content slide with title, underline, and bullets",
@@ -210,15 +212,15 @@
         "type": "icon",
         "position_ar": {
           "left": 11.83,
-          "top": 0.65
+          "top": 0.4
         },
         "position_en": {
           "left": 1.0,
-          "top": 0.65
+          "top": 0.4
         },
         "size": {
           "width": 0.5,
-          "height": 0.5
+          "height": 0.6
         },
         "style": {
           "color": "#01415C",
@@ -231,11 +233,11 @@
         "placeholder": "title",
         "position_ar": {
           "left": 1.7,
-          "top": 0.6
+          "top": 0.4
         },
         "position_en": {
           "left": 1.7,
-          "top": 0.6
+          "top": 0.4
         },
         "size": {
           "width": 9.6,
@@ -328,11 +330,11 @@
         "path": "logo.png",
         "position_ar": {
           "left": 0.5,
-          "top": 0.5
+          "top": 0.4
         },
         "position_en": {
           "left": 11.5,
-          "top": 0.5
+          "top": 0.4
         },
         "size": {
           "width": 1.5,
@@ -345,11 +347,11 @@
         "type": "icon",
         "position_ar": {
           "left": 11.83,
-          "top": 0.65
+          "top": 0.45
         },
         "position_en": {
           "left": 1.0,
-          "top": 0.65
+          "top": 0.45
         },
         "size": {
           "width": 0.5,
@@ -598,11 +600,11 @@
         "path": "logo.png",
         "position_ar": {
           "left": 0.5,
-          "top": 0.5
+          "top": 0.4
         },
         "position_en": {
           "left": 11.5,
-          "top": 0.5
+          "top": 0.4
         },
         "size": {
           "width": 1.5,
@@ -615,11 +617,11 @@
         "type": "icon",
         "position_ar": {
           "left": 11.83,
-          "top": 0.65
+          "top": 0.45
         },
         "position_en": {
           "left": 1.0,
-          "top": 0.65
+          "top": 0.45
         },
         "size": {
           "width": 0.5,
@@ -738,11 +740,11 @@
         "type": "icon",
         "position_ar": {
           "left": 11.83,
-          "top": 0.65
+          "top": 0.45
         },
         "position_en": {
           "left": 1.0,
-          "top": 0.65
+          "top": 0.45
         },
         "size": {
           "width": 0.5,
@@ -849,11 +851,11 @@
         "type": "icon",
         "position_ar": {
           "left": 11.83,
-          "top": 0.65
+          "top": 0.45
         },
         "position_en": {
           "left": 1.0,
-          "top": 0.65
+          "top": 0.45
         },
         "size": {
           "width": 0.5,

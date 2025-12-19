@@ -12,9 +12,9 @@ from apps.api.services.supabase_service import (
 )
 from apps.wordgenAgent.app.document import generate_word_from_markdown
 
-from apps.app.core.ppt_generation import run_initial_generation
-from apps.app.core.ppt_regeneration import run_regeneration
-from apps.app.core.supabase_service import get_proposal_url
+from apps.PPT.core.ppt_generation import run_initial_generation
+from apps.PPT.core.ppt_regeneration import run_regeneration
+from apps.PPT.core.supabase_service import get_proposal_url
 
 logger = logging.getLogger("routes.rfp")
 router = APIRouter()
@@ -77,7 +77,7 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
 @router.post("/regenerate")
 async def regenerate(request: RegenRequest):
     """
-    Regenerates the proposal based on the previous gen_id (base version).
+    Regenerates the proposal based on the previous gen_id (base version) - STREAMING.
     """
     from apps.api.services import supabase_service
     from apps.regen_services import regen_prompt
@@ -94,6 +94,7 @@ async def regenerate(request: RegenRequest):
         base_markdown = supabase_service.get_markdown_content(uuid, base_gen_id)
         if not base_markdown:
             raise HTTPException(status_code=404, detail=f"No markdown found for gen_id={base_gen_id}")
+        
         regen_comments_str = json.dumps(comments, ensure_ascii=False)
         ok = supabase_service.create_regeneration_row(
             uuid=uuid,
@@ -102,27 +103,23 @@ async def regenerate(request: RegenRequest):
         )
         if not ok:
             raise HTTPException(status_code=400, detail="Failed to create regeneration version row")
-        result = regen_prompt.regenerate_markdown_with_comments(
-            uuid=uuid,
-            source_markdown=base_markdown,  
-            gen_id=new_gen_id,
-            docConfig=doc_config,
-            language=language,
-            comments=comments,
-        )
 
-        logger.info(f"Result from regenerate_markdown_with_comments: {result}")
-        
-        return {
-            "status": "success",
-            "uuid": uuid,
-            "base_gen_id": base_gen_id,
-            "regen_gen_id": new_gen_id,
-            "language": language,
-            "wordLink": result.get("wordLink"),
-            "updated_markdown": result.get("updated_markdown")
-        }
+        def stream_generator():
+            for chunk in regen_prompt.regenerate_markdown_with_comments_streaming(
+                uuid=uuid,
+                source_markdown=base_markdown,
+                gen_id=new_gen_id,
+                docConfig=doc_config,
+                language=language,
+                comments=comments,
+            ):
+                yield chunk
 
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+    except HTTPException:
+        logger.exception("regenerate HTTP error")
+        raise
     except Exception as e:
         logger.exception("regenerate endpoint failed")
         raise HTTPException(status_code=500, detail=f"Regeneration failed: {str(e)}")
@@ -250,7 +247,7 @@ async def ppt_initialgen(body: PPTInitialGenRequest):
         
         # Validate template exists locally
         from pathlib import Path
-        from apps.app.config import settings
+        from apps.PPT.config import settings
         
         template_path = Path(settings.TEMPLATES_DIR) / body.template_id
         if not template_path.exists():
@@ -312,7 +309,7 @@ async def ppt_regeneration(body: PPTRegenRequest):
         
         # Validate template exists locally
         from pathlib import Path
-        from apps.app.config import settings
+        from apps.PPT.config import settings
         
         template_path = Path(settings.TEMPLATES_DIR) / body.template_id
         if not template_path.exists():
@@ -381,7 +378,7 @@ async def list_available_templates():
     """List all available local templates"""
     try:
         from pathlib import Path
-        from apps.app.config import settings
+        from apps.PPT.config import settings
         
         templates_dir = Path(settings.TEMPLATES_DIR)
         
@@ -395,7 +392,7 @@ async def list_available_templates():
                 
                 if config_file.exists():
                     import json
-                    with open(config_file, 'r') as f:
+                    with open(config_file, 'r', encoding='utf-8') as f:
                         config = json.load(f)
                     
                     templates.append({

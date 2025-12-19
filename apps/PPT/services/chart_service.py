@@ -8,7 +8,7 @@ from pathlib import Path
 import logging
 import json
 
-from apps.app.config import settings
+from apps.PPT.config import settings
 
 logger = logging.getLogger("chart_service")
 
@@ -77,9 +77,18 @@ class ChartService:
                 logger.error(f"❌ Chart data extraction failed!")
                 return None
             
-            if len(categories) == 0 or len(series_list) == 0:
-                logger.error(f"❌ Chart data empty!")
-                return None
+            # ✅ NEW: For pie charts, add percentages to category names
+            if chart_type == 'pie' and len(series_list) > 0:
+                values = series_list[0]['values']
+                total = sum(values)
+                
+                if total > 0:
+                    # Update categories to include percentages
+                    categories = [
+                        f"{cat} ({(val/total)*100:.1f}%)"
+                        for cat, val in zip(categories, values)
+                    ]
+                    logger.info(f"✓ Added percentages to pie chart categories")
             
             logger.info(f"✓ Creating {chart_type} chart")
             logger.info(f"   Categories: {categories}")
@@ -98,7 +107,7 @@ class ChartService:
             
             # Create chart data object
             chart_data_obj = CategoryChartData()
-            chart_data_obj.categories = categories
+            chart_data_obj.categories = categories  # ✅ Now includes percentages for pie charts
             
             # Add all series
             for series_info in series_list:
@@ -315,34 +324,149 @@ class ChartService:
         except Exception as e:
             logger.warning(f"⚠️  Data labels error: {e}")
 
-    def _configure_legend(self, chart, chart_type: str, color_config: Dict):
-        """Configure chart legend with dynamic colors from constraints"""
+    def _add_percentage_to_pie_legend(self, chart):
+        """
+        Add percentages to pie chart legend entries.
+        Example: "Project Initiation (30%)"
+        """
         try:
-            legend_rgb = self._get_rgb(color_config.get("legend_font_color"))
+            # Get the chart data
+            plot = chart.plots[0]
+            series = chart.series[0]
             
+            # Get categories and values
+            categories = []
+            values = []
+            
+            # Extract from chart
+            for point_idx, point in enumerate(series.points):
+                try:
+                    # Get category name
+                    category = chart.plots[0].categories[point_idx]
+                    
+                    # Get value
+                    value = point.data_label.text_frame.text if hasattr(point, 'data_label') else None
+                    if not value:
+                        # Fallback: get from series values
+                        value = series.values[point_idx] if hasattr(series, 'values') else 0
+                    
+                    categories.append(str(category))
+                    values.append(float(value) if value else 0)
+                except Exception as e:
+                    logger.debug(f"Point extraction error: {e}")
+                    continue
+            
+            # Calculate total
+            total = sum(values)
+            
+            if total == 0:
+                logger.warning("⚠️ Cannot calculate percentages (total = 0)")
+                return
+            
+            # Update legend entries with percentages
+            legend = chart.legend
+            
+            # This will show percentages on the chart itself, which is standard for pie charts
+            for point_idx, point in enumerate(series.points):
+                try:
+                    point.has_data_label = True
+                    data_label = point.data_label
+                    
+                    # Show category name and percentage
+                    data_label.show_category_name = True
+                    data_label.show_percentage = True
+                    data_label.show_value = False  # Hide raw value
+                    
+                    # Position outside for better readability
+                    data_label.position = XL_DATA_LABEL_POSITION.OUTSIDE_END
+                    
+                except Exception as e:
+                    logger.debug(f"Data label error for point {point_idx}: {e}")
+            
+            logger.info("  ✓ Pie chart percentages added to data labels")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not add percentages to legend: {e}")
+
+    def _configure_legend(self, chart, chart_type: str, color_config: Dict):
+        """Configure chart legend with dynamic colors, positioning, and visibility"""
+        try:
             if chart_type == 'pie':
+                # ✅ FIX 1: Use WHITE text for legend (visible on dark background)
+                legend_rgb = self._get_rgb('#FFFFFF')  # White text
+                
                 chart.has_legend = True
-                chart.legend.position = XL_LEGEND_POSITION.RIGHT
-                chart.legend.font.size = Pt(11)
+                chart.legend.position = XL_LEGEND_POSITION.BOTTOM  # Bottom position
+                
+                # ✅ FIX 2: Increase font size for better visibility
+                chart.legend.font.size = Pt(14)  # Larger font (was 12)
                 chart.legend.font.name = self.default_font
                 chart.legend.font.color.rgb = RGBColor(*legend_rgb)
-                chart.legend.include_in_layout = False
-                logger.debug("  ✓ Legend (right)")
                 
-            elif chart_type in ['column', 'bar', 'line', 'area']:
+                # ✅ FIX 3: Enable layout inclusion for proper rendering
+                chart.legend.include_in_layout = False  # Changed back to False for better spacing
+                
+                # ✅ FIX 4: Force legend text to be visible via XML
+                try:
+                    from pptx.oxml import parse_xml
+                    
+                    legend_element = chart.legend._element
+                    
+                    # Force white text color via XML
+                    txPr_xml = '''
+                    <c:txPr xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" 
+                            xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                        <a:bodyPr/>
+                        <a:lstStyle/>
+                        <a:p>
+                            <a:pPr>
+                                <a:defRPr sz="1400" b="0">
+                                    <a:solidFill>
+                                        <a:srgbClr val="FFFFFF"/>
+                                    </a:solidFill>
+                                    <a:latin typeface="Tajawal"/>
+                                </a:defRPr>
+                            </a:pPr>
+                            <a:endParaRPr lang="en-US"/>
+                        </a:p>
+                    </c:txPr>
+                    '''
+                    
+                    # Remove existing txPr
+                    existing_txPr = legend_element.find('{http://schemas.openxmlformats.org/drawingml/2006/chart}txPr')
+                    if existing_txPr is not None:
+                        legend_element.remove(existing_txPr)
+                    
+                    # Add new XML
+                    txPr = parse_xml(txPr_xml)
+                    legend_element.append(txPr)
+                    
+                    logger.info("  ✓ Legend text color forced to white via XML")
+                    
+                except Exception as e:
+                    logger.debug(f"XML legend styling failed: {e}")
+                
+                logger.info("  ✓ Pie legend (bottom, white text, 14pt)")
+                
+            else:
+                # For other charts, use white text
+                legend_rgb = self._get_rgb(color_config.get("legend_font_color", "#FFFFFF"))
+                
                 if len(chart.series) > 1:
                     chart.has_legend = True
                     chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-                    chart.legend.font.size = Pt(10)
+                    chart.legend.font.size = Pt(12)
                     chart.legend.font.name = self.default_font
                     chart.legend.font.color.rgb = RGBColor(*legend_rgb)
-                    logger.debug("  ✓ Legend (bottom)")
+                    chart.legend.include_in_layout = False
+                    logger.info("  ✓ Legend (bottom, white text)")
                 else:
                     chart.has_legend = False
-                    logger.debug("  ✓ Legend hidden")
             
         except Exception as e:
-            logger.warning(f"⚠️  Legend error: {e}")
+            logger.error(f"❌ Legend error: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _apply_modern_chart_style(self, chart, chart_type: str, background_rgb: Optional[Tuple], color_config: Dict):
         """Apply styling with dynamic colors from constraints"""
