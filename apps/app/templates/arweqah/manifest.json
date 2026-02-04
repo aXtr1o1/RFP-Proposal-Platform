@@ -1,0 +1,1381 @@
+{
+  "template_id": "arweqah",
+  "template_name": "Arweqah Professional",
+  "version": "1.0.0",
+  "template_mode": "native",
+  "slide_dimensions": {
+    "width": 13.333333333333334,
+    "height": 7.5,
+    "units": "inches",
+    "aspect_ratio": "16:9"
+  },
+  "layouts": {
+    "title_slide": {
+      "index": 0,
+      "name": "Title Slide",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "center_title",
+          "name": "Title 1",
+          "position": {
+            "left": 0.75,
+            "top": 2.329861111111111,
+            "width": 8.5,
+            "height": 1.6076388888888888
+          },
+          "is_required": false,
+          "content_hint": "Centered title for section headers"
+        },
+        {
+          "idx": 1,
+          "type": "subtitle",
+          "name": "Subtitle 2",
+          "position": {
+            "left": 1.5,
+            "top": 4.25,
+            "width": 7.0,
+            "height": 1.9166666666666667
+          },
+          "is_required": false,
+          "content_hint": "Secondary heading or description"
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 3",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 4",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 5",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "title"
+      ],
+      "supports_rtl": true
+    },
+    "title_and_content": {
+      "index": 1,
+      "name": "Title and Content",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Title 1",
+          "position": {
+            "left": 0.5,
+            "top": 0.3003477690288714,
+            "width": 9.0,
+            "height": 1.25
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 1,
+          "type": "footer",
+          "name": "Content Placeholder 2",
+          "position": {
+            "left": 0.5,
+            "top": 1.75,
+            "width": 9.0,
+            "height": 4.9496533245844265
+          },
+          "is_required": false
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 3",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 4",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 5",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "content"
+      ],
+      "supports_rtl": true
+    },
+    "section_header": {
+      "index": 2,
+      "name": "Section Header",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Title 1",
+          "position": {
+            "left": 0.7899311023622048,
+            "top": 4.819444444444445,
+            "width": 8.5,
+            "height": 1.4895833333333333
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 1,
+          "type": "body",
+          "name": "Text Placeholder 2",
+          "position": {
+            "left": 0.7899311023622048,
+            "top": 3.1788199912510935,
+            "width": 8.5,
+            "height": 1.640624453193351
+          },
+          "is_required": true,
+          "content_hint": "Main content area - supports bullets, paragraphs, or lists"
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 3",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 4",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 5",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "section",
+        "paragraph",
+        "bullets",
+        "content"
+      ],
+      "supports_rtl": true
+    },
+    "two_content": {
+      "index": 3,
+      "name": "Two Content",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Title 1",
+          "position": {
+            "left": 0.5,
+            "top": 0.3003477690288714,
+            "width": 9.0,
+            "height": 1.25
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 1,
+          "type": "footer",
+          "name": "Content Placeholder 2",
+          "position": {
+            "left": 0.5,
+            "top": 1.75,
+            "width": 4.416666666666667,
+            "height": 4.9496533245844265
+          },
+          "is_required": false
+        },
+        {
+          "idx": 2,
+          "type": "footer",
+          "name": "Content Placeholder 3",
+          "position": {
+            "left": 5.083333333333333,
+            "top": 1.75,
+            "width": 4.416666666666667,
+            "height": 4.9496533245844265
+          },
+          "is_required": false
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 4",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 5",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 6",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "two_column",
+        "content"
+      ],
+      "supports_rtl": true
+    },
+    "comparison": {
+      "index": 4,
+      "name": "Comparison",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Title 1",
+          "position": {
+            "left": 0.5,
+            "top": 0.3003477690288714,
+            "width": 9.0,
+            "height": 1.25
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 1,
+          "type": "body",
+          "name": "Text Placeholder 2",
+          "position": {
+            "left": 0.5,
+            "top": 1.6788199912510937,
+            "width": 4.4184033245844265,
+            "height": 0.6996522309711286
+          },
+          "is_required": true,
+          "content_hint": "Main content area - supports bullets, paragraphs, or lists"
+        },
+        {
+          "idx": 2,
+          "type": "footer",
+          "name": "Content Placeholder 3",
+          "position": {
+            "left": 0.5,
+            "top": 2.3784722222222223,
+            "width": 4.4184033245844265,
+            "height": 4.321181102362205
+          },
+          "is_required": false
+        },
+        {
+          "idx": 3,
+          "type": "body",
+          "name": "Text Placeholder 4",
+          "position": {
+            "left": 5.079861111111111,
+            "top": 1.6788199912510937,
+            "width": 4.420138888888889,
+            "height": 0.6996522309711286
+          },
+          "is_required": true,
+          "content_hint": "Main content area - supports bullets, paragraphs, or lists"
+        },
+        {
+          "idx": 4,
+          "type": "footer",
+          "name": "Content Placeholder 5",
+          "position": {
+            "left": 5.079861111111111,
+            "top": 2.3784722222222223,
+            "width": 4.420138888888889,
+            "height": 4.321181102362205
+          },
+          "is_required": false
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 6",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 7",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 8",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "paragraph",
+        "content",
+        "bullets",
+        "two_column"
+      ],
+      "supports_rtl": true
+    },
+    "title_only": {
+      "index": 5,
+      "name": "Title Only",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Title 1",
+          "position": {
+            "left": 0.5,
+            "top": 0.3003477690288714,
+            "width": 9.0,
+            "height": 1.25
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 2",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 3",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 4",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "section"
+      ],
+      "supports_rtl": true
+    },
+    "blank": {
+      "index": 6,
+      "name": "Blank",
+      "placeholders": [
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 1",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 2",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 3",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "blank"
+      ],
+      "supports_rtl": true
+    },
+    "content_with_caption": {
+      "index": 7,
+      "name": "Content with Caption",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Title 1",
+          "position": {
+            "left": 0.5,
+            "top": 0.2986111111111111,
+            "width": 3.2899311023622047,
+            "height": 1.2708333333333333
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 1,
+          "type": "footer",
+          "name": "Content Placeholder 2",
+          "position": {
+            "left": 3.9097222222222223,
+            "top": 0.2986111111111111,
+            "width": 5.590277777777778,
+            "height": 6.401042213473316
+          },
+          "is_required": false
+        },
+        {
+          "idx": 2,
+          "type": "body",
+          "name": "Text Placeholder 3",
+          "position": {
+            "left": 0.5,
+            "top": 1.5694444444444444,
+            "width": 3.2899311023622047,
+            "height": 5.130208880139983
+          },
+          "is_required": true,
+          "content_hint": "Main content area - supports bullets, paragraphs, or lists"
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 4",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 5",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 6",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "content"
+      ],
+      "supports_rtl": true
+    },
+    "picture_with_caption": {
+      "index": 8,
+      "name": "Picture with Caption",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Title 1",
+          "position": {
+            "left": 1.9600699912510937,
+            "top": 5.25,
+            "width": 6.0,
+            "height": 0.6197922134733158
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 1,
+          "type": "picture",
+          "name": "Picture Placeholder 2",
+          "position": {
+            "left": 1.9600699912510937,
+            "top": 0.6701388888888888,
+            "width": 6.0,
+            "height": 4.5
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 2,
+          "type": "body",
+          "name": "Text Placeholder 3",
+          "position": {
+            "left": 1.9600699912510937,
+            "top": 5.869792213473316,
+            "width": 6.0,
+            "height": 0.8802077865266842
+          },
+          "is_required": true,
+          "content_hint": "Main content area - supports bullets, paragraphs, or lists"
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 4",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 5",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 6",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "bullets",
+        "paragraph",
+        "image",
+        "content"
+      ],
+      "supports_rtl": true
+    },
+    "title_and_vertical_text": {
+      "index": 9,
+      "name": "Title and Vertical Text",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Title 1",
+          "position": {
+            "left": 0.5,
+            "top": 0.3003477690288714,
+            "width": 9.0,
+            "height": 1.25
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 1,
+          "type": "body",
+          "name": "Vertical Text Placeholder 2",
+          "position": {
+            "left": 0.5,
+            "top": 1.75,
+            "width": 9.0,
+            "height": 4.9496533245844265
+          },
+          "is_required": true,
+          "content_hint": "Main content area - supports bullets, paragraphs, or lists"
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 3",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 4",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 5",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "paragraph",
+        "bullets",
+        "content"
+      ],
+      "supports_rtl": true
+    },
+    "vertical_title_and_text": {
+      "index": 10,
+      "name": "Vertical Title and Text",
+      "placeholders": [
+        {
+          "idx": 0,
+          "type": "title",
+          "name": "Vertical Title 1",
+          "position": {
+            "left": 7.25,
+            "top": 0.3003477690288714,
+            "width": 2.25,
+            "height": 6.399305555555555
+          },
+          "is_required": true,
+          "content_hint": "Main heading or slide title"
+        },
+        {
+          "idx": 1,
+          "type": "body",
+          "name": "Vertical Text Placeholder 2",
+          "position": {
+            "left": 0.5,
+            "top": 0.3003477690288714,
+            "width": 6.583333333333333,
+            "height": 6.399305555555555
+          },
+          "is_required": true,
+          "content_hint": "Main content area - supports bullets, paragraphs, or lists"
+        },
+        {
+          "idx": 10,
+          "type": "picture",
+          "name": "Date Placeholder 3",
+          "position": {
+            "left": 0.5,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false,
+          "content_hint": "Image placeholder"
+        },
+        {
+          "idx": 11,
+          "type": "bitmap",
+          "name": "Footer Placeholder 4",
+          "position": {
+            "left": 3.4166666666666665,
+            "top": 6.951388888888889,
+            "width": 3.1666666666666665,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        },
+        {
+          "idx": 12,
+          "type": "org_chart",
+          "name": "Slide Number Placeholder 5",
+          "position": {
+            "left": 7.166666666666667,
+            "top": 6.951388888888889,
+            "width": 2.3333333333333335,
+            "height": 0.3993055555555556
+          },
+          "is_required": false
+        }
+      ],
+      "background": {
+        "type": "none",
+        "opacity": 1.0
+      },
+      "master_name": "",
+      "suitable_for": [
+        "paragraph",
+        "bullets",
+        "content"
+      ],
+      "supports_rtl": true
+    }
+  },
+  "content_type_mapping": {
+    "title": "title_slide",
+    "image": "title_slide",
+    "content": "title_and_content",
+    "section": "section_header",
+    "bullets": "section_header",
+    "two_column": "two_content",
+    "comparison": "comparison",
+    "blank": "blank",
+    "paragraph": "title_and_content",
+    "table": "title_and_content",
+    "chart": "title_and_content",
+    "agenda": "title_and_content"
+  },
+  "theme": {
+    "colors": [
+      {
+        "name": "dark1",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "light1",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "dark2",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "light2",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "accent1",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "accent2",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "accent3",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "accent4",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "accent5",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "accent6",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "hyperlink",
+        "hex_value": "#000000"
+      },
+      {
+        "name": "followed_hyperlink",
+        "hex_value": "#000000"
+      }
+    ],
+    "fonts": {
+      "heading": "Calibri Light",
+      "body": "Calibri",
+      "fallback": "Arial"
+    }
+  },
+  "colors": {
+    "primary": "01415C",
+    "secondary": "84BA93",
+    "accent": "C6C3BE",
+    "text": {
+      "dark": "0D2026",
+      "light": "FFFCEC",
+      "muted": "666666"
+    },
+    "elements": {
+      "separator_line": "01415C",
+      "page_number_bg": "C6C3BE",
+      "page_number_text": "FFFCEC"
+    }
+  },
+  "fonts": {
+    "title_slide": {
+      "title": {
+        "name_en": "Roboto",
+        "name_ar": "Cairo",
+        "size": 40,
+        "bold": true,
+        "color": "FFFCEC"
+      },
+      "subtitle": {
+        "name_en": "Open Sans",
+        "name_ar": "Cairo",
+        "size": 24,
+        "bold": false,
+        "color": "FFFCEC"
+      }
+    },
+    "section_header": {
+      "title": {
+        "name_en": "Cairo",
+        "name_ar": "Cairo",
+        "size": 36,
+        "bold": true,
+        "color": "0D2026"
+      }
+    },
+    "content": {
+      "title": {
+        "name_en": "Cairo",
+        "name_ar": "Cairo",
+        "size": 32,
+        "bold": true,
+        "color": "0D2026"
+      },
+      "body": {
+        "name_en": "Open Sans",
+        "name_ar": "Cairo",
+        "size": 20,
+        "bold": false,
+        "color": "0D2026"
+      },
+      "bullet": {
+        "name_en": "Open Sans",
+        "name_ar": "Tajawal",
+        "size": 18,
+        "bold": false,
+        "color": "0D2026"
+      },
+      "sub_bullet": {
+        "name_en": "Open Sans",
+        "name_ar": "Tajawal",
+        "size": 16,
+        "bold": false,
+        "color": "666666"
+      }
+    },
+    "page_number": {
+      "name_en": "Cairo",
+      "name_ar": "Cairo",
+      "size": 14,
+      "bold": false,
+      "color": "0D2026"
+    }
+  },
+  "icons": {
+    "default_title": "Icons/icon_title_a5c6dbf2782c.png",
+    "default_section": "Icons/icon_section_8ec2dedf1678.png",
+    "agenda_items": [
+      "Icons/icon_title_a5c6dbf2782c.png",
+      "Icons/icon_title_9a2209e06283.png",
+      "Icons/icon_title_3ebc6dddf071.png",
+      "Icons/icon_title_1921156f5d41.png",
+      "Icons/icon_title_57ed98ee057a.png"
+    ],
+    "box_icons": [
+      "Icons/icon_title_a5c6dbf2782c.png",
+      "Icons/icon_title_9a2209e06283.png",
+      "Icons/icon_title_3ebc6dddf071.png",
+      "Icons/icon_title_1921156f5d41.png"
+    ],
+    "all_icons": {
+      "icon_title_a5c6dbf2782c.png": {
+        "path": "Icons/icon_title_a5c6dbf2782c.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_9a2209e06283.png": {
+        "path": "Icons/icon_title_9a2209e06283.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_3ebc6dddf071.png": {
+        "path": "Icons/icon_title_3ebc6dddf071.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_1921156f5d41.png": {
+        "path": "Icons/icon_title_1921156f5d41.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_57ed98ee057a.png": {
+        "path": "Icons/icon_title_57ed98ee057a.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_cbd3a673e2dc.png": {
+        "path": "Icons/icon_title_cbd3a673e2dc.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_46e79684d78b.png": {
+        "path": "Icons/icon_title_46e79684d78b.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_9eaaf97e49c7.png": {
+        "path": "Icons/icon_title_9eaaf97e49c7.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_6c1bfeaf1547.png": {
+        "path": "Icons/icon_title_6c1bfeaf1547.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_title_146ba828d85e.png": {
+        "path": "Icons/icon_title_146ba828d85e.png",
+        "width": 0.45,
+        "height": 0.45
+      },
+      "icon_section_8ec2dedf1678.png": {
+        "path": "Icons/icon_section_8ec2dedf1678.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_f55e14ab764e.png": {
+        "path": "Icons/icon_title_f55e14ab764e.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_section_f5dc1abd0a58.png": {
+        "path": "Icons/icon_section_f5dc1abd0a58.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_b7eddfefa3e2.png": {
+        "path": "Icons/icon_title_b7eddfefa3e2.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_section_ae7e274004f8.png": {
+        "path": "Icons/icon_section_ae7e274004f8.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_b67e47e4e18b.png": {
+        "path": "Icons/icon_title_b67e47e4e18b.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_0d80b8d87de6.png": {
+        "path": "Icons/icon_title_0d80b8d87de6.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_e5499803143f.png": {
+        "path": "Icons/icon_title_e5499803143f.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_f7d641e3820e.png": {
+        "path": "Icons/icon_title_f7d641e3820e.png",
+        "width": 0.6,
+        "height": 0.6
+      },
+      "icon_title_659af7a6f05e.png": {
+        "path": "Icons/icon_title_659af7a6f05e.png",
+        "width": 0.6,
+        "height": 0.6
+      },
+      "icon_title_0f392e8bfb09.png": {
+        "path": "Icons/icon_title_0f392e8bfb09.png",
+        "width": 0.6,
+        "height": 0.6
+      },
+      "icon_title_463c197efc0e.png": {
+        "path": "Icons/icon_title_463c197efc0e.png",
+        "width": 0.6,
+        "height": 0.6
+      },
+      "icon_section_e56fc5d8ab1b.png": {
+        "path": "Icons/icon_section_e56fc5d8ab1b.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_97cc958fb024.png": {
+        "path": "Icons/icon_title_97cc958fb024.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_5cb2f5c64610.png": {
+        "path": "Icons/icon_title_5cb2f5c64610.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_117b517bb0eb.png": {
+        "path": "Icons/icon_title_117b517bb0eb.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_section_a7156adb50cc.png": {
+        "path": "Icons/icon_section_a7156adb50cc.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_41cba2c0c465.png": {
+        "path": "Icons/icon_title_41cba2c0c465.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_01cc616140b5.png": {
+        "path": "Icons/icon_title_01cc616140b5.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_47751abf639f.png": {
+        "path": "Icons/icon_title_47751abf639f.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_section_4b040caf1aed.png": {
+        "path": "Icons/icon_section_4b040caf1aed.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_d37780b98d09.png": {
+        "path": "Icons/icon_title_d37780b98d09.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_section_cc065a161fdf.png": {
+        "path": "Icons/icon_section_cc065a161fdf.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_cd78d0d3ca36.png": {
+        "path": "Icons/icon_title_cd78d0d3ca36.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_8110312a57ab.png": {
+        "path": "Icons/icon_title_8110312a57ab.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_section_fb2cb00ca616.png": {
+        "path": "Icons/icon_section_fb2cb00ca616.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_4c89d2dce9a7.png": {
+        "path": "Icons/icon_title_4c89d2dce9a7.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_section_e864e0d97553.png": {
+        "path": "Icons/icon_section_e864e0d97553.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_3de887ef5611.png": {
+        "path": "Icons/icon_title_3de887ef5611.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_db9f78a7fcbb.png": {
+        "path": "Icons/icon_title_db9f78a7fcbb.png",
+        "width": 0.5,
+        "height": 0.5
+      },
+      "icon_title_95fd1e1204b7.png": {
+        "path": "Icons/icon_title_95fd1e1204b7.png",
+        "width": 0.6,
+        "height": 0.6
+      },
+      "icon_title_b44be6f37921.png": {
+        "path": "Icons/icon_title_b44be6f37921.png",
+        "width": 0.6,
+        "height": 0.6
+      },
+      "icon_title_17924a2c1d47.png": {
+        "path": "Icons/icon_title_17924a2c1d47.png",
+        "width": 0.6,
+        "height": 0.6
+      },
+      "icon_title_aca8a9f88a06.png": {
+        "path": "Icons/icon_title_aca8a9f88a06.png",
+        "width": 0.6,
+        "height": 0.6
+      },
+      "icon_section_bcaef01f0807.png": {
+        "path": "Icons/icon_section_bcaef01f0807.png",
+        "width": 1.2,
+        "height": 1.2
+      },
+      "icon_title_1586b04db45d.png": {
+        "path": "Icons/icon_title_1586b04db45d.png",
+        "width": 0.5,
+        "height": 0.5
+      }
+    }
+  },
+  "background_images": {
+    "title_slide": "Background/bg_title_slide_3a6e43c9.jpg",
+    "title": "Background/bg_title_slide_3a6e43c9.jpg",
+    "blank": "Background/bg_blank_3246436f.jpg",
+    "section_header": "Background/bg_section_header_85c5716a.jpg",
+    "section": "Background/bg_section_header_85c5716a.jpg",
+    "title_and_content": "Background/bg_title_and_content_afe0bed9.jpg",
+    "content": "Background/bg_title_and_content_afe0bed9.jpg",
+    "bullets": "Background/bg_title_and_content_afe0bed9.jpg",
+    "paragraph": "Background/bg_title_and_content_afe0bed9.jpg",
+    "table": "Background/bg_title_and_content_afe0bed9.jpg"
+  },
+  "element_positions": {
+    "title_slide": {
+      "title": {
+        "x": 1.5,
+        "y": 2.8,
+        "width": 10.33,
+        "height": 1.5
+      },
+      "subtitle": {
+        "x": 2.0,
+        "y": 4.5,
+        "width": 9.33,
+        "height": 1.0
+      }
+    },
+    "section_header": {
+      "title": {
+        "x": 1.0,
+        "y": 3.8,
+        "width": 11.33,
+        "height": 1.8
+      }
+    },
+    "content": {
+      "title": {
+        "x": 1.7,
+        "y": 0.6,
+        "width": 9.6,
+        "height": 0.8
+      },
+      "separator": {
+        "x": 1.7,
+        "y": 1.55,
+        "width": 9.6,
+        "height": 0.02
+      },
+      "body": {
+        "x": 0.2,
+        "y": 6.8,
+        "width": 0.4,
+        "height": 0.4
+      }
+    }
+  },
+  "analysis_metadata": {
+    "source_file": "sample1-arweqah.pptx",
+    "layout_count": 11,
+    "master_count": 1,
+    "analyzed_version": "2.0.0",
+    "analyzed_at": "2026-02-02T17:47:19.687447"
+  }
+}

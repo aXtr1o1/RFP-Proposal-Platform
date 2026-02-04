@@ -1,0 +1,105 @@
+{
+  "template_id": "standard",
+  "template_name": "Standard Professional",
+  "version": "5.0.0",
+  "template_mode": "native",
+  "description": "Professional template with native PPTX layouts",
+  
+  "slide_dimensions": {
+    "width": 10,
+    "height": 5.625,
+    "aspect_ratio": "16:9",
+    "units": "inches"
+  },
+  
+  "language_settings": {
+    "default": "en",
+    "supported": ["en"],
+    "en": {
+      "rtl": false,
+      "alignment": "left",
+      "default_font": "Calibri",
+      "heading_font": "Calibri Light"
+    }
+  },
+  
+  "layout_mapping": {
+    "title_slide": 0,
+    "title_and_content": 1,
+    "section_header": 2,
+    "section": 2,
+    "two_content": 3,
+    "two_column": 3,
+    "comparison": 4,
+    "title_only": 5,
+    "blank": 6,
+    "content": 1,
+    "bullets": 1,
+    "table": 1,
+    "chart": 1,
+    "agenda": 1
+  },
+  
+  "content_type_mapping": {
+    "title": "title_slide",
+    "section": "section_header",
+    "content": "title_and_content",
+    "bullets": "title_and_content",
+    "paragraph": "title_and_content",
+    "table": "title_and_content",
+    "chart": "title_and_content",
+    "two_column": "two_content",
+    "comparison": "comparison",
+    "agenda": "title_and_content",
+    "blank": "blank"
+  },
+  
+  "theme": {
+    "colors": {
+      "primary": "#0A2540",
+      "secondary": "#06B6D4",
+      "accent": "#F97316",
+      "background": "#F8F9FA",
+      "text_dark": "#1F2937",
+      "text_light": "#FFFFFF"
+    },
+    "typography": {
+      "font_families": {
+        "heading": "Calibri Light",
+        "body": "Calibri"
+      },
+      "font_sizes": {
+        "title": 44,
+        "heading_1": 28,
+        "body": 16
+      }
+    }
+  },
+  
+  "page_numbering": {
+    "enabled": true,
+    "skip_title": true,
+    "position_en": {
+      "offset_x": 0.2,
+      "offset_y": 5.0
+    },
+    "shape": {
+      "width": 0.4,
+      "height": 0.4,
+      "fill_color": "C6C3BE",
+      "text_color": "FFFFFF"
+    },
+    "font": {
+      "name": "Calibri",
+      "size": 12,
+      "bold": true
+    }
+  },
+  
+  "features": {
+    "auto_fit_text": true,
+    "icon_integration": true,
+    "chart_generation": true,
+    "table_generation": true
+  }
+}

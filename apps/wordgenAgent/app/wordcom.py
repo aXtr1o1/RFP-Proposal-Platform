@@ -1,11 +1,13 @@
+import os
 import json
 import logging
 from pathlib import Path
 from typing import Tuple, Optional, List
 
 from docx import Document
-from docx.shared import Pt, RGBColor
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.section import WD_ORIENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
@@ -13,41 +15,35 @@ from apps.wordgenAgent.app.config_setting import build_updated_config
 
 logger = logging.getLogger("wordcom")
 
-# ---------------------------------------------------------
-# Alignment codes used internally
-# ---------------------------------------------------------
+# ---- Keep numeric semantics compatible with your config_setting mappings ----
 WD_ALIGN_LEFT = 0
 WD_ALIGN_CENTER = 1
 WD_ALIGN_RIGHT = 2
 WD_ALIGN_JUSTIFY = 3
 
-# RTL/LTR flags
 WD_READINGORDER_LTR = 0
 WD_READINGORDER_RTL = 1
 
-# ---------------------------------------------------------
-# Default configuration
-# ---------------------------------------------------------
+WD_LINE_SPACE_SINGLE = 0  
+
+# ---- Default configuration stays exactly the same ----
 default_CONFIG = {
-    "visible_word": False,
+    "visible_word": False,                     
     "output_path": "output/proposal.docx",
-    "language_lcid": 1025,
-
-    "default_alignment": WD_ALIGN_LEFT,
-    "reading_order": WD_READINGORDER_LTR,
-
+    "language_lcid": 1025,                     
+    "default_alignment": 0,
+    "reading_order": 0,
     "space_before": 0,
     "space_after": 6,
     "line_spacing_rule": 0,
-
-    "orientation": 0,
+    "orientation": 0,                           
     "margin_top": 72,
     "margin_bottom": 72,
     "margin_left": 72,
     "margin_right": 72,
 
     "table_autofit": True,
-    "table_preferred_width": 100,
+    "table_preferred_width": 100,              
 
     "title_style": "Title",
     "heading_style": "Heading 1",
@@ -68,6 +64,7 @@ default_CONFIG = {
     "table_border_color": 0,
     "table_border_line_style": 1,
     "table_border_line_width": 1,
+    "table_border_preset": "grid",
 
     "table_header_shading_color": None,
     "table_body_shading_color": None,
@@ -77,29 +74,28 @@ default_CONFIG = {
     "company_name": "",
     "company_tagline": "",
     "header_logo_path": "",
-    "header_logo_width": 5,
+    "header_logo_width": 5,     
+    "header_logo_height": 2,    
+    "header_logo_max_width": 120,   
+    "header_logo_max_height": 60,  
+    "header_padding": 6,
 
     "footer_left_text": "",
     "footer_center_text": "",
     "footer_right_text": "",
     "footer_show_page_numbers": True,
-
-    "bullet_char": "•",
+    "footer_padding": 6,
 }
 
 
-# =========================
-# Color Utilities
-# =========================
-def _bgr_int_to_rgb_tuple(bgr: Optional[int]) -> Tuple[int, int, int]:
+def _bgr_int_to_rgb_tuple(bgr: int) -> Tuple[int, int, int]:
+    """Convert BGR int (Word/COM style) to (R, G, B) tuple."""
     if bgr is None:
         return (0, 0, 0)
-    return (
-        (bgr >> 0) & 0xFF,
-        (bgr >> 8) & 0xFF,
-        (bgr >> 16) & 0xFF,
-    )
-
+    b = (bgr >> 16) & 0xFF
+    g = (bgr >> 8) & 0xFF
+    r = (bgr >> 0) & 0xFF
+    return (r, g, b)
 
 def _bgr_int_to_hex(bgr: Optional[int]) -> Optional[str]:
     if bgr is None:
@@ -107,311 +103,372 @@ def _bgr_int_to_hex(bgr: Optional[int]) -> Optional[str]:
     r, g, b = _bgr_int_to_rgb_tuple(bgr)
     return f"{r:02X}{g:02X}{b:02X}"
 
+def _map_align(value: int) -> WD_ALIGN_PARAGRAPH:
+    mapping = {
+        WD_ALIGN_LEFT: WD_ALIGN_PARAGRAPH.LEFT,
+        WD_ALIGN_CENTER: WD_ALIGN_PARAGRAPH.CENTER,
+        WD_ALIGN_RIGHT: WD_ALIGN_PARAGRAPH.RIGHT,
+        WD_ALIGN_JUSTIFY: WD_ALIGN_PARAGRAPH.JUSTIFY,
+    }
+    return mapping.get(value, WD_ALIGN_PARAGRAPH.LEFT)
 
-# =========================
-# Core Alignment + RTL patch - FIXED VERSION
-# =========================
-def _apply_alignment_and_direction(paragraph, code: int, rtl: bool):
-    """
-    Correct python-docx compatible RTL + alignment.
-    Fixed to properly apply alignment regardless of RTL setting.
-    """
-    pf = paragraph.paragraph_format
-    
-    # FIXED: Always set alignment first, regardless of RTL
-    if code == WD_ALIGN_RIGHT:
-        pf.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    elif code == WD_ALIGN_CENTER:
-        pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    elif code == WD_ALIGN_JUSTIFY:
-        pf.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    else:
-        pf.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-    # Get or create paragraph properties
+def _set_paragraph_bidi(paragraph, rtl: bool) -> None:
+    """Apply RTL/LTR reading order at paragraph level via oxml."""
     pPr = paragraph._p.get_or_add_pPr()
+    bidi = pPr.find(qn("w:bidi"))
+    if bidi is None:
+        bidi = OxmlElement("w:bidi")
+        pPr.append(bidi)
+    bidi.set(qn("w:val"), "1" if rtl else "0")
 
-    # Set RTL properties only if RTL is enabled
-    if rtl:
-        # w:bidi → basic RTL support
-        bidi = pPr.find(qn("w:bidi"))
-        if bidi is None:
-            bidi = OxmlElement("w:bidi")
-            pPr.append(bidi)
-        bidi.set(qn("w:val"), "1")
-        
-        # w:rtl → right-to-left layout
-        rtl_tag = pPr.find(qn("w:rtl"))
-        if rtl_tag is None:
-            rtl_tag = OxmlElement("w:rtl")
-            pPr.append(rtl_tag)
-        rtl_tag.set(qn("w:val"), "1")
-    else:
-        # Remove RTL properties if not RTL
-        bidi = pPr.find(qn("w:bidi"))
-        if bidi is not None:
-            pPr.remove(bidi)
-        
-        rtl_tag = pPr.find(qn("w:rtl"))
-        if rtl_tag is not None:
-            pPr.remove(rtl_tag)
-    
-    # FIXED: Don't set textAlignment for alignment - it interferes
-    # Only use the paragraph format alignment which we set above
-    text_align = pPr.find(qn("w:textAlignment"))
-    if text_align is not None:
-        pPr.remove(text_align)
-    
-    # Force justification setting at XML level for better compatibility
-    jc = pPr.find(qn("w:jc"))
-    if jc is None:
-        jc = OxmlElement("w:jc")
-        pPr.append(jc)
-    
-    # Map alignment code to Word's jc values
-    if code == WD_ALIGN_RIGHT:
-        jc.set(qn("w:val"), "right")
-    elif code == WD_ALIGN_CENTER:
-        jc.set(qn("w:val"), "center")
-    elif code == WD_ALIGN_JUSTIFY:
-        jc.set(qn("w:val"), "both")
-    else:
-        jc.set(qn("w:val"), "left")
+def _add_page_number_field(paragraph) -> None:
+    """Insert a PAGE field that Word updates on open/print."""
+    run = paragraph.add_run()
+    fldChar_begin = OxmlElement('w:fldChar')
+    fldChar_begin.set(qn('w:fldCharType'), 'begin')
 
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = ' PAGE '
 
-# =========================
-# Paragraph Builders
-# =========================
-def _add_para(doc, text, style_name, size, color_bgr, bold, align_code, rtl):
-    p = doc.add_paragraph()
+    fldChar_separate = OxmlElement('w:fldChar')
+    fldChar_separate.set(qn('w:fldCharType'), 'separate')
 
-    if style_name:
-        try:
-            p.style = style_name
-        except Exception as e:
-            logger.warning(f"Failed to apply style '{style_name}': {e}")
+    fldChar_end = OxmlElement('w:fldChar')
+    fldChar_end.set(qn('w:fldCharType'), 'end')
 
-    run = p.add_run(text or "")
-    if size:
-        run.font.size = Pt(size)
+    r = run._r
+    r.append(fldChar_begin)
+    r.append(instrText)
+    r.append(fldChar_separate)
+    r.append(OxmlElement('w:t'))
+    r.append(fldChar_end)
 
-    if color_bgr is not None:
-        r, g, b = _bgr_int_to_rgb_tuple(color_bgr)
-        run.font.color.rgb = RGBColor(r, g, b)
-
-    run.font.bold = bool(bold)
-
-    pf = p.paragraph_format
-    pf.space_before = Pt(0)
-    pf.space_after = Pt(6)
-
-    # FIXED: Apply alignment and direction with corrected function
-    _apply_alignment_and_direction(p, align_code, rtl)
-    return p
-
-
-def _add_bullet_para(doc, text, cfg, align_code, rtl):
-    p = doc.add_paragraph()
-
-    style_name = cfg.get("normal_style", "Normal")
-    try:
-        p.style = style_name
-    except Exception:
-        pass
-
-    bullet_char = cfg.get("bullet_char", "•")
-    size = cfg.get("points_font_size", 11)
-    color_bgr = cfg.get("content_font_color", 0)
-    r, g, b = _bgr_int_to_rgb_tuple(color_bgr)
-
-    run_bullet = p.add_run(f"{bullet_char} ")
-    run_bullet.font.size = Pt(size)
-    run_bullet.font.color.rgb = RGBColor(r, g, b)
-
-    run_text = p.add_run(text or "")
-    run_text.font.size = Pt(size)
-    run_text.font.color.rgb = RGBColor(r, g, b)
-
-    pf = p.paragraph_format
-    pf.space_before = Pt(0)
-    pf.space_after = Pt(2)
-
-    _apply_alignment_and_direction(p, align_code, rtl)
-    return p
-
-
-# =========================
-# Tables
-# =========================
-def _set_table_width_pct(tbl, pct: int):
+def _set_table_width_pct(table, pct: int) -> None:
+    """Set table width as percentage using oxml (w:tblW type='pct')."""
     pct = max(1, min(100, int(pct or 100)))
-    tblPr = tbl._tbl.tblPr
-    tblW = tblPr.find(qn("w:tblW"))
+    tblPr = table._tbl.tblPr
+    tblW = tblPr.find(qn('w:tblW'))
     if tblW is None:
-        tblW = OxmlElement("w:tblW")
+        tblW = OxmlElement('w:tblW')
         tblPr.append(tblW)
-    tblW.set(qn("w:type"), "pct")
-    tblW.set(qn("w:w"), str(pct * 50))
+    tblW.set(qn('w:type'), 'pct')
+    tblW.set(qn('w:w'), str(pct * 50))
 
+def _set_table_borders(table, color_bgr: int, line_style: int, line_width: int, visible: bool) -> None:
+    """Apply borders to a table via oxml."""
+    tblPr = table._tbl.tblPr
+    borders = tblPr.find(qn('w:tblBorders'))
+    if borders is None:
+        borders = OxmlElement('w:tblBorders')
+        tblPr.append(borders)
+    
+    if not visible:
+        for side in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+            el = borders.find(qn(f"w:{side}"))
+            if el is None:
+                el = OxmlElement(f"w:{side}")
+                borders.append(el)
+            el.set(qn('w:val'), 'nil')
+        return
 
-def _shade_cell(cell, fill_hex: Optional[str]):
+    color_hex = _bgr_int_to_hex(color_bgr) or "000000"
+    style_map = {
+        1: "single",
+        2: "double",
+        3: "dashed",
+        4: "dotted",
+    }
+    val = style_map.get(line_style, "single")
+    size = str(max(4, min(24, int(line_width or 8)))) 
+
+    for side in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+        el = borders.find(qn(f"w:{side}"))
+        if el is None:
+            el = OxmlElement(f"w:{side}")
+            borders.append(el)
+        el.set(qn('w:val'), val)
+        el.set(qn('w:sz'), size)
+        el.set(qn('w:space'), "0")
+        el.set(qn('w:color'), color_hex)
+
+def _shade_cell(cell, fill_hex: Optional[str]) -> None:
     if not fill_hex:
         return
     tcPr = cell._tc.get_or_add_tcPr()
-    shd = tcPr.find(qn("w:shd"))
+    shd = tcPr.find(qn('w:shd'))
     if shd is None:
-        shd = OxmlElement("w:shd")
+        shd = OxmlElement('w:shd')
         tcPr.append(shd)
-    shd.set(qn("w:val"), "clear")
-    shd.set(qn("w:fill"), fill_hex)
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), fill_hex)
 
 
-def _add_table(doc, headers, rows, cfg, align_code, rtl):
+def _para_format(paragraph, align, rtl: bool, space_before: int = 0, space_after: int = 6) -> None:
+    paragraph.alignment = _map_align(align)
+    paragraph.paragraph_format.space_before = Pt(space_before or 0)
+    paragraph.paragraph_format.space_after = Pt(space_after or 0)
+    paragraph.paragraph_format.line_spacing = 1.0  
+    _set_paragraph_bidi(paragraph, rtl=rtl)
+
+def _add_para(doc, text, style=None, align=WD_ALIGN_LEFT, size=None, color=None, bold=None, rtl=False):
+    """Create a paragraph in the active document (python-docx)."""
+    p = doc.add_paragraph()
+    if style:
+        try:
+            p.style = style
+        except Exception:
+            pass
+    run = p.add_run(text or "")
+    if size:
+        run.font.size = Pt(size)
+    if color is not None:
+        r, g, b = _bgr_int_to_rgb_tuple(int(color))
+        run.font.color.rgb = RGBColor(r, g, b)
+    if bold is not None:
+        run.font.bold = bool(bold)
+
+    _para_format(p, align, rtl=rtl, space_before=0, space_after=6)
+    return p
+
+def _add_table(doc, headers, rows, cfg, rtl: bool):
+    """Create a table with headers/rows and apply width/borders/shading."""
     headers = headers or []
     rows = rows or []
-    if not headers and not rows:
-        return
 
-    num_cols = len(headers) if headers else len(rows[0])
-    num_rows = len(rows) + (1 if headers else 0)
+    n_rows = max(1, len(rows) + (1 if headers else 0))
+    n_cols = max(1, len(headers) if headers else (len(rows[0]) if rows and rows[0] else 1))
 
-    tbl = doc.add_table(rows=num_rows, cols=num_cols)
-    tbl.autofit = cfg.get("table_autofit", True)
-    _set_table_width_pct(tbl, cfg.get("table_preferred_width", 100))
-
-    font_rgb = _bgr_int_to_rgb_tuple(cfg.get("table_font_color", 0))
+    table = doc.add_table(rows=n_rows, cols=n_cols)
+    table.autofit = bool(cfg.get("table_autofit", True))
+    _set_table_width_pct(table, cfg.get("table_preferred_width", 100))
+    _set_table_borders(
+        table=table,
+        color_bgr=int(cfg.get("table_border_color", 0) or 0),
+        line_style=int(cfg.get("table_border_line_style", 1) or 1),
+        line_width=int(cfg.get("table_border_line_width", 1) or 1),
+        visible=bool(cfg.get("table_border_visible", True)),
+    )
     header_fill = _bgr_int_to_hex(cfg.get("table_header_shading_color"))
     body_fill = _bgr_int_to_hex(cfg.get("table_body_shading_color"))
-    font_size = cfg.get("table_font_size", 10)
+    font_rgb = _bgr_int_to_rgb_tuple(int(cfg.get("table_font_color", 0) or 0))
 
-    row_idx = 0
-
+    r_idx = 0
     if headers:
-        for c, h in enumerate(headers):
-            cell = tbl.cell(row_idx, c)
+        for c_idx in range(min(n_cols, len(headers))):
+            cell = table.cell(r_idx, c_idx)
             cell.text = ""
             p = cell.paragraphs[0]
-
-            run = p.add_run(str(h))
-            run.font.size = Pt(font_size)
+            run = p.add_run(str(headers[c_idx]))
+            run.font.size = Pt(cfg.get("table_font_size", 10))
             run.font.color.rgb = RGBColor(*font_rgb)
-
-            _apply_alignment_and_direction(p, align_code, rtl)
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            _set_paragraph_bidi(p, rtl)
             _shade_cell(cell, header_fill)
+        r_idx += 1
 
-        row_idx += 1
-
-    for row in rows:
-        for c, val in enumerate(row):
-            cell = tbl.cell(row_idx, c)
+    for r in rows[: n_rows - r_idx]:
+        for c_idx in range(min(n_cols, len(r))):
+            cell = table.cell(r_idx, c_idx)
             cell.text = ""
             p = cell.paragraphs[0]
-
-            run = p.add_run(str(val))
-            run.font.size = Pt(font_size)
+            run = p.add_run(str(r[c_idx]))
+            run.font.size = Pt(cfg.get("table_font_size", 10))
             run.font.color.rgb = RGBColor(*font_rgb)
-
-            _apply_alignment_and_direction(p, align_code, rtl)
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            _set_paragraph_bidi(p, rtl)
             _shade_cell(cell, body_fill)
+        r_idx += 1
 
-        row_idx += 1
 
+def _apply_header_footer(doc: Document, cfg: dict, rtl: bool) -> None:
+    section = doc.sections[0]
+    if int(cfg.get("orientation", 0) or 0) == 1:
+        section.orientation = WD_ORIENT.LANDSCAPE
+    else:
+        section.orientation = WD_ORIENT.PORTRAIT
 
-# =========================
-# MAIN BUILDER - FIXED VERSION
-# =========================
-def build_word_from_proposal(proposal, user_config, output_path, lang, visible=False):
-    if isinstance(proposal, str):
-        proposal = json.loads(proposal or "{}")
+    section.top_margin = Pt(cfg.get("margin_top", 72) or 72)
+    section.bottom_margin = Pt(cfg.get("margin_bottom", 72) or 72)
+    section.left_margin = Pt(cfg.get("margin_left", 72) or 72)
+    section.right_margin = Pt(cfg.get("margin_right", 72) or 72)
 
-    if not isinstance(user_config, dict):
-        user_config = {}
+    if cfg.get("enable_header"):
+        header = section.header
+        header.is_linked_to_previous = False
+        tbl = header.add_table(rows=1, cols=2, width=section.page_width)
+        tbl.autofit = True
+
+        logo_path = (cfg.get("header_logo_path") or "").strip()
+        if logo_path and os.path.exists(logo_path):
+            cell = tbl.cell(0, 0)
+            p = cell.paragraphs[0]
+            try:
+                p.add_run().add_picture(logo_path, width=Inches(float(cfg.get("header_logo_width", 5) or 5)))
+            except Exception as e:
+                logger.warning(f"Header logo add failed: {e}")
+        else:
+            tbl.cell(0, 0).text = ""
+        name = (cfg.get("company_name") or "").strip()
+        tag = (cfg.get("company_tagline") or "").strip()
+        cell = tbl.cell(0, 1)
+        cell.text = ""
+        p = cell.paragraphs[0]
+        if name:
+            r = p.add_run(name)
+            r.font.bold = True
+            r.font.size = Pt(max(cfg.get("heading_font_size", 14), 12))
+        if tag:
+            p.add_run("\n")
+            r2 = p.add_run(tag)
+            r2.font.size = Pt(cfg.get("font_size", 11))
+        p.alignment = _map_align(cfg.get("default_alignment", 0))
+        _set_paragraph_bidi(p, rtl)
+        
+    if cfg.get("enable_footer"):
+        footer = section.footer
+        footer.is_linked_to_previous = False
+        tbl = footer.add_table(rows=1, cols=3, width=section.page_width)
+        tbl.autofit = True
+
+        left = (cfg.get("footer_left_text") or "").strip()
+        center = (cfg.get("footer_center_text") or "").strip()
+        right = (cfg.get("footer_right_text") or "").strip()
+        p = tbl.cell(0, 0).paragraphs[0]
+        if left:
+            p.add_run(left)
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _set_paragraph_bidi(p, rtl)
+        p = tbl.cell(0, 1).paragraphs[0]
+        if center:
+            p.add_run(center + " ")
+        if cfg.get("footer_show_page_numbers", True):
+            _add_page_number_field(p)
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _set_paragraph_bidi(p, rtl)
+        p = tbl.cell(0, 2).paragraphs[0]
+        if right:
+            p.add_run(right)
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        _set_paragraph_bidi(p, rtl)
+
+def build_word_from_proposal(proposal_dict, user_config, output_path, language, visible=False):
+    """
+    Build a DOCX using python-docx. Language-aware (Arabic/English) formatting.
+    Renders 'points' as lines prefixed by '- ' (kept from your COM logic).
+    """
+    logger.info("word started to build ra bois")
+    if isinstance(proposal_dict, str):
+        proposal_dict = json.loads(proposal_dict)
 
     cfg = build_updated_config(default_CONFIG, user_config)
 
-    # FIXED: Determine RTL setting
-    reading_order = cfg.get("reading_order", WD_READINGORDER_LTR)
-    rtl_from_cfg = (reading_order == WD_READINGORDER_RTL)
-    rtl_from_lang = str(lang or "").lower().startswith("ar")
-    rtl = rtl_from_cfg or rtl_from_lang
+    # --- NEW: Handle text_alignment override ---
+    text_alignment = user_config.get("text_alignment")
+    if text_alignment is not None:
+        align_map = {
+            "left": WD_ALIGN_LEFT,
+            "center": WD_ALIGN_CENTER,
+            "right": WD_ALIGN_RIGHT,
+            "justify": WD_ALIGN_JUSTIFY,
+            0: WD_ALIGN_LEFT,
+            1: WD_ALIGN_CENTER,
+            2: WD_ALIGN_RIGHT,
+            3: WD_ALIGN_JUSTIFY
+        }
+        try:
+            if isinstance(text_alignment, str) and text_alignment.isdigit():
+                cfg["default_alignment"] = int(text_alignment)
+            else:
+                cfg["default_alignment"] = align_map.get(text_alignment, WD_ALIGN_LEFT)
+        except Exception as e:
+            logger.warning(f"Invalid text_alignment value: {text_alignment}, using default.")
+    # ----------------------------------------
 
-    # FIXED: Get alignment from config - it's already set by build_updated_config
-    align_code = cfg.get("default_alignment", WD_ALIGN_LEFT)
-    
-    # Validate alignment code is in valid range
-    if align_code not in (WD_ALIGN_LEFT, WD_ALIGN_CENTER, WD_ALIGN_RIGHT, WD_ALIGN_JUSTIFY):
-        logger.warning(f"Invalid alignment code {align_code}, using RIGHT for RTL, LEFT otherwise")
-        align_code = WD_ALIGN_RIGHT if rtl else WD_ALIGN_LEFT
 
-    logger.info(f"[wordcom] Effective alignment={align_code} (0=left,1=center,2=right,3=justify), rtl={rtl}")
+    lang = (language or "").lower()
+    rtl = (lang == "arabic")
+    cfg["reading_order"] = WD_READINGORDER_RTL if rtl else WD_READINGORDER_LTR
 
-    template_path = cfg.get("template_path")
-    try:
-        if template_path:
-            doc = Document(template_path)
-        else:
-            doc = Document()
-    except Exception:
-        doc = Document()
+    title = (proposal_dict.get("title") or "").strip()
+    sections = proposal_dict.get("sections", [])
+    logger.info(f"Generating Word doc with title: {title} and {len(sections)} sections")
 
-    # Title
-    title = proposal.get("title", "")
-    if title.strip():
+    doc = Document()
+    _apply_header_footer(doc, cfg, rtl)
+
+    # --- Title ---
+    if title:
         _add_para(
-            doc,
-            title.strip(),
-            cfg.get("title_style", "Title"),
-            cfg.get("title_font_size", 16),
-            cfg.get("title_font_color", 0),
-            True,
-            align_code,
-            rtl,
+            doc, title,
+            style=cfg.get("title_style", "Title"),
+            align=cfg.get("default_alignment", WD_ALIGN_LEFT),
+            size=cfg.get("title_font_size", 16),
+            color=cfg.get("title_font_color", 0),
+            bold=True,
+            rtl=rtl
         )
 
-    for sec in proposal.get("sections", []):
+    # --- Sections ---
+    for sec in sections:
         heading = (sec.get("heading") or "").strip()
         content = (sec.get("content") or "").strip()
         points = sec.get("points") or []
         table = sec.get("table") or {}
-
-        if heading:
-            _add_para(
-                doc,
-                heading,
-                cfg.get("heading_style", "Heading 1"),
-                cfg.get("heading_font_size", 14),
-                cfg.get("heading_font_color", 0),
-                True,
-                align_code,
-                rtl,
-            )
-
-        if content:
-            for line in content.split("\n"):
-                t = line.strip()
-                if t:
-                    _add_para(
-                        doc,
-                        t,
-                        cfg.get("normal_style", "Normal"),
-                        cfg.get("font_size", 11),
-                        cfg.get("content_font_color", 0),
-                        False,
-                        align_code,
-                        rtl,
-                    )
-
-        for pt in points:
-            t = (pt or "").strip()
-            if t:
-                _add_bullet_para(doc, t, cfg, align_code, rtl)
-
         headers = table.get("headers") or []
         rows = table.get("rows") or []
-        if headers or rows:
-            _add_table(doc, headers, rows, cfg, align_code, rtl)
 
-    abs_out = str(Path(output_path).resolve())
+        # Heading
+        if heading:
+            _add_para(
+                doc, heading,
+                style=cfg.get("heading_style", "Heading 1"),
+                align=cfg.get("default_alignment", WD_ALIGN_LEFT),
+                size=cfg.get("heading_font_size", 14),
+                color=cfg.get("heading_font_color", 0),
+                bold=True,
+                rtl=rtl
+            )
+
+        # Paragraph content
+        if content:
+            for para in content.split("\n"):
+                t = (para or "").strip()
+                if t:
+                    _add_para(
+                        doc, t,
+                        style=cfg.get("normal_style", "Normal"),
+                        align=cfg.get("default_alignment", WD_ALIGN_LEFT),
+                        size=cfg.get("font_size", 11),
+                        color=cfg.get("content_font_color", 0),
+                        bold=False,
+                        rtl=rtl
+                    )
+
+        # Bullet points
+        if points:
+            for ptxt in points:
+                t = str(ptxt or "").strip()
+                if not t:
+                    continue
+                _add_para(
+                    doc, f"- {t}",
+                    style=cfg.get("normal_style", "Normal"),
+                    align=cfg.get("default_alignment", WD_ALIGN_LEFT),
+                    size=cfg.get("points_font_size", 11),
+                    color=cfg.get("content_font_color", 0),
+                    bold=False,
+                    rtl=rtl
+                )
+
+        # Table
+        if headers or rows:
+            _add_table(doc, headers, rows, cfg, rtl=rtl)
+
+    # --- Save the document ---
+    abs_out = str(Path(output_path or default_CONFIG["output_path"]).resolve())
     Path(abs_out).parent.mkdir(parents=True, exist_ok=True)
     doc.save(abs_out)
+    logger.info(f"Document saved: {abs_out}")
     return abs_out

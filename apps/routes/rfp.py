@@ -12,9 +12,9 @@ from apps.api.services.supabase_service import (
 )
 from apps.wordgenAgent.app.document import generate_word_from_markdown
 
-from apps.PPT.core.ppt_generation import run_initial_generation
-from apps.PPT.core.ppt_regeneration import run_regeneration
-from apps.PPT.core.supabase_service import get_proposal_url
+from apps.app.core.ppt_generation import run_initial_generation
+from apps.app.core.ppt_regeneration import run_regeneration
+from apps.app.core.supabase_service import get_proposal_url
 
 logger = logging.getLogger("routes.rfp")
 router = APIRouter()
@@ -75,9 +75,10 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
 
 
 @router.post("/regenerate")
-async def regenerate(request: RegenRequest):
+def regenerate(request: RegenRequest):
     """
-    Regenerates the proposal based on the previous gen_id (base version) - STREAMING.
+    Regenerates the proposal based on the previous gen_id (base version).
+    Returns a streaming response with SSE events.
     """
     from apps.api.services import supabase_service
     from apps.regen_services import regen_prompt
@@ -94,7 +95,6 @@ async def regenerate(request: RegenRequest):
         base_markdown = supabase_service.get_markdown_content(uuid, base_gen_id)
         if not base_markdown:
             raise HTTPException(status_code=404, detail=f"No markdown found for gen_id={base_gen_id}")
-        
         regen_comments_str = json.dumps(comments, ensure_ascii=False)
         ok = supabase_service.create_regeneration_row(
             uuid=uuid,
@@ -103,11 +103,11 @@ async def regenerate(request: RegenRequest):
         )
         if not ok:
             raise HTTPException(status_code=400, detail="Failed to create regeneration version row")
-
+        
         def stream_generator():
             for chunk in regen_prompt.regenerate_markdown_with_comments_streaming(
                 uuid=uuid,
-                source_markdown=base_markdown,
+                source_markdown=base_markdown,  
                 gen_id=new_gen_id,
                 docConfig=doc_config,
                 language=language,
@@ -247,7 +247,7 @@ async def ppt_initialgen(body: PPTInitialGenRequest):
         
         # Validate template exists locally
         from pathlib import Path
-        from apps.PPT.config import settings
+        from apps.app.config import settings
         
         template_path = Path(settings.TEMPLATES_DIR) / body.template_id
         if not template_path.exists():
@@ -309,7 +309,7 @@ async def ppt_regeneration(body: PPTRegenRequest):
         
         # Validate template exists locally
         from pathlib import Path
-        from apps.PPT.config import settings
+        from apps.app.config import settings
         
         template_path = Path(settings.TEMPLATES_DIR) / body.template_id
         if not template_path.exists():
@@ -378,37 +378,53 @@ async def list_available_templates():
     """List all available local templates"""
     try:
         from pathlib import Path
-        from apps.PPT.config import settings
+        from apps.app.config import settings
         
         templates_dir = Path(settings.TEMPLATES_DIR)
         
         if not templates_dir.exists():
-            return {"templates": [], "error": "Templates directory not found"}
+            logger.warning(f"Templates directory not found: {templates_dir}")
+            return {"templates": [], "error": f"Templates directory not found: {templates_dir}"}
         
         templates = []
         for template_dir in templates_dir.iterdir():
             if template_dir.is_dir() and not template_dir.name.startswith('.'):
                 config_file = template_dir / "config.json"
                 
-                if config_file.exists():
-                    import json
-                    with open(config_file, 'r', encoding='utf-8') as f:
-                        config = json.load(f)
-                    
-                    templates.append({
-                        "id": template_dir.name,
-                        "name": config.get("name", template_dir.name),
-                        "description": config.get("description", ""),
-                        "version": config.get("version", "1.0.0")
-                    })
-                else:
-                    templates.append({
-                        "id": template_dir.name,
-                        "name": template_dir.name,
-                        "description": "Template configuration not found",
-                        "version": "unknown"
-                    })
+                try:
+                    if config_file.exists():
+                        import json
+                        with open(config_file, 'r', encoding='utf-8') as f:
+                            config = json.load(f)
+                        
+                        templates.append({
+                            "id": template_dir.name,
+                            "name": config.get("name", template_dir.name),
+                            "description": config.get("description", ""),
+                            "version": config.get("version", "1.0.0")
+                        })
+                    else:
+                        logger.warning(f"Config file not found for template: {template_dir.name}")
+                        templates.append({
+                            "id": template_dir.name,
+                            "name": template_dir.name,
+                            "description": "Template configuration not found",
+                            "version": "unknown"
+                        })
+                except UnicodeDecodeError as e:
+                    logger.error(f"Encoding error reading {config_file}: {e}")
+                    # Skip this template but continue with others
+                    continue
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON decode error in {config_file}: {e}")
+                    # Skip this template but continue with others
+                    continue
+                except Exception as e:
+                    logger.error(f"Error loading template {template_dir.name}: {e}")
+                    # Skip this template but continue with others
+                    continue
         
+        logger.info(f"Loaded {len(templates)} templates from {templates_dir}")
         return {
             "templates": templates,
             "total": len(templates)

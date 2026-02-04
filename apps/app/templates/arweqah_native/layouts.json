@@ -1,0 +1,7 @@
+{
+    "dummy": {
+        "name": "Dummy Layout",
+        "master_layout": "blank",
+        "elements": []
+    }
+}

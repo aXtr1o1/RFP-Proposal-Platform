@@ -1,0 +1,111 @@
+{
+  "table": {
+    "header_bg": "#10B981",
+    "header_text": "#FFFFFF",
+    "alternate_row_bg": "#F8F9FA",
+    "text": "#1F2937",
+    "border": "#E5E7EB",
+    "border_width": 1,
+    "rounded_corners": true,
+    "corner_radius": 8000
+  },
+  "chart": {
+    "bar_colors": [
+      "#06B6D4", "#F97316", "#8B5CF6", "#10B981",
+      "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#14B8A6", "#84CC16"
+    ],
+    "pie_colors": [
+      "#10B981", "#F59E0B", "#3B82F6",
+      "#8B5CF6", "#EF4444", "#06B6D4", "#EC4899", "#14B8A6", "#F97316", "#84CC16"
+    ],
+    "line_colors": [
+      "#F97316", "#06B6D4"
+    ],
+    "font": "Calibri",
+    "font_size": 12
+  },
+  "layout": {
+    "slide_width": 10.0,
+    "slide_height": 5.625,
+    "min_content_height": 1.0,
+    "max_content_height": 3.5,
+    "margin_top": 0.7,
+    "margin_bottom": 0.55,
+    "margin_left": 0.85,
+    "margin_right": 0.5
+  },
+  
+  "text_constraints": {
+    "max_title_length": 60,
+    "max_subtitle_length": 100,
+    "max_bullet_length": 110,
+    "max_paragraph_length": 500,
+    "truncate_overflow": true,
+    "ellipsis": "..."
+  },
+  
+  "bullets": {
+    "max_bullets_per_slide": 4,
+    "max_sub_bullets_per_bullet": 2,
+    "max_bullet_depth": 2,
+    "spacing_before": 6,
+    "spacing_after": 6,
+    "line_spacing": 1.5
+  },
+  
+  "typography": {
+    "fonts": {
+      "en": {
+        "heading": "Calibri",
+        "body": "Calibri",
+        "bold": "Calibri"
+      },
+      "ar": {
+        "heading": "Calibri",
+        "body": "Calibri",
+        "bold": "Calibri"
+      }
+    },
+    "font_sizes": {
+      "title": 44,
+      "heading_1": 28,
+      "heading_2": 24,
+      "body": 16,
+      "body_small": 14,
+      "caption": 11
+    },
+    "line_spacing": {
+      "title": 1.1,
+      "heading": 1.15,
+      "body": 1.5,
+      "bullets": 1.5
+    }
+  },
+  
+  "colors": {
+    "primary": "#0A2540",
+    "background": "#F8F9FA",
+    "text_primary": "#1F2937",
+    "text_secondary": "#4B5563",
+    "text_inverse": "#FFFFFF",
+    "accent_teal": "#06B6D4",
+    "accent_orange": "#F97316"
+  },
+  
+  "alignment": {
+    "en": {
+      "default": "left",
+      "title": "center",
+      "heading": "left",
+      "body": "left",
+      "bullets": "left"
+    },
+    "ar": {
+      "default": "right",
+      "title": "center",
+      "heading": "right",
+      "body": "right",
+      "bullets": "right"
+    }
+  }
+}

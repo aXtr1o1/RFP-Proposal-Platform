@@ -1,0 +1,26 @@
+{
+  "template_id": "native_test",
+  "template_name": "Native Mode Test",
+  "template_mode": "native",
+  "slide_dimensions": {
+    "width": 13.333333333333334,
+    "height": 7.5,
+    "aspect_ratio": "16:9",
+    "units": "inches"
+  },
+  "language_settings": {
+    "default": "en",
+    "supported": ["en"],
+    "auto_detect": true,
+    "en": { "rtl": false, "alignment": "left" }
+  },
+  "layout_mapping": {
+    "title": 0,
+    "title_and_content": 1,
+    "section": 2,
+    "two_column": 3,
+    "content": 1,
+    "bullets": 1,
+    "paragraph": 1
+  }
+}
