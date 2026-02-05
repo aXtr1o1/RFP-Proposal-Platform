@@ -8,9 +8,22 @@ from pathlib import Path
 import logging
 import json
 
-from apps.app.config import settings
+from ..config import settings
 
 logger = logging.getLogger("chart_service")
+
+
+def _chart_data_to_dict(chart_data) -> Dict:
+    """Convert ChartData model or dict to dict for chart_service."""
+    if chart_data is None:
+        return {}
+    if isinstance(chart_data, dict):
+        return chart_data
+    if hasattr(chart_data, "model_dump"):
+        return chart_data.model_dump()
+    if hasattr(chart_data, "dict"):
+        return chart_data.dict()
+    return {}
 
 class ChartService:
     """Service for creating native PowerPoint charts - fully dynamic from constraints.json"""
@@ -162,6 +175,27 @@ class ChartService:
             import traceback
             traceback.print_exc()
             return None
+
+    def create_chart(
+        self,
+        slide,
+        chart_data,
+        left: float,
+        top: float,
+        width: float,
+        height: float,
+    ):
+        """
+        Create a chart on the slide (API used by pptx_generator).
+        Accepts position/size in inches and ChartData model or dict.
+        """
+        data = _chart_data_to_dict(chart_data)
+        if not data:
+            logger.error("create_chart: no chart data")
+            return None
+        position = {"left": left, "top": top}
+        size = {"width": width, "height": height}
+        return self.add_native_chart(slide, data, position, size)
     
     def _extract_chart_data(self, chart_data: Dict) -> Tuple[List, List[Dict]]:
         """Dynamically extract chart data from multiple formats"""

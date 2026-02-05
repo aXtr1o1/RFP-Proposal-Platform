@@ -5,7 +5,7 @@ Handles breaking long paragraphs into bullets and formatting text appropriately
 
 import re
 from typing import List
-from apps.app.models.presentation import BulletPoint
+from ..models.presentation import BulletPoint
 
 
 def break_long_paragraph_to_bullets(text: str, max_bullet_length: int = 120) -> List[BulletPoint]:

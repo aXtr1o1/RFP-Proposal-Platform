@@ -1,16 +1,16 @@
 import logging
 from typing import List, Dict, Any
-from apps.app.models.presentation import SlideContent, BulletPoint
+from ..models.presentation import SlideContent, BulletPoint
 
 logger = logging.getLogger("content_validator")
 
-MAX_BULLETS_PER_SLIDE = 4            # Balanced for readability
-MAX_SUB_BULLETS_PER_BULLET = 2
-MAX_CONTENT_HEIGHT_INCHES = 4.0      # Slightly stricter to prevent cut‑off
-CHAR_LIMIT_PER_SLIDE = 750          # Keep for overall content volume
-MAX_BULLET_LENGTH = 180
-AGENDA_MAX_BULLETS = 5
-TABLE_MAX_ROWS = 3                   # Stricter split for tables to avoid overflow
+MAX_BULLETS_PER_SLIDE = 6            # Increased - body area is ~5.2" tall, can fit 6 bullets
+MAX_SUB_BULLETS_PER_BULLET = 3       # Allow more sub-bullets
+MAX_CONTENT_HEIGHT_INCHES = 5.0      # Match actual body area height (~5.2")
+CHAR_LIMIT_PER_SLIDE = 1200          # Increased for fuller slides
+MAX_BULLET_LENGTH = 200              # Allow slightly longer bullets
+AGENDA_MAX_BULLETS = 7               # Agenda can fit more items
+TABLE_MAX_ROWS = 6                   # Tables can fit more rows with proper styling
 
 
 def validate_presentation(slides: List[SlideContent]) -> List[SlideContent]:
@@ -96,7 +96,7 @@ def validate_presentation(slides: List[SlideContent]) -> List[SlideContent]:
         
         # ✅ CLEAN BULLET TEXT: Remove periods from bullet points
         if has_bullets and slide.bullets:
-            from apps.app.utils.text_formatter import clean_bullet_text
+            from .text_formatter import clean_bullet_text
             for bullet in slide.bullets:
                 if hasattr(bullet, 'text') and bullet.text:
                     original_text = bullet.text
@@ -394,7 +394,7 @@ def estimate_content_height(bullets: List[BulletPoint]) -> float:
                 sub_height += 0.28 * sub_lines
         
         # Add spacing between bullets
-        spacing = 0.18 if bullet.sub_bullets else 0.12
+        spacing = 0.15 if bullet.sub_bullets else 0.10  # Slightly tighter spacing
         
         total_height += main_height + sub_height + spacing
     
@@ -472,11 +472,11 @@ def smart_split_bullets(bullets: List[BulletPoint], slide_title: str, layout_hin
     total_height = estimate_content_height(bullets)
     total_chars = count_total_characters(bullets)
     
-    # Be conservative - only split if truly needed
+    # Be very conservative - only split if truly overflowing
     needs_split = (
-        total_bullets > MAX_BULLETS_PER_SLIDE + 1 or
-        total_height > MAX_CONTENT_HEIGHT_INCHES or
-        (total_bullets > MAX_BULLETS_PER_SLIDE and total_chars > CHAR_LIMIT_PER_SLIDE)
+        total_bullets > MAX_BULLETS_PER_SLIDE + 2 or  # Allow 2 extra bullets before splitting
+        total_height > MAX_CONTENT_HEIGHT_INCHES + 0.5 or  # Allow some height buffer
+        (total_bullets > MAX_BULLETS_PER_SLIDE + 1 and total_chars > CHAR_LIMIT_PER_SLIDE + 200)  # More lenient
     )
     
     if not needs_split:

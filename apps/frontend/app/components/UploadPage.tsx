@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import MarkdownRenderer from './MarkdownRenderer.tsx';
 import { saveAllComments, safeJsonParse } from "./utils";
 
-const DEFAULT_API_BASE_URL = `http://${process.env.NEXT_PUBLIC_API_HOST}:8000/api`; 
+const DEFAULT_API_BASE_URL = `http://localhost:8000`; 
 const resolveApiBaseUrl = () => {
   const raw = (process.env.NEXT_PUBLIC_API_BASE_URL || "").trim();
   if (!raw) {
@@ -1127,7 +1127,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
   }, []);
 
   const applyRecordToState = useCallback(
-    (record: ParsedWordGenRecord) => {
+    async (record: ParsedWordGenRecord) => {
       setSelectedUseCase(record.uuid);
       setSelectedGenId(record.gen_id);
       setJobUuid(record.uuid);
@@ -1169,7 +1169,43 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setPdfError(null);
       setIsPdfConverting(false);
 
-      const markdown = record.generated_markdown || "";
+      let markdown = record.generated_markdown || "";
+      
+      // If markdown is empty, try to fetch it from Supabase
+      if (!markdown && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from("word_gen")
+            .select("generated_markdown, proposal")
+            .eq("uuid", record.uuid)
+            .eq("gen_id", record.gen_id)
+            .limit(1)
+            .maybeSingle();
+          
+          if (!error && data) {
+            if (data.generated_markdown && typeof data.generated_markdown === "string") {
+              markdown = data.generated_markdown;
+            }
+            // Also update wordLink if we have proposal URL
+            if (data.proposal && typeof data.proposal === "string") {
+              try {
+                const proposalMeta = JSON.parse(data.proposal);
+                if (proposalMeta?.wordLink) {
+                  setWordLink(proposalMeta.wordLink);
+                }
+              } catch {
+                // If proposal is not JSON, it might be a direct URL
+                if (data.proposal.startsWith("http")) {
+                  setWordLink(data.proposal);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to fetch markdown from Supabase for version", err);
+        }
+      }
+      
       setMarkdownContent(markdown);
       setGeneratedDocument(
         proposalSnapshot.generatedDocument ||
@@ -1192,7 +1228,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
       setProcessingStage("");
       setUploadProgress(0);
     },
-    [pendingRegenCommentsRef, setPdfLinkSafely, setPdfError, setIsPdfConverting]
+    [pendingRegenCommentsRef, setPdfLinkSafely, setPdfError, setIsPdfConverting, supabase]
   );
 
   const useCaseEntries = useMemo<UseCaseHistoryEntry[]>(() => {
@@ -1312,8 +1348,8 @@ const UploadPage: React.FC<UploadPageProps> = () => {
     }
   }, [generationHistory, getGenerationLabel, supabase]);
 
-  const handleSelectHistoryItem = useCallback((record: ParsedWordGenRecord) => {
-    applyRecordToState(record);
+  const handleSelectHistoryItem = useCallback(async (record: ParsedWordGenRecord) => {
+    await applyRecordToState(record);
     setExpandedVersionDetails(prev => ({
       ...prev,
       [record.gen_id]: true,
@@ -2228,7 +2264,7 @@ const UploadPage: React.FC<UploadPageProps> = () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "application/json",
+          "Accept": "text/event-stream, application/json",
         },
         body: JSON.stringify({
           uuid: jobUuid,

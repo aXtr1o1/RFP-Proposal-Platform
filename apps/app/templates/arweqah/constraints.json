@@ -161,6 +161,21 @@
     "dark_background": "#0D2026"
   },
   
+  "slide_color": {
+    "description": "Background tone per slide type: light = use dark fonts/icons, dark = use light fonts/icons",
+    "title_slide": "dark",
+    "section": "dark",
+    "section_header": "dark",
+    "agenda": "dark",
+    "agenda_items": "light",
+    "content": "light",
+    "chart": "dark",
+    "table": "light",
+    "bullets": "light",
+    "paragraph": "light",
+    "four_box": "light"
+  },
+  
   "alignment": {
     "ar": {
       "default": "right",

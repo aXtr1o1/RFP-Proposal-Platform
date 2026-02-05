@@ -17,3 +17,4 @@ httpx==0.23.3
 # --- Added for python-docx implementation ---
 python-docx==1.1.2
 lxml==5.2.1
+python-pptx

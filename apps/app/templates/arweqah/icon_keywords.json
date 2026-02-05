@@ -1,0 +1,559 @@
+{
+  "description": "Keyword-to-icon routing rules for PPT headings. Each rule lists common keywords/synonyms that should trigger the most relevant icon. Use priority to break ties (higher wins).",
+  "match_policy": {
+    "normalization": "lowercase + trim + collapse spaces",
+    "matching": "substring match on normalized heading text (developer can swap to token/regex later)",
+    "tie_break": "highest priority, then first rule order"
+  },
+  "rules": [
+    {
+      "id": "risk_warning_alert",
+      "priority": 95,
+      "keywords": [
+        "risk",
+        "warning",
+        "alert",
+        "issue",
+        "issues",
+        "blocker",
+        "blockers",
+        "problem",
+        "problems",
+        "critical",
+        "incident",
+        "mitigation",
+        "failure",
+        "exceptions",
+        "caution",
+        "attention"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_d37780b98d09.png",
+        "alt": ["Icons/icon_title_cbd3a673e2dc.png"]
+      }
+    },
+    {
+      "id": "compliance_verified_audit",
+      "priority": 90,
+      "keywords": [
+        "compliance",
+        "compliant",
+        "audit",
+        "audit-ready",
+        "audit trail",
+        "governance",
+        "policy",
+        "policies",
+        "security",
+        "controls",
+        "control",
+        "verified",
+        "validation",
+        "validated",
+        "certified",
+        "trust",
+        "assurance",
+        "attestation",
+        "evidence",
+        "proof"
+      ],
+      "icons": {
+        "section": "Icons/icon_section_4b040caf1aed.png"
+      }
+    },
+    {
+      "id": "strategy_roadmap_direction",
+      "priority": 85,
+      "keywords": [
+        "strategy",
+        "strategic",
+        "roadmap",
+        "plan",
+        "planning",
+        "approach",
+        "direction",
+        "journey",
+        "path",
+        "framework",
+        "playbook",
+        "methodology",
+        "execution plan",
+        "go-to-market",
+        "gtm"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_95fd1e1204b7.png",
+        "alt": ["Icons/icon_title_0d80b8d87de6.png", "Icons/icon_title_3ebc6dddf071.png"]
+      }
+    },
+    {
+      "id": "process_workflow_flow",
+      "priority": 85,
+      "keywords": [
+        "process",
+        "workflow",
+        "flow",
+        "pipeline",
+        "steps",
+        "procedure",
+        "sop",
+        "runbook",
+        "orchestration",
+        "sequence",
+        "routing",
+        "decision",
+        "logic"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_0f392e8bfb09.png",
+        "alt": ["Icons/icon_section_ae7e274004f8.png"]
+      }
+    },
+    {
+      "id": "architecture_blueprint_spec",
+      "priority": 82,
+      "keywords": [
+        "architecture",
+        "infrastructure",
+        "system design",
+        "design",
+        "blueprint",
+        "spec",
+        "specification",
+        "diagram",
+        "components",
+        "stack",
+        "modules",
+        "integration",
+        "interfaces"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_117b517bb0eb.png"
+      }
+    },
+    {
+      "id": "analytics_metrics_growth",
+      "priority": 80,
+      "keywords": [
+        "analytics",
+        "metrics",
+        "kpi",
+        "kpis",
+        "performance",
+        "growth",
+        "trend",
+        "trends",
+        "chart",
+        "charts",
+        "graph",
+        "dashboard",
+        "reporting",
+        "insights",
+        "numbers",
+        "stats",
+        "statistics"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_4c89d2dce9a7.png",
+        "alt": ["Icons/icon_title_9eaaf97e49c7.png", "Icons/icon_title_47751abf639f.png"]
+      }
+    },
+    {
+      "id": "presentation_deck_review",
+      "priority": 78,
+      "keywords": [
+        "presentation",
+        "present",
+        "deck",
+        "slides",
+        "slide",
+        "pitch",
+        "review",
+        "readout",
+        "briefing",
+        "summary",
+        "overview"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_5cb2f5c64610.png"
+      }
+    },
+    {
+      "id": "finance_pricing_roi",
+      "priority": 80,
+      "keywords": [
+        "pricing",
+        "cost",
+        "costs",
+        "budget",
+        "roi",
+        "payback",
+        "revenue",
+        "margin",
+        "unit economics",
+        "mrr",
+        "arr",
+        "billing",
+        "invoice",
+        "invoicing",
+        "payment",
+        "payments",
+        "commercials"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_8110312a57ab.png",
+        "alt": ["Icons/icon_title_46e79684d78b.png", "Icons/icon_title_b44be6f37921.png"],
+        "section": "Icons/icon_section_cc065a161fdf.png"
+      }
+    },
+    {
+      "id": "costing_estimation_modeling",
+      "priority": 74,
+      "keywords": [
+        "estimate",
+        "estimation",
+        "forecast",
+        "model",
+        "modeling",
+        "calculation",
+        "calculator",
+        "costing",
+        "tco",
+        "pricing model",
+        "assumptions"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_b44be6f37921.png"
+      }
+    },
+    {
+      "id": "team_people_stakeholders",
+      "priority": 75,
+      "keywords": [
+        "team",
+        "people",
+        "leadership",
+        "stakeholders",
+        "owners",
+        "roles",
+        "responsibilities",
+        "org",
+        "organization",
+        "users",
+        "customers",
+        "personas",
+        "champion"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_17924a2c1d47.png",
+        "alt": ["Icons/icon_title_a5c6dbf2782c.png", "Icons/icon_title_f55e14ab764e.png"],
+        "section": "Icons/icon_section_8ec2dedf1678.png"
+      }
+    },
+    {
+      "id": "ai_agents_bots",
+      "priority": 76,
+      "keywords": [
+        "ai",
+        "genai",
+        "llm",
+        "agent",
+        "agents",
+        "agentic",
+        "copilot",
+        "assistant",
+        "bot",
+        "chatbot",
+        "automation agent",
+        "orchestrator"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_db9f78a7fcbb.png"
+      }
+    },
+    {
+      "id": "scan_detect_extract_capture",
+      "priority": 72,
+      "keywords": [
+        "scan",
+        "scanning",
+        "detect",
+        "detection",
+        "capture",
+        "recognize",
+        "recognition",
+        "extract",
+        "extraction",
+        "identify",
+        "classification",
+        "tagging",
+        "parse",
+        "parsing",
+        "ingestion"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_e5499803143f.png"
+      }
+    },
+    {
+      "id": "design_edit_ui_ux",
+      "priority": 70,
+      "keywords": [
+        "design",
+        "ui",
+        "ux",
+        "branding",
+        "layout",
+        "style",
+        "theme",
+        "typography",
+        "wireframe",
+        "mockup",
+        "prototype",
+        "edit",
+        "editing",
+        "revamp",
+        "creative"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_f7d641e3820e.png"
+      }
+    },
+    {
+      "id": "schedule_timeline_deadlines",
+      "priority": 70,
+      "keywords": [
+        "schedule",
+        "timeline",
+        "calendar",
+        "date",
+        "dates",
+        "deadline",
+        "milestone",
+        "milestones",
+        "sprint",
+        "week",
+        "month",
+        "plan date",
+        "delivery date",
+        "due"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_cd78d0d3ca36.png",
+        "alt": ["Icons/icon_title_97cc958fb024.png", "Icons/icon_title_1921156f5d41.png"],
+        "section": "Icons/icon_section_e56fc5d8ab1b.png"
+      }
+    },
+    {
+      "id": "done_approved_success",
+      "priority": 66,
+      "keywords": [
+        "done",
+        "completed",
+        "complete",
+        "approved",
+        "passed",
+        "success",
+        "successful",
+        "validated",
+        "verified",
+        "ok",
+        "go-live"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_659af7a6f05e.png"
+      }
+    },
+    {
+      "id": "innovation_new_magic",
+      "priority": 68,
+      "keywords": [
+        "innovation",
+        "innovative",
+        "new",
+        "next",
+        "future",
+        "upgrade",
+        "enhancement",
+        "improvement",
+        "feature",
+        "delta"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_6c1bfeaf1547.png"
+      }
+    },
+    {
+      "id": "goals_targets_objectives",
+      "priority": 73,
+      "keywords": [
+        "goal",
+        "goals",
+        "target",
+        "targets",
+        "objective",
+        "objectives",
+        "outcome",
+        "outcomes",
+        "okrs",
+        "kpi target"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_b7eddfefa3e2.png",
+        "alt": ["Icons/icon_title_9a2209e06283.png"]
+      }
+    },
+    {
+      "id": "welcome_intro_kickoff",
+      "priority": 60,
+      "keywords": [
+        "intro",
+        "introduction",
+        "welcome",
+        "hello",
+        "kickoff",
+        "start",
+        "about"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_146ba828d85e.png"
+      }
+    },
+    {
+      "id": "deliverables_package_outputs",
+      "priority": 62,
+      "keywords": [
+        "deliverable",
+        "deliverables",
+        "output",
+        "outputs",
+        "artifact",
+        "artifacts",
+        "package",
+        "handover",
+        "release"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_41cba2c0c465.png",
+        "alt": ["Icons/icon_title_57ed98ee057a.png", "Icons/icon_title_aca8a9f88a06.png"]
+      }
+    },
+    {
+      "id": "training_progress_enablement",
+      "priority": 55,
+      "keywords": [
+        "training",
+        "enablement",
+        "upskilling",
+        "learning",
+        "onboarding",
+        "ramp",
+        "progress"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_1586b04db45d.png"
+      }
+    },
+    {
+      "id": "tier_grade_level",
+      "priority": 54,
+      "keywords": [
+        "tier",
+        "grade",
+        "level",
+        "class a",
+        "class b",
+        "class c",
+        "rating",
+        "rank"
+      ],
+      "icons": {
+        "title": "Icons/icon_title_b67e47e4e18b.png"
+      }
+    },
+    {
+      "id": "research_search_discovery",
+      "priority": 58,
+      "keywords": [
+        "research",
+        "search",
+        "discover",
+        "discovery",
+        "explore",
+        "lookup",
+        "web",
+        "market scan",
+        "competitive"
+      ],
+      "icons": {
+        "section": "Icons/icon_section_f5dc1abd0a58.png"
+      }
+    },
+    {
+      "id": "duplicate_copy_version",
+      "priority": 52,
+      "keywords": [
+        "copy",
+        "duplicate",
+        "clone",
+        "version",
+        "versioning",
+        "regenerate",
+        "reuse"
+      ],
+      "icons": {
+        "section": "Icons/icon_section_fb2cb00ca616.png"
+      }
+    },
+    {
+      "id": "settings_ops_configuration",
+      "priority": 56,
+      "keywords": [
+        "settings",
+        "configuration",
+        "setup",
+        "ops",
+        "operations",
+        "monitoring",
+        "runtime",
+        "deployment",
+        "infrastructure ops"
+      ],
+      "icons": {
+        "section": "Icons/icon_section_ae7e274004f8.png"
+      }
+    },
+    {
+      "id": "logistics_transport_movement",
+      "priority": 50,
+      "keywords": [
+        "transport",
+        "logistics",
+        "delivery",
+        "shipping",
+        "fleet",
+        "travel",
+        "movement"
+      ],
+      "icons": {
+        "section": "Icons/icon_section_a7156adb50cc.png"
+      }
+    },
+    {
+      "id": "thanks_acknowledgements",
+      "priority": 48,
+      "keywords": [
+        "thanks",
+        "thank you",
+        "gratitude",
+        "acknowledgement",
+        "acknowledgements",
+        "partners",
+        "support"
+      ],
+      "icons": {
+        "section": "Icons/icon_section_bcaef01f0807.png"
+      }
+    }
+  ]
+}

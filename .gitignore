@@ -16,6 +16,9 @@ ecosystem.config.js
 # Output folder
 /output/
 
+# Template icon tint cache (generated at runtime)
+.icon_tint_cache/
+
 
 #.env
 .venv

@@ -5,10 +5,10 @@ from uuid import uuid4
 from typing import Dict, Any, Optional
 from pathlib import Path
 
-from apps.app.services.pptx_generator import PptxGenerator
-from apps.app.services.openai_service import get_openai_service
-from apps.app.core.supabase_service import SupabaseService
-from apps.app.config import settings
+from ..services.pptx_generator import PptxGenerator
+from ..services.openai_service import get_openai_service
+from .supabase_service import SupabaseService
+from ..config import settings
 
 logger = logging.getLogger("ppt_generation")
 
