@@ -82,15 +82,16 @@ class TableData(BaseModel):
 class SlideContent(BaseModel):
     """Single slide content"""
     # Layout & title
-    layout_type: Literal["title", "content", "section", "two_column"] = Field(
+    layout_type: Optional[str] = Field(
         default="content",
-        description="Slide layout type: title | content | section | two_column"
+        description="Slide layout type: title | content | section | bullets | paragraph | table | chart | two_column | comparison | blank | agenda"
     )
     layout_hint: Optional[str] = Field(
         default=None,
         description="Optional template hint (e.g., paragraph, short_boxes, four_box_with_icons)"
     )
     title: str = Field(default="", description="Slide title, <= 100 chars")
+    subtitle: Optional[str] = Field(None, description="Slide subtitle")
 
     # Icon
     icon_name: Optional[str] = Field(
@@ -100,11 +101,13 @@ class SlideContent(BaseModel):
 
     # Content blocks (only one should be populated)
     content: Optional[str] = Field(None, description="Plain text content")
+    paragraph: Optional[str] = Field(None, description="Paragraph text content")
     bullets: Optional[List[BulletPoint]] = Field(None, description="Bullet points")
     chart_data: Optional[ChartData] = Field(None, description="Chart data")
     table_data: Optional[TableData] = Field(None, description="Table data")
     
     # Two-column layout
+    two_column: Optional[bool] = Field(None, description="Whether this is a two-column layout")
     left_content: Optional[List[str]] = Field(None, description="Left column content")
     right_content: Optional[List[str]] = Field(None, description="Right column content")
 
@@ -133,6 +136,7 @@ class PresentationData(BaseModel):
     title: str = Field(default="Untitled Presentation", description="Presentation title")
     subtitle: Optional[str] = Field(None, description="Presentation subtitle")
     author: Optional[str] = Field("Impetus Strategy", description="Author/company name")
+    language: Optional[str] = Field(default="en", description="Language code (e.g., 'en', 'ar')")
     slides: List[SlideContent] = Field(default_factory=list, description="List of slides")
 
     class Config:

@@ -1,0 +1,104 @@
+{
+  "template_id": "arweqah_native",
+  "template_name": "Arweqah Native (Hybrid)",
+  "version": "5.0.0",
+  "template_mode": "native",
+  "description": "Hybrid Native Mode: Uses PPTX Layouts with Background Images",
+  
+  "slide_dimensions": {
+    "width": 10,
+    "height": 7.5,
+    "aspect_ratio": "4:3",
+    "units": "inches"
+  },
+  
+  "language_settings": {
+    "default": "en",
+    "supported": ["ar", "en"],
+    "ar": {
+      "rtl": true,
+      "alignment": "right",
+      "default_font": "Tajawal",
+      "heading_font": "Cairo"
+    },
+    "en": {
+      "rtl": false,
+      "alignment": "center",
+      "default_font": "Open Sans",
+      "heading_font": "Roboto"
+    }
+  },
+  
+  "layout_mapping": {
+    "title_slide": 0,
+    "title_and_content": 1,
+    "section": 2,
+    "section_header": 2,
+    "two_column": 3,
+    "comparison": 4,
+    "content": 1,
+    "bullets": 1,
+    "chart": 1,
+    "table": 1,
+    "agenda": 1,
+    "blank": 6
+  },
+  
+  "content_type_mapping": {
+    "title": "title_slide",
+    "section": "section_header",
+    "content": "title_and_content",
+    "bullets": "title_and_content",
+    "paragraph": "title_and_content",
+    "table": "title_and_content",
+    "chart": "title_and_content",
+    "two_column": "two_content",
+    "comparison": "comparison",
+    "agenda": "title_and_content",
+    "blank": "blank"
+  },
+  
+  "background_images": {
+    "title_slide": "Background/bg_section.png",
+    "section": "Background/bg_section.png",
+    "section_header": "Background/bg_section.png",
+    "content": "Background/bg_content.png",
+    "title_and_content": "Background/bg_content.png",
+    "bullets": "Background/bg_content.png",
+    "paragraph": "Background/bg_content.png",
+    "two_column": "Background/bg_content.png",
+    "table": "Background/bg_full_light.png",
+    "chart": "Background/bg_full_light.png",
+    "agenda": "Background/bg_full_light.png"
+  },
+  
+  "page_numbering": {
+    "enabled": true,
+    "skip_title": true,
+    "position_en": {
+      "offset_x": 9.0,
+      "offset_y": 6.5
+    },
+    "position_ar": {
+      "offset_x": 0.5,
+      "offset_y": 6.5
+    },
+    "shape": {
+      "width": 0.5,
+      "height": 0.5,
+      "fill_color": "C6C3BE",
+      "text_color": "FFFCEC"
+    },
+    "font": {
+      "name": "Roboto",
+      "size": 12,
+      "bold": true
+    }
+  },
+  
+  "features": {
+    "background_overlay": true,
+    "icon_integration": true,
+    "rtl_support": true
+  }
+}

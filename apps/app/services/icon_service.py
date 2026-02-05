@@ -7,7 +7,7 @@ from difflib import SequenceMatcher
 
 
 import cairosvg
-from apps.app.config import settings
+from ..config import settings
 
 
 logger = logging.getLogger("icon_service")

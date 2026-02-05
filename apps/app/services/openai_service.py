@@ -5,8 +5,8 @@ from typing import AsyncGenerator, Optional
 from datetime import datetime
 
 from openai import AsyncOpenAI, APIError, RateLimitError, APIConnectionError
-from apps.app.config import settings
-from apps.app.models.presentation import PresentationData
+from ..config import settings
+from ..models.presentation import PresentationData
 
 logger = logging.getLogger("openai_service")
 
@@ -60,7 +60,7 @@ class OpenAIService:
         logger.info(f"    Single API call mode")
         
         # Get prompts
-        from apps.app.core.ppt_prompts import get_system_prompt, get_user_prompt
+        from ..core.ppt_prompts import get_system_prompt, get_user_prompt
         
         system_prompt = get_system_prompt(language, template_id)
         user_prompt = get_user_prompt(markdown_content, language, user_preference)

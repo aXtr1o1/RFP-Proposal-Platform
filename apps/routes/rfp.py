@@ -75,9 +75,10 @@ def initialgen(uuid: str = Path(...), request: InitialGenRequest = Body(...)):
 
 
 @router.post("/regenerate")
-async def regenerate(request: RegenRequest):
+def regenerate(request: RegenRequest):
     """
     Regenerates the proposal based on the previous gen_id (base version).
+    Returns a streaming response with SSE events.
     """
     from apps.api.services import supabase_service
     from apps.regen_services import regen_prompt
@@ -102,27 +103,23 @@ async def regenerate(request: RegenRequest):
         )
         if not ok:
             raise HTTPException(status_code=400, detail="Failed to create regeneration version row")
-        result = regen_prompt.regenerate_markdown_with_comments(
-            uuid=uuid,
-            source_markdown=base_markdown,  
-            gen_id=new_gen_id,
-            docConfig=doc_config,
-            language=language,
-            comments=comments,
-        )
-
-        logger.info(f"Result from regenerate_markdown_with_comments: {result}")
         
-        return {
-            "status": "success",
-            "uuid": uuid,
-            "base_gen_id": base_gen_id,
-            "regen_gen_id": new_gen_id,
-            "language": language,
-            "wordLink": result.get("wordLink"),
-            "updated_markdown": result.get("updated_markdown")
-        }
+        def stream_generator():
+            for chunk in regen_prompt.regenerate_markdown_with_comments_streaming(
+                uuid=uuid,
+                source_markdown=base_markdown,  
+                gen_id=new_gen_id,
+                docConfig=doc_config,
+                language=language,
+                comments=comments,
+            ):
+                yield chunk
 
+        return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+    except HTTPException:
+        logger.exception("regenerate HTTP error")
+        raise
     except Exception as e:
         logger.exception("regenerate endpoint failed")
         raise HTTPException(status_code=500, detail=f"Regeneration failed: {str(e)}")
