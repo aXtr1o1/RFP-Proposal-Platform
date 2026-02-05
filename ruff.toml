@@ -1,0 +1,16 @@
+# Ruff configuration for RFP Proposal Platform
+# https://docs.astral.sh/ruff/configuration/
+
+target-version = "py311"
+line-length = 100
+
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    "app/outputs",
+    "apps/output",
+    "cache",
+]

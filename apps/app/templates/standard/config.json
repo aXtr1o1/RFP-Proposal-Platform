@@ -96,10 +96,48 @@
     }
   },
   
-  "features": {
-    "auto_fit_text": true,
-    "icon_integration": true,
-    "chart_generation": true,
-    "table_generation": true
+  "ai_config": {
+    "content_optimization": true,
+    "auto_icon_selection": true,
+    "smart_layout_selection": true,
+    "visual_data_detection": true
+  },
+
+  "content_type_mapping": {
+    "title": "title_slide",
+    "content": "content_slide",
+    "section": "section_header",
+    "two_column": "two_column",
+    "agenda": "agenda_slide",
+    "introduction": "introduction_slide",
+    "dna_values": "dna_values_slide",
+    "sectors": "sectors_grid_slide",
+    "statistics": "statistics_slide",
+    "achievements": "statistics_slide",
+    "added_value": "added_value_slide",
+    "project_detail": "project_detail_slide",
+    "chart": "content_with_chart",
+    "table": "content_with_table",
+    "content_with_image": "content_with_image"
+  },
+
+  "page_numbering": {
+    "enabled": true,
+    "skip_title_slide": true,
+    "skip_section_headers": false,
+    "style": "diamond",
+    "shape": {
+      "width": 0.8,
+      "height": 0.4,
+      "fill_color": "C6C3BE"
+    },
+    "position_en": {
+      "offset_x": 0.2,
+      "offset_y": 6.8
+    },
+    "position_ar": {
+      "offset_x": 9.6,
+      "offset_y": 6.8
+    }
   }
 }

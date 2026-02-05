@@ -1111,26 +1111,739 @@ class PptxGenerator:
         
         # Validate slides
         presentation_data.slides = validate_presentation(presentation_data.slides)
+
+        self.prs = Presentation()
+        self.prs.slide_width = Inches(self.constraints['layout']['slide_width'])
+        self.prs.slide_height = Inches(self.constraints['layout']['slide_height'])
+
+        for slide_data in presentation_data.slides:
+            if slide_data.title:
+                slide_data.title = self._scrub_title(slide_data.title)
+
+        # Title slide
+        try:
+            self._create_title_slide_dynamic(presentation_data)
+        except Exception as e:
+            logger.error(f"❌ Title slide: {e}")
+
+        # Content slides
+        for idx, slide_data in enumerate(presentation_data.slides):
+            logger.info(f"🔨 Slide {idx + 2}: {slide_data.title[:50]}...")
+
+            try:
+                layout_type = (slide_data.layout_type or "content").lower()
+                layout_hint = self._get_layout_hint(slide_data)
+
+                if layout_type == "section":
+                    content_type = "section"
+                elif layout_type == "two_column":
+                    content_type = "two_column"
+                elif layout_hint:
+                    content_type = layout_hint
+                elif slide_data.table_data:
+                    content_type = "table"
+                elif slide_data.chart_data:
+                    content_type = "chart"
+                elif slide_data.bullets:
+                    content_type = "bullets"
+                else:
+                    content_type = "content"
+
+                self._create_slide_from_json(content_type, slide_data, page_num=idx + 2)
+
+            except Exception as e:
+                logger.error(f"❌ Slide error: {e}")
+                logger.exception(e)
+
+        output_path = self._get_output_path(presentation_data.title)
+        self.prs.save(output_path)
+
+        logger.info(f"✅ Generated: {output_path}")
+        logger.info(f"   Slides: {len(self.prs.slides)}, Language: {self.target_language}")
+
+        return output_path
+
+    # ========================================================================
+    # TITLE SLIDE
+    # ========================================================================
+
+    def _create_title_slide_dynamic(self, presentation_data: PresentationData) -> None:
+        """Create title slide with language-specific positioning"""
+        layout_config = self.layouts.get('title_slide', {})
+        slide_layout = self._get_slide_layout(layout_config)
+        slide = self.prs.slides.add_slide(slide_layout)
+        self._clear_default_placeholders(slide)
+
+        bg_config = layout_config.get('background', {})
+        if isinstance(bg_config, str):
+            # Look up background from config.json backgrounds section
+            bg_config = self.config.get('backgrounds', {}).get(bg_config, {})
+        if isinstance(bg_config, dict) and bg_config.get('type') == 'image':
+            self._add_background(slide, bg_config)
+
+        elements = layout_config.get('elements', [])
         
-        # Load template PPTX to get layouts
-        template_pptx = self.template_dir / "template.pptx"
-        if template_pptx.exists():
-            logger.info(f"  Loading template: {template_pptx.name}")
-            self.prs = Presentation(str(template_pptx))
+        # Logo
+        for element in elements:
+            if element.get('type') == 'image' and element.get('id') == 'logo':
+                self._add_logo(slide, element)
+
+        # Title
+        title = presentation_data.title or "Untitled Presentation"
+        max_title_length = self.constraints['text_constraints']['max_title_length']
+        if len(title) > max_title_length:
+            title = title[:max_title_length - 3] + "..."
+        
+        title_element = next((e for e in elements if e.get('id') == 'title'), None)
+        
+        if title_element:
+            pos = self.get_position(title_element, 'position')
+            size = title_element.get('size', {})
+            style = title_element.get('style', {})
+
+            base_font_size = self.get_font_size('title')
+            if len(title) > 60:
+                font_size = 36
+            elif len(title) > 40:
+                font_size = 40
+            else:
+                font_size = base_font_size
+
+            char_per_line = 50 if font_size >= 40 else 60
+            lines = max(1, len(title) / char_per_line)
+            required_height = lines * 0.6
+            actual_height = max(size.get('height', 1.5), required_height)
             
-            # Clear existing slides - we only want the layouts
-            existing_count = len(self.prs.slides)
-            if existing_count > 0:
-                logger.info(f"  Clearing {existing_count} template slides...")
-                for i in range(existing_count - 1, -1, -1):
-                    rId = self.prs.slides._sldIdLst[i].rId
-                    self.prs.part.drop_rel(rId)
-                    del self.prs.slides._sldIdLst[i]
+            textbox = slide.shapes.add_textbox(
+                Inches(pos.get('left', 1.5)),
+                Inches(pos.get('top', 2.8)),
+                Inches(size.get('width', 10.33)),
+                Inches(actual_height)
+            )
+
+            tf = textbox.text_frame
+            tf.word_wrap = True
+            tf.clear()
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+            p = tf.paragraphs[0]
+            p.text = title
+            p.font.size = Pt(font_size)
+            p.font.name = self.get_font('heading')
+            p.font.bold = True
+            
+            text_color = self.get_style_value(style, 'color', '#FFFCEC')
+            p.font.color.rgb = RGBColor(*self.hex_to_rgb(text_color))
+            p.alignment = PP_ALIGN.CENTER
+            p.line_spacing = self.get_line_spacing('title')
+
+        # Subtitle
+        subtitle_parts = []
+        if presentation_data.subtitle and presentation_data.subtitle != "None":
+            subtitle_parts.append(presentation_data.subtitle)
+        if presentation_data.author and presentation_data.author != "None":
+            subtitle_parts.append(presentation_data.author)
+        
+        subtitle = "\n".join(subtitle_parts).strip()
+        
+        subtitle_element = next((e for e in elements if e.get('id') == 'subtitle'), None)
+        
+        if subtitle_element and subtitle:
+            pos = self.get_position(subtitle_element, 'position')
+            size = subtitle_element.get('size', {})
+            style = subtitle_element.get('style', {})
+
+            subtitle_top = pos.get('top', 4.5)
+            if lines > 1.5:
+                subtitle_top += 0.3
+
+            textbox = slide.shapes.add_textbox(
+                Inches(pos.get('left', 2.0)),
+                Inches(subtitle_top),
+                Inches(size.get('width', 9.33)),
+                Inches(size.get('height', 1.0))
+            )
+
+            tf = textbox.text_frame
+            tf.word_wrap = True
+            tf.clear()
+
+            p = tf.paragraphs[0]
+            p.text = subtitle
+            p.font.size = Pt(self.get_style_value(style, 'font_size', 24))
+            p.font.name = self.get_font('body')
+            
+            text_color = self.get_style_value(style, 'color', '#FFFCEC')
+            p.font.color.rgb = RGBColor(*self.hex_to_rgb(text_color))
+            p.alignment = PP_ALIGN.CENTER
+
+    # ========================================================================
+    # AGENDA SLIDE - ENHANCED WITH RTL SUPPORT
+    # ========================================================================
+
+    def _create_agenda_slide_enhanced(self, slide, layout_config: Dict, data) -> None:
+        """Enhanced agenda with RTL/LTR support and proper localization"""
+        # Background
+        bg_config = layout_config.get('background', {})
+        if isinstance(bg_config, str):
+            # Look up background from config.json backgrounds section
+            bg_config = self.config.get('backgrounds', {}).get(bg_config, {})
+        if isinstance(bg_config, dict) and bg_config.get('type') == 'image':
+            self._add_background(slide, bg_config)
+        
+        # *** FIX 1: Use localized agenda title ***
+        localization = self.config.get('localization', {})
+        lang_strings = localization.get(self.target_language, {})
+        agenda_title_text = lang_strings.get('agenda_title', 'Agenda')
+        
+        # Add "Agenda" text on dark side
+        elements = layout_config.get('elements', [])
+        agenda_title_elem = next((e for e in elements if e.get('id') == 'agenda_title'), None)
+        
+        if agenda_title_elem:
+            pos = self.get_position(agenda_title_elem, 'position')
+            size = agenda_title_elem.get('size', {})
+            style = agenda_title_elem.get('style', {})
+            
+            agenda_textbox = slide.shapes.add_textbox(
+                Inches(pos.get('left', 7.5)),
+                Inches(pos.get('top', 3.0)),
+                Inches(size.get('width', 4.5)),
+                Inches(size.get('height', 1.5))
+            )
+            
+            tf = agenda_textbox.text_frame
+            tf.clear()
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            
+            # *** FIX: Set RTL for agenda title ***
+            is_rtl = self.lang_config.get('rtl', False)
+            self._set_text_frame_rtl(tf, is_rtl)
+            
+            p = tf.paragraphs[0]
+            p.text = agenda_title_text
+            p.font.size = Pt(self.get_font_size('agenda_title'))
+            p.font.name = self.get_font('heading')
+            p.font.bold = True
+            
+            text_color = self.get_style_value(style, 'color', '#FFFCEC')
+            p.font.color.rgb = RGBColor(*self.hex_to_rgb(text_color))
+            p.alignment = PP_ALIGN.CENTER
+        
+        # Logo
+        logo_elem = next((e for e in elements if e.get('id') == 'logo'), None)
+        if logo_elem:
+            self._add_logo(slide, logo_elem)
+        
+        # Content bullets with icons
+        content_elem = next((e for e in elements if e.get('id') == 'content'), None)
+        if not content_elem:
+            return
+        
+        bullets = self._extract_bullet_items(data, 'content')
+        if not bullets:
+            bullets = self._extract_bullet_items(data, 'bullets')
+        
+        if not bullets:
+            logger.warning("⚠️  Agenda slide has no content")
+            return
+        
+        # Get agenda constraints
+        agenda_config = self.constraints.get('agenda', {})
+        max_items = agenda_config.get('max_items', 5)
+        bullets = bullets[:max_items]
+        
+        # Get positioning
+        pos = self.get_position(content_elem, 'position')
+        size = content_elem.get('size', {})
+        style = content_elem.get('style', {})
+        bullet_style = content_elem.get('bullet_style', {})
+        
+        # Calculate vertical centering
+        num_items = len(bullets)
+        item_spacing = agenda_config.get('item_spacing', 0.85)
+        total_height = num_items * item_spacing
+        start_y = (7.5 - total_height) / 2
+        
+        # Text styling
+        text_color = self.get_style_value(style, 'color', '#0D2026')
+        text_rgb = self.hex_to_rgb(text_color)
+        font_name = self.get_font('body')
+        font_size = agenda_config.get('item_font_size', 20)
+        line_spacing = agenda_config.get('line_spacing', 1.8)
+        
+        # Icon configuration
+        icon_size = bullet_style.get('icon_size', 0.45)
+        is_rtl = self.lang_config.get('rtl', False)
+        
+        # Get icon positioning based on language
+        if is_rtl:
+            icon_offset = bullet_style.get('icon_offset_ar', 0.6)
+            text_left = pos.get('left', 6.83)
+            icon_align = 'right'
         else:
-            logger.info("  Creating blank presentation")
-            self.prs = Presentation()
-            self.prs.slide_width = Inches(13.333)
-            self.prs.slide_height = Inches(7.5)
+            icon_offset = bullet_style.get('icon_offset_en', 0.3)
+            text_left = pos.get('left', 0.7) + icon_size + icon_offset
+            icon_align = 'left'
+        
+        # Render each agenda item
+        for idx, bullet in enumerate(bullets):
+            item_y = start_y + (idx * item_spacing)
+            
+            # Add icon
+            if self.icon_service and agenda_config.get('use_icons', True):
+                icon_name = self.icon_service.auto_select_icon(bullet.text or "", "")
+                try:
+                    icon_data = self.icon_service.render_to_png(
+                        icon_name,
+                        size=int(icon_size * 96),
+                        color=text_color
+                    )
+                    if icon_data:
+                        if is_rtl:
+                            # *** FIX: Icon on the RIGHT for RTL ***
+                            icon_left = Inches(text_left + size.get('width', 5.8) - icon_size - 0.2)
+                        else:
+                            # Icon on the left for LTR
+                            icon_left = Inches(pos.get('left', 0.7))
+                        
+                        icon_top = Inches(item_y + 0.15)
+                        
+                        slide.shapes.add_picture(
+                            icon_data,
+                            icon_left,
+                            icon_top,
+                            width=Inches(icon_size),
+                            height=Inches(icon_size)
+                        )
+                except Exception as e:
+                    logger.debug(f"Icon skip: {e}")
+            
+            # Add text
+            text_width = size.get('width', 5.8) - icon_size - icon_offset
+            text_box = slide.shapes.add_textbox(
+                Inches(text_left),
+                Inches(item_y),
+                Inches(text_width),
+                Inches(0.7)
+            )
+            
+            tf = text_box.text_frame
+            tf.clear()
+            tf.word_wrap = True
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.margin_left = tf.margin_right = Inches(0.05)
+            
+            # *** FIX: Set RTL for agenda items ***
+            self._set_text_frame_rtl(tf, is_rtl)
+            
+            p = tf.paragraphs[0]
+            p.text = (bullet.text or "").strip()
+            p.font.size = Pt(font_size)
+            p.font.name = font_name
+            p.font.color.rgb = RGBColor(*text_rgb)
+            p.font.bold = False
+            
+            # *** FIX: Use constraint-based alignment ***
+            alignment_config = self.constraints.get('alignment', {})
+            lang_alignment = alignment_config.get(self.target_language, {})
+            agenda_alignment = lang_alignment.get('agenda', 'left')
+            p.alignment = self._alignment_enum(agenda_alignment)
+            p.line_spacing = line_spacing
+        
+        logger.info(f"✅ Agenda created: {len(bullets)} items, RTL={is_rtl}")
+
+    # ========================================================================
+    # SLIDE CREATION FROM JSON
+    # ========================================================================
+
+    def _create_slide_from_json(self, content_type: str, data, page_num: int = None) -> None:
+        """Create slide with RTL/LTR support"""
+        try:
+            # Check for agenda
+            layout_hint = self._get_layout_hint(data)
+            if layout_hint and 'agenda' in layout_hint.lower():
+                content_type = 'agenda'
+            
+            layout_config = self.get_layout_for_content(content_type, data)
+            slide_layout = self._get_slide_layout(layout_config)
+            slide = self.prs.slides.add_slide(slide_layout)
+            self._clear_default_placeholders(slide)
+            
+            # Background - handle both string references and dict configs
+            bg_config = layout_config.get('background', {})
+            if isinstance(bg_config, str):
+                # Look up background from config.json backgrounds section
+                bg_config = self.config.get('backgrounds', {}).get(bg_config, {})
+            if isinstance(bg_config, dict) and bg_config.get('type') == 'image':
+                self._add_background(slide, bg_config)
+            
+            # Special: Agenda
+            if content_type == 'agenda' or (layout_hint and 'agenda' in layout_hint.lower()):
+                self._create_agenda_slide_enhanced(slide, layout_config, data)
+                if page_num:
+                    self.add_page_number(slide, page_num)
+                return
+            
+            elements = layout_config.get('elements', [])
+            
+            # Special: Section headers
+            if content_type == 'section':
+                title_text = self._extract_text_value(data, 'title')
+                
+                max_title = self.constraints['text_constraints']['max_title_length']
+                if len(title_text) > max_title:
+                    title_text = title_text[:max_title - 3] + "..."
+                    data.title = title_text
+                
+                layout_config = self.get_layout_for_content(content_type, data)
+                
+                bg_config = layout_config.get('background', {})
+                if isinstance(bg_config, str):
+                    # Look up background from config.json backgrounds section
+                    bg_config = self.config.get('backgrounds', {}).get(bg_config, {})
+                if isinstance(bg_config, dict) and bg_config.get('type') == 'image':
+                    self._add_background(slide, bg_config)
+                    logger.info(f"✓ Section background added: {bg_config.get('path')}")
+                
+                # Add centered icon for section
+                if self.icon_service and title_text:
+                    is_thank_you = any(
+                        word in title_text.lower() 
+                        for word in ['thank', 'thanks', 'شكر', 'شكراً', 'شكرا', 'thank you', 'conclusion']
+                    )
+                    
+                    if is_thank_you:
+                        icon_name = 'hand-waving'
+                    else:
+                        icon_name = self.icon_service.auto_select_icon(title_text, "")
+                    
+                    # *** FIX: Pass slide_data ***
+                    self._add_centered_section_icon(slide, icon_name, title_text, layout_config, slide_data=data)
+                
+                # Add title text
+                for element in elements:
+                    if element.get('type') == 'text' and element.get('id') == 'title':
+                        title_element = element
+                        self._add_text_master(slide, element, data, content_type)
+                
+                logger.info(f"✓ Section slide complete: {title_text}")
+                return
+            
+            # Detect content type from data
+            has_chart = bool(getattr(data, 'chart_data', None) or getattr(data, 'chart', None))
+            has_table = bool(getattr(data, 'table_data', None) or getattr(data, 'table', None))
+            has_paragraph = bool(getattr(data, 'content', None) and len(str(getattr(data, 'content', '')).strip()) > 0)
+            has_bullets = bool(getattr(data, 'bullets', None) and len(getattr(data, 'bullets', [])) > 0)
+            
+            if has_chart:
+                logger.info(f"   → Chart slide detected")
+            if has_table:
+                logger.info(f"   → Table slide detected")
+            if has_paragraph:
+                logger.info(f"   → Paragraph slide detected")
+            if has_bullets:
+                logger.info(f"   → Bullets slide detected")
+            
+            # Process elements
+            title_element = None
+            content_rendered = False
+            
+            for element in elements:
+                try:
+                    element_type = element.get('type')
+                    element_id = element.get('id', 'unknown')
+                    
+                    # Logo
+                    if element_type == 'image' and element_id == 'logo':
+                        self._add_logo(slide, element)
+                    
+                    # Title with icon
+                    elif element_type == 'text' and element_id == 'title':
+                        title_element = element
+                        title_text = self._extract_text_value(data, 'title')
+                        
+                        max_title = self.constraints['text_constraints']['max_title_length']
+                        if len(title_text) > max_title:
+                            title_text = title_text[:max_title - 3] + "..."
+                            data.title = title_text
+                        
+                        # ✅ FIX: Add icon to title for ALL slides including table/chart
+                        if self.icon_service and title_text:
+                            icon_name = self.icon_service.auto_select_icon(title_text, "")
+                            self._add_icon_to_title(slide, icon_name, element, slide_data=data)
+                        
+                        self._add_text_master(slide, element, data, content_type)
+                    
+                    # Title underline
+                    elif element_type == 'line' and element_id == 'title_line':
+                        if title_element:
+                            self._add_title_underline(slide, title_element)
+                    
+                    # Chart
+                    elif element_type == 'chart' and has_chart and not content_rendered:
+                        logger.info(f"   → Rendering CHART")
+                        self._add_chart_master(slide, element, data)
+                        content_rendered = True
+                    
+                    # Table
+                    elif element_type == 'table' and has_table and not content_rendered:
+                        logger.info(f"   → Rendering TABLE")
+                        self._add_table_master(slide, element, data)
+                        content_rendered = True
+                    
+                    # Paragraph
+                    elif element_type == 'text_paragraph' and has_paragraph and not content_rendered:
+                        logger.info(f"   → Rendering PARAGRAPH")
+                        self._add_paragraph_text(slide, element, data)
+                        content_rendered = True
+                    
+                    # Bullets
+                    elif (element_type in ['bullets', 'text_bullets'] or element_id == 'content') and has_bullets and not content_rendered:
+                        logger.info(f"   → Rendering BULLETS")
+                        self._add_bullets_master(slide, element, data)
+                        content_rendered = True
+                    
+                    # Four-box layout
+                    elif element_type == 'boxes' and element_id == 'content_boxes':
+                        logger.info(f"   → Rendering FOUR-BOX")
+                        self._add_content_box_with_icon_enhanced(slide, element, data)
+                        content_rendered = True
+                    
+                    # Standalone icons
+                    elif element_type == 'icon' and element_id != 'icon':
+                        self._add_icon_master(slide, element, data)
+                    
+                    # Content boxes
+                    elif element_type == 'content_box':
+                        self._add_content_box_master(slide, element, data)
+                
+                except Exception as e:
+                    logger.warning(f"⚠️  Element '{element_id}' error: {e}")
+            
+            # Add page number
+            if page_num and self.config.get('page_numbering', {}).get('enabled', True):
+                skip_title = self.config['page_numbering'].get('skip_title_slide', True)
+                skip_sections = self.config['page_numbering'].get('skip_section_headers', False)
+                
+                should_add = True
+                
+                if content_type == "section" and skip_sections:
+                    should_add = False
+                
+                if should_add:
+                    self.add_page_number(slide, page_num)
+        
+        except Exception as e:
+            logger.error(f"❌ Slide creation error: {e}")
+            raise
+        
+    # ========================================================================
+    # ICON INTEGRATION - RTL/LTR AWARE
+    # ========================================================================
+
+    def _add_icon_to_title(self, slide, icon_name: str, title_element: Dict, slide_data=None) -> None:
+        """Add icon next to title with language-specific positioning"""
+        if not self.icon_service:
+            return
+        
+        try:
+            # *** FIX: Check if slide_data has icon_name field ***
+            if slide_data and hasattr(slide_data, 'icon_name') and slide_data.icon_name:
+                icon_name_from_data = slide_data.icon_name
+                logger.info(f"🎯 Using icon_name from slide_data: {icon_name_from_data}")
+                
+                # Try to match the icon_name
+                matched_icon = self.icon_service.fuzzy_match_icon_name(icon_name_from_data)
+                if matched_icon:
+                    icon_name = matched_icon
+                    logger.info(f"✅ Matched icon: {icon_name_from_data} → {matched_icon}")
+                else:
+                    logger.warning(f"⚠️ Could not match icon_name: {icon_name_from_data}, using auto-selected: {icon_name}")
+            
+            pos = self.get_position(title_element, 'position')
+            style = title_element.get('style', {})
+            
+            text_color = self.get_style_value(style, 'color', '#01415C')
+            
+            # Get icon positioning from constraints
+            positioning = self.constraints.get('positioning', {})
+            lang_pos = positioning.get(self.target_language, {})
+            
+            is_rtl = self.lang_config.get('rtl', False)
+            
+            if is_rtl:
+                # Icon on the right for RTL
+                icon_left = lang_pos.get('icon_offset', 11.83)
+            else:
+                # Icon on the left for LTR
+                icon_left = lang_pos.get('icon_offset', 1.0)
+            
+            icon_top = pos.get('top', 0.6) + 0.05
+            
+            icon_config = self.constraints.get('icons', {})
+            icon_size = icon_config.get('size', 0.5)
+            
+            icon_data = self.icon_service.render_to_png(
+                icon_name,
+                size=int(icon_size * 96),
+                color=text_color
+            )
+            
+            if icon_data:
+                slide.shapes.add_picture(
+                    icon_data,
+                    Inches(icon_left),
+                    Inches(icon_top),
+                    width=Inches(icon_size),
+                    height=Inches(icon_size)
+                )
+                logger.debug(f"✅ Icon added: {icon_name} ({'RTL' if is_rtl else 'LTR'})")
+        except Exception as e:
+            logger.warning(f"⚠️ Icon render failed: {e}")
+
+
+    def _add_centered_section_icon(self, slide, icon_name: str, title_text: str, layout_config: Dict, slide_data=None) -> None:
+        """Add icon centered above title for section headers"""
+        if not self.icon_service:
+            return
+        
+        try:
+            # *** FIX: Check if slide_data has icon_name field ***
+            if slide_data and hasattr(slide_data, 'icon_name') and slide_data.icon_name:
+                icon_name_from_data = slide_data.icon_name
+                logger.info(f"🎯 Section using icon_name from slide_data: {icon_name_from_data}")
+                
+                # Try to match the icon_name
+                matched_icon = self.icon_service.fuzzy_match_icon_name(icon_name_from_data)
+                if matched_icon:
+                    icon_name = matched_icon
+                    logger.info(f"✅ Section matched icon: {icon_name_from_data} → {matched_icon}")
+                else:
+                    logger.warning(f"⚠️ Section could not match icon_name: {icon_name_from_data}, using auto-selected: {icon_name}")
+            
+            elements = layout_config.get('elements', [])
+            title_element = next((e for e in elements if e.get('id') == 'title'), None)
+            
+            if not title_element:
+                return
+            
+            title_style = title_element.get('style', {})
+            text_color = self.get_style_value(title_style, 'color', '#FFFCEC')
+            
+            slide_width = self.constraints['layout']['slide_width']
+            
+            icon_config = self.constraints.get('icons', {})
+            icon_size = icon_config.get('section_icon_size', 1.2)
+            
+            icon_left = (slide_width - icon_size) / 2
+            icon_top = 2.2
+            
+            icon_data = self.icon_service.render_to_png(
+                icon_name,
+                size=int(icon_size * 96),
+                color=text_color
+            )
+            
+            if icon_data:
+                slide.shapes.add_picture(
+                    icon_data,
+                    Inches(icon_left),
+                    Inches(icon_top),
+                    width=Inches(icon_size),
+                    height=Inches(icon_size)
+                )
+                logger.info(f"✅ Section icon: {icon_name}")
+        
+        except Exception as e:
+            logger.warning(f"⚠️ Section icon failed: {e}")
+
+    def _add_title_underline(self, slide, title_element: Dict) -> None:
+        """Add horizontal line below title"""
+        try:
+            # Position the underline dynamically based on the title's position/size
+            pos = self.get_position(title_element, 'position')
+            size = title_element.get('size', {})
+
+            left = float(pos.get('left', 1.0))
+            width = float(size.get('width', 11.33))
+
+            # Place the line just below the title box with a small margin
+            title_top = float(pos.get('top', 1.0))
+            title_height = float(size.get('height', 0.8))
+            margin = 0.15
+            top = title_top + title_height + margin
+
+            line_shape = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE,
+                Inches(left),
+                Inches(top),
+                Inches(width),
+                Inches(0.02)
+            )
+            
+            line_shape.fill.solid()
+            line_color = self.get_color_rgb('accent_teal')
+            line_shape.fill.fore_color.rgb = RGBColor(*line_color)
+            line_shape.line.fill.background()
+            
+            logger.debug("✅ Title underline added")
+        
+        except Exception as e:
+            logger.warning(f"⚠️  Title underline failed: {e}")
+
+    # ========================================================================
+    # TEXT ELEMENTS - RTL/LTR AWARE
+    # ========================================================================
+
+    def _add_text_master(self, slide, element: Dict, data, content_type: str) -> None:
+        """Add text with proper RTL/LTR support including alignment"""
+        pos = self.get_position(element, 'position')
+        size = element.get('size', {})
+        style = element.get('style', {})
+        element_id = element.get('id', '')
+
+        # Extract text
+        if element_id == 'title':
+            text = self._extract_text_value(data, 'title')
+        elif element_id == 'content':
+            text = self._extract_text_value(data, 'content')
+        else:
+            text = self._extract_text_value(data, element_id)
+
+        if not text:
+            return
+
+        textbox = slide.shapes.add_textbox(
+            Inches(pos.get('left', 0)),
+            Inches(pos.get('top', 0)),
+            Inches(size.get('width', 5)),
+            Inches(size.get('height', 1))
+        )
+
+        tf = textbox.text_frame
+        tf.word_wrap = True
+        tf.clear()
+        tf.vertical_anchor = MSO_ANCHOR.TOP
+
+        # *** FIX: Set RTL/LTR at text frame level ***
+        is_rtl = self.lang_config.get('rtl', False)
+        self._set_text_frame_rtl(tf, is_rtl)
+
+        padding = float(style.get('padding', 0))
+        margin_value = Inches(max(padding, 0))
+        
+        # *** FIX: Language-specific margins ***
+        if is_rtl:
+            tf.margin_left = Inches(0.1)
+            tf.margin_right = margin_value
+        else:
+            tf.margin_left = margin_value
+            tf.margin_right = Inches(0.1)
+        
+        tf.margin_top = tf.margin_bottom = margin_value
+
+        line_spacing = self.get_style_value(style, 'line_spacing', 1.45)
         
         # Clean titles
         for slide_data in presentation_data.slides:

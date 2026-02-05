@@ -327,14 +327,14 @@ def will_overflow(slide: SlideContent) -> bool:
     if slide.bullets:
         bullet_count = len(slide.bullets)
         
-        # Rule 1: More than max bullets = overflow
+        # Rule 1: More than 4 bullets = overflow
         if bullet_count > MAX_BULLETS_PER_SLIDE:
             logger.info(f"📝 Bullet count overflow: {bullet_count} bullets (max {MAX_BULLETS_PER_SLIDE})")
             return True
         
-        # Rule 2: Check if any bullet exceeds 3 lines
-        # Using ~55 characters per line, so max 165 characters per bullet for 3 lines
-        MAX_CHARS_PER_BULLET = 165  # Allow 3 lines max per bullet
+        # Rule 2: Check if any bullet exceeds 2 lines (strictly)
+        # Using ~55 characters per line, so max 110 characters per bullet for 2 lines
+        MAX_CHARS_PER_BULLET = 110  # Strictly 2 lines max
         
         for idx, bullet in enumerate(slide.bullets):
             bullet_text = getattr(bullet, 'text', '') or ''
@@ -342,16 +342,16 @@ def will_overflow(slide: SlideContent) -> bool:
             
             # Check main bullet text
             if bullet_len > MAX_CHARS_PER_BULLET:
-                logger.info(f"📝 Bullet {idx+1} exceeds 3 lines: {bullet_len} chars (max {MAX_CHARS_PER_BULLET})")
+                logger.info(f"📝 Bullet {idx+1} exceeds 2 lines: {bullet_len} chars (max {MAX_CHARS_PER_BULLET})")
                 return True
             
-            # Check sub-bullets
+            # Check sub-bullets (if any sub-bullet exceeds 2 lines, overflow)
             if bullet.sub_bullets:
                 for sub_idx, sub in enumerate(bullet.sub_bullets[:MAX_SUB_BULLETS_PER_BULLET]):
                     sub_text = getattr(sub, 'text', sub) if hasattr(sub, 'text') else str(sub)
                     sub_len = len(sub_text or "")
                     if sub_len > MAX_CHARS_PER_BULLET:
-                        logger.info(f"📝 Sub-bullet {idx+1}.{sub_idx+1} exceeds 3 lines: {sub_len} chars (max {MAX_CHARS_PER_BULLET})")
+                        logger.info(f"📝 Sub-bullet {idx+1}.{sub_idx+1} exceeds 2 lines: {sub_len} chars (max {MAX_CHARS_PER_BULLET})")
                         return True
         
         # Rule 3: Estimate height as secondary check (shouldn't exceed max height)
@@ -361,13 +361,13 @@ def will_overflow(slide: SlideContent) -> bool:
             return True
         
         # All checks passed - fits within limits
-        logger.debug(f"   ✅ Fits: {bullet_count} bullets (max {MAX_BULLETS_PER_SLIDE}), all ≤3 lines, {estimated_height:.2f} inches")
+        logger.debug(f"   ✅ Fits: {bullet_count} bullets (max {MAX_BULLETS_PER_SLIDE}), all ≤2 lines, {estimated_height:.2f} inches")
     
     return False
 
 
 def estimate_content_height(bullets: List[BulletPoint]) -> float:
-    """Content height estimation - allows up to 3 lines per bullet"""
+    """Content height estimation - assumes max 2 lines per bullet for 4 bullets max"""
     if not bullets:
         return 0.5
     
@@ -379,19 +379,19 @@ def estimate_content_height(bullets: List[BulletPoint]) -> float:
         main_text_len = len(main_text)
         
         # Use ~55 characters per line for bullets to match visual wrapping
-        # Allow up to 3 lines per bullet
-        main_lines = max(1, min(3, (main_text_len + 54) // 55))  # Cap at 3 lines
-        main_height = 0.32 * main_lines  # Slightly reduced per-line height
+        # For strict 2-line limit, cap at 2 lines
+        main_lines = max(1, min(2, (main_text_len + 54) // 55))  # Cap at 2 lines
+        main_height = 0.35 * main_lines
         
-        # Calculate sub-bullets height (also up to 3 lines each)
+        # Calculate sub-bullets height (also capped at 2 lines each)
         sub_height = 0.0
         if bullet.sub_bullets:
             for sub in bullet.sub_bullets[:MAX_SUB_BULLETS_PER_BULLET]:
                 sub_text = getattr(sub, 'text', sub) if hasattr(sub, 'text') else str(sub)
                 sub_len = len(sub_text or "")
-                # Sub-bullets also up to 3 lines
-                sub_lines = max(1, min(3, (sub_len + 44) // 45))
-                sub_height += 0.26 * sub_lines
+                # Sub-bullets also capped at 2 lines
+                sub_lines = max(1, min(2, (sub_len + 44) // 45))  # Cap at 2 lines
+                sub_height += 0.28 * sub_lines
         
         # Add spacing between bullets
         spacing = 0.15 if bullet.sub_bullets else 0.10  # Slightly tighter spacing

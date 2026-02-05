@@ -1,0 +1,13 @@
+# RFP Proposal Platform - Code Owners
+#
+# These owners will be automatically requested for review on all pull requests.
+# At least one approval from a code owner is required when branch protection is enabled.
+#
+# Team Lead: Dharani Eswaramurthi
+# CTO: Pragadeswaran
+#
+# Default owners for everything in the repository
+* @dharani-axtr @praga3004
+
+# Protect repository configuration - CI/CD, CODEOWNERS, and GitHub settings
+/.github/ @dharani-axtr @praga3004
