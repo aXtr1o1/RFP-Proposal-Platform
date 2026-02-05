@@ -6,13 +6,8 @@
 # Team Lead: Dharani Eswaramurthi
 # CTO: Pragadeswaran
 #
-# IMPORTANT: Replace the placeholders below with your actual GitHub usernames.
-# CODEOWNERS requires @username format (e.g. @dharani-eswaramurthi).
-# If usernames are invalid, code owners will not be assigned for review.
-# To find your username: GitHub Profile → username appears in URL.
-
 # Default owners for everything in the repository
-* @dharani-eswaramurthi @pragadeswaran
+* @dharani-axtr @praga3004
 
 # Protect repository configuration - CI/CD, CODEOWNERS, and GitHub settings
-/.github/ @dharani-eswaramurthi @pragadeswaran
+/.github/ @dharani-axtr @praga3004
