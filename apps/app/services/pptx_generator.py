@@ -1111,69 +1111,56 @@ class PptxGenerator:
         
         # Validate slides
         presentation_data.slides = validate_presentation(presentation_data.slides)
-        
-        # Load template PPTX to get layouts
-        template_pptx = self.template_dir / "template.pptx"
-        if template_pptx.exists():
-            logger.info(f"  Loading template: {template_pptx.name}")
-            self.prs = Presentation(str(template_pptx))
-            
-            # Clear existing slides - we only want the layouts
-            existing_count = len(self.prs.slides)
-            if existing_count > 0:
-                logger.info(f"  Clearing {existing_count} template slides...")
-                for i in range(existing_count - 1, -1, -1):
-                    rId = self.prs.slides._sldIdLst[i].rId
-                    self.prs.part.drop_rel(rId)
-                    del self.prs.slides._sldIdLst[i]
-        else:
-            logger.info("  Creating blank presentation")
-            self.prs = Presentation()
-            self.prs.slide_width = Inches(13.333)
-            self.prs.slide_height = Inches(7.5)
-        
-        # Clean titles
+
+        self.prs = Presentation()
+        self.prs.slide_width = Inches(self.constraints['layout']['slide_width'])
+        self.prs.slide_height = Inches(self.constraints['layout']['slide_height'])
+
         for slide_data in presentation_data.slides:
             if slide_data.title:
                 slide_data.title = self._scrub_title(slide_data.title)
-        
-        # Create title slide
+
+        # Title slide
         try:
-            self._create_title_slide(presentation_data)
+            self._create_title_slide_dynamic(presentation_data)
         except Exception as e:
-            logger.error(f"Title slide error: {e}")
-            import traceback
-            traceback.print_exc()
-        
-        # Create content slides
-        page_num = 2  # Start from 2 (title is 1, but usually not numbered)
+            logger.error(f"❌ Title slide: {e}")
+
+        # Content slides
         for idx, slide_data in enumerate(presentation_data.slides):
-            content_type = self._determine_content_type(slide_data)
-            logger.info(f"Creating slide {idx + 2}: {content_type} - {slide_data.title[:30] if slide_data.title else 'No title'}...")
-            
+            logger.info(f"🔨 Slide {idx + 2}: {slide_data.title[:50]}...")
+
             try:
-                if content_type in ['section', 'section_header']:
-                    self._create_section_slide(slide_data, page_num=page_num)
-                elif content_type == 'agenda':
-                    self._create_agenda_slide(slide_data, page_num=page_num)
+                layout_type = (slide_data.layout_type or "content").lower()
+                layout_hint = self._get_layout_hint(slide_data)
+
+                if layout_type == "section":
+                    content_type = "section"
+                elif layout_type == "two_column":
+                    content_type = "two_column"
+                elif layout_hint:
+                    content_type = layout_hint
+                elif slide_data.table_data:
+                    content_type = "table"
+                elif slide_data.chart_data:
+                    content_type = "chart"
+                elif slide_data.bullets:
+                    content_type = "bullets"
                 else:
-                    self._create_content_slide(slide_data, page_num=page_num)
-                
-                page_num += 1
-                    
+                    content_type = "content"
+
+                self._create_slide_from_json(content_type, slide_data, page_num=idx + 2)
+
             except Exception as e:
-                logger.error(f"Slide error: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Save presentation
+                logger.error(f"❌ Slide error: {e}")
+                logger.exception(e)
+
         output_path = self._get_output_path(presentation_data.title)
         self.prs.save(output_path)
-        
-        logger.info(f"Generated: {output_path}")
-        logger.info(f"  Total slides: {len(self.prs.slides)}")
-        logger.info("=" * 60)
-        
+
+        logger.info(f"✅ Generated: {output_path}")
+        logger.info(f"   Slides: {len(self.prs.slides)}, Language: {self.target_language}")
+
         return output_path
 
     # ========================================================================
@@ -1858,788 +1845,50 @@ class PptxGenerator:
 
         line_spacing = self.get_style_value(style, 'line_spacing', 1.45)
         
-        # *** FIX: Proper alignment logic for sections and titles ***
-        if content_type in ['title']:
-            # Title slide - always center
-            alignment = PP_ALIGN.CENTER
-        elif content_type == 'section':
-            # Section headers - always center
-            alignment = PP_ALIGN.CENTER
-        else:
-            # Content slides - follow constraints
-            alignment = self.get_text_alignment(style)
+        # Clean titles
+        for slide_data in presentation_data.slides:
+            if slide_data.title:
+                slide_data.title = self._scrub_title(slide_data.title)
         
-        # Get text color
-        text_color = self.get_style_value(style, 'color')
-        if not text_color:
-            if content_type in ['title', 'section']:
-                text_color = '#FFFCEC'
-            else:
-                text_color = '#0D2026'
-        
-        # Get font
-        font_name = self.get_style_value(style, 'font')
-        if not font_name:
-            if element_id == 'title':
-                font_name = self.get_font('heading')
-            else:
-                font_name = self.get_font('body')
-
-        # Split into paragraphs
-        paragraphs = [line.strip() for line in str(text).splitlines() if line.strip()]
-        if not paragraphs:
-            paragraphs = [str(text).strip()]
-
-        for idx, line in enumerate(paragraphs):
-            paragraph = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-            paragraph.text = line
-            
-            font_size = self.get_style_value(style, 'font_size', 18)
-            paragraph.font.size = Pt(font_size)
-            paragraph.font.name = font_name
-            
-            if self.get_style_value(style, 'bold'):
-                paragraph.font.bold = True
-
-            rgb = self.hex_to_rgb(text_color)
-            paragraph.font.color.rgb = RGBColor(*rgb)
-
-            paragraph.line_spacing = line_spacing
-            paragraph.space_after = Pt(self.get_style_value(style, 'space_after', 6))
-            
-            # *** FIX: Apply alignment ***
-            paragraph.alignment = alignment
-            
-            logger.debug(f"Paragraph: '{line[:30]}...' align={alignment} rtl={is_rtl}")
-
-
-    def _set_text_frame_rtl(self, text_frame, is_rtl: bool) -> None:
-        """Set text frame direction to RTL or LTR via XML manipulation"""
+        # Create title slide
         try:
-            from pptx.oxml import parse_xml
-            
-            tf_element = text_frame._element
-            
-            # Find or create bodyPr (body properties)
-            bodyPr = tf_element.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}bodyPr')
-            
-            if bodyPr is not None:
-                # Set RTL attribute
-                if is_rtl:
-                    bodyPr.set('rtlCol', '1')
-                    bodyPr.set('anchor', 'ctr')
-                else:
-                    # Remove RTL for LTR
-                    if 'rtlCol' in bodyPr.attrib:
-                        del bodyPr.attrib['rtlCol']
-                    bodyPr.set('anchor', 'ctr')
-            
-            logger.debug(f"Text frame direction set to {'RTL' if is_rtl else 'LTR'}")
+            self._create_title_slide(presentation_data)
         except Exception as e:
-            logger.debug(f"Could not set text frame direction: {e}")
-
-    def _add_paragraph_text(self, slide, element: Dict, data) -> None:
-        """Render paragraph content with proper RTL/LTR support"""
-        from apps.app.utils.text_formatter import should_convert_to_bullets, break_long_paragraph_to_bullets
+            logger.error(f"Title slide error: {e}")
+            import traceback
+            traceback.print_exc()
         
-        pos = self.get_position(element, 'position')
-        size = element.get('size', {})
-        style = element.get('style', {})
-
-        # Get text
-        text = getattr(data, 'content', None)
-        
-        if not text or len(str(text).strip()) == 0:
-            if hasattr(data, 'bullets') and data.bullets:
-                text = "\n\n".join(b.text for b in data.bullets if getattr(b, 'text', None))
-
-        text = (text or "").strip()
-        if not text:
-            logger.warning(f"⚠️  No paragraph text found")
-            return
-        
-        # ✅ NEW: Check if text should be converted to bullets for better readability
-        if should_convert_to_bullets(text):
-            logger.info(f"   📝 Converting long paragraph to bullets ({len(text)} chars)")
-            bullets = break_long_paragraph_to_bullets(text)
-            if bullets and len(bullets) > 1:
-                # Set bullets and render as bullet slide instead
-                data.bullets = bullets
-                self._add_bullets_master(slide, element, data)
-                logger.info(f"   ✅ Converted to {len(bullets)} bullet points")
-                return
-
-        # Create textbox
-        textbox = slide.shapes.add_textbox(
-            Inches(pos.get('left', 1.5)),
-            Inches(pos.get('top', 2.0)),
-            Inches(size.get('width', 10.33)),
-            Inches(size.get('height', 4.8))
-        )
-
-        tf = textbox.text_frame
-        tf.word_wrap = True
-        tf.clear()
-        tf.vertical_anchor = MSO_ANCHOR.TOP  # ✅ Keep TOP alignment
-        
-        # Set RTL direction for text frame
-        is_rtl = self.lang_config.get('rtl', False)
-        self._set_text_frame_rtl(tf, is_rtl)
-        
-        # Language-aware margins
-        padding = float(style.get('padding', 0.2))
-        if is_rtl:
-            tf.margin_left = Inches(0.1)
-            tf.margin_right = Inches(padding)
-            tf.margin_top = Inches(0.1)
-            tf.margin_bottom = Inches(0.1)
-        else:
-            tf.margin_left = Inches(padding)
-            tf.margin_right = Inches(0.1)
-            tf.margin_top = Inches(0.1)
-            tf.margin_bottom = Inches(0.1)
-
-        # Split into paragraphs (prioritize double line breaks)
-        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-        if not paragraphs:
-            # Fallback to single line breaks
-            paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
-        if not paragraphs:
-            paragraphs = [text]
-
-        # Get styling
-        font_name = self.get_font('body')  # or self.get_font_body() depending on your method
-        text_color = self.get_style_value(style, 'color', '#0D2026')
-        font_size = self.get_font_size('body')
-        line_spacing = self.get_line_spacing('body')
-        alignment = self.get_text_alignment(style)
-
-        # Add paragraphs
-        for idx, chunk in enumerate(paragraphs):
-            paragraph = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-            paragraph.text = chunk
-            paragraph.font.size = Pt(font_size)
-            paragraph.font.name = font_name
-            paragraph.line_spacing = line_spacing
-            paragraph.space_after = Pt(12)
-            paragraph.alignment = alignment
-
-            # Set color
-            rgb = self.hex_to_rgb(text_color)
-            paragraph.font.color.rgb = RGBColor(*rgb)
+        # Create content slides
+        page_num = 2  # Start from 2 (title is 1, but usually not numbered)
+        for idx, slide_data in enumerate(presentation_data.slides):
+            content_type = self._determine_content_type(slide_data)
+            logger.info(f"Creating slide {idx + 2}: {content_type} - {slide_data.title[:30] if slide_data.title else 'No title'}...")
             
-            # ✅ FIX: Set paragraph-level RTL if needed
-            if is_rtl:
-                pPr = paragraph._element.get_or_add_pPr()
-                pPr.set('rtl', '1')
-        
-        logger.info(f"   ✅ Paragraph: {len(paragraphs)} blocks, RTL={is_rtl}")
-
-    def _add_bullets_master(self, slide, element: Dict, data) -> None:
-        """Add bullets with proper RTL/LTR alignment using native PowerPoint bullets"""
-        element_id = element.get('id')
-        bullets = self._extract_bullet_items(data, element_id)
-        if not bullets:
-            return
-        
-        # Get constraints
-        bullet_config = self.constraints.get('bullets', {})
-        max_bullets = bullet_config.get('max_bullets_per_slide', 6)
-        bullets = bullets[:max_bullets]
-        
-        pos = self.get_position(element, 'position')
-        size = element.get('size', {})
-        style = element.get('style', {})
-        bullet_style_cfg = element.get('bullet_style', {})
-        
-        # Create textbox – use same positioning conventions as paragraph text
-        # so bullets align visually with paragraphs and make good use of space
-        textbox = slide.shapes.add_textbox(
-            Inches(pos.get('left', 1.5)),
-            Inches(pos.get('top', 2.0)),
-            Inches(size.get('width', 10.33)),
-            Inches(size.get('height', 4.8))
-        )
-        
-        tf = textbox.text_frame
-        tf.clear()
-        tf.word_wrap = True
-        tf.vertical_anchor = MSO_ANCHOR.TOP  # ✅ Keep TOP alignment
-        
-        # Set RTL at text frame level
-        is_rtl = self.lang_config.get('rtl', False)
-        self._set_text_frame_rtl(tf, is_rtl)
-        
-        # Language-aware margins (match paragraph padding for consistent start)
-        padding = float(self.get_style_value(style, 'padding', 0.2))
-        if is_rtl:
-            tf.margin_left = Inches(0.05)
-            tf.margin_right = Inches(padding)
-        else:
-            tf.margin_left = Inches(padding)
-            tf.margin_right = Inches(0.05)
-        
-        # Get styling
-        font_size = self.get_font_size('body')
-        line_spacing = bullet_config.get('line_spacing', 1.75)
-        font_name = self.get_font('body')
-        text_color = self.get_style_value(style, 'color', '#0D2026')
-        text_rgb = self.hex_to_rgb(text_color)
-        
-        # Get alignment from constraints
-        alignment_config = self.constraints.get('alignment', {})
-        lang_alignment = alignment_config.get(self.target_language, {})
-        bullets_alignment_str = lang_alignment.get('bullets', 'right' if is_rtl else 'left')
-        text_alignment = self._alignment_enum(bullets_alignment_str)
-        
-        # Get bullet symbols
-        bullet_symbols = bullet_config.get('bullet_symbols', {})
-        bullet_char = bullet_symbols.get('level_1', '●')
-        bullet_color = self.get_style_value(bullet_style_cfg, 'bullet_color', '#01415C')
-        bullet_rgb = self.hex_to_rgb(bullet_color)
-        
-        logger.info(f"   Bullets: lang={self.target_language}, align={bullets_alignment_str}, RTL={is_rtl}")
-        
-        # Add bullets
-        for idx, bullet in enumerate(bullets):
-            paragraph = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-            
-            # Clean bullet text (remove manual symbols)
-            bullet_text = (bullet.text or "").replace("●", "").replace("**", "").strip()
-            
-            # ✅ FIX: Set text WITHOUT manual bullet symbol
-            paragraph.text = bullet_text
-            paragraph.level = 0  # Level 0 = main bullet
-            
-            # Font styling
-            paragraph.font.bold = self.get_style_value(style, 'bold', False)
-            paragraph.font.size = Pt(font_size)
-            paragraph.font.name = font_name
-            paragraph.font.color.rgb = RGBColor(*text_rgb)
-            
-            # Alignment
-            paragraph.alignment = text_alignment
-            paragraph.line_spacing = line_spacing
-            
-            # Spacing
-            spacing_before = bullet_config.get('spacing_before', 6)
-            spacing_after = bullet_config.get('spacing_after', 6)
-            paragraph.space_before = Pt(spacing_before)
-            paragraph.space_after = Pt(spacing_after)
-            
-            # ✅ FIX: Set paragraph RTL property
-            if is_rtl:
-                pPr = paragraph._element.get_or_add_pPr()
-                pPr.set('rtl', '1')
-            
-            # ✅ FIX: Apply native PowerPoint bullet formatting
-            pPr = paragraph._element.get_or_add_pPr()
-            
-            # Add bullet formatting
-            buFont = parse_xml(f'<a:buFont xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" typeface="{font_name}"/>')
-            buChar = parse_xml(f'<a:buChar xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" char="{bullet_char}"/>')
-            
-            # Add bullet color
-            buClr = parse_xml(f'''<a:buClr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-                <a:srgbClr val="{bullet_color.replace("#", "")}"/>
-            </a:buClr>''')
-            
-            pPr.append(buFont)
-            pPr.append(buChar)
-            pPr.append(buClr)
-            
-            # Handle sub-bullets
-            if getattr(bullet, 'sub_bullets', None):
-                sub_bullet_char = bullet_symbols.get('level_2', '○')
-                max_sub = bullet_config.get('max_sub_bullets_per_bullet', 3)
-                
-                for sub in bullet.sub_bullets[:max_sub]:
-                    sp = tf.add_paragraph()
-                    sub_text = str(sub).replace("○", "").replace("●", "").strip()
-                    
-                    sp.text = sub_text
-                    sp.level = 1  # Level 1 = sub-bullet
-                    
-                    sp.font.size = Pt(max(font_size - 2, 14))
-                    sp.font.name = font_name
-                    sp.font.color.rgb = RGBColor(*text_rgb)
-                    sp.alignment = text_alignment
-                    sp.line_spacing = line_spacing
-                    
-                    # RTL for sub-bullet
-                    if is_rtl:
-                        spPr = sp._element.get_or_add_pPr()
-                        spPr.set('rtl', '1')
-                    
-                    # Apply sub-bullet formatting
-                    spPr = sp._element.get_or_add_pPr()
-                    sub_buFont = parse_xml(f'<a:buFont xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" typeface="{font_name}"/>')
-                    sub_buChar = parse_xml(f'<a:buChar xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" char="{sub_bullet_char}"/>')
-                    sub_buClr = parse_xml(f'''<a:buClr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-                        <a:srgbClr val="{bullet_color.replace("#", "")}"/>
-                    </a:buClr>''')
-                    
-                    spPr.append(sub_buFont)
-                    spPr.append(sub_buChar)
-                    spPr.append(sub_buClr)
-        
-        logger.info(f"   ✅ Bullets: {len(bullets)} items added")
-
-
-    # ========================================================================
-    # TABLE - RTL/LTR AWARE
-    # ========================================================================
-
-    def _add_table_master(self, slide, element: Dict, data) -> None:
-        """Add table with RTL/LTR support and proper language context"""
-        table_data_obj = getattr(data, 'table_data', None) or getattr(data, 'table', None)
-        
-        if not table_data_obj:
-            logger.warning(f"⚠️  No table_data found")
-            return
-        
-        pos = self.get_position(element, 'position')
-        size = element.get('size', {})
-        style = element.get('style', {})
-        
-        # *** FIX: Import and initialize TableService with language ***
-        from apps.app.services.table_service import TableService
-        
-        try:
-            # Initialize TableService with template and language
-            table_service = TableService(
-                template_id=self.template_id,
-                language=self.target_language  # Pass the target language
-            )
-            
-            # Add table
-            table_service.add_table(
-                slide=slide,
-                table_data=table_data_obj,
-                position=pos,
-                size=size
-            )
-            
-            logger.info(f"✅ Table rendered (RTL={self.lang_config.get('rtl', False)})")
-            
-        except Exception as e:
-            logger.error(f"❌ Table error: {e}")
-            logger.exception(e)
-
-    # ========================================================================
-    # CHART - RTL/LTR AWARE
-    # ========================================================================
-
-    def _validate_chart_data(self, chart_data_obj) -> Tuple[bool, str]:
-        """Validate chart has required data before rendering"""
-        if not chart_data_obj:
-            return False, "Chart data is None"
-        
-        # Convert to dict
-        if hasattr(chart_data_obj, 'dict'):
-            chart_data = chart_data_obj.dict()
-        elif isinstance(chart_data_obj, dict):
-            chart_data = chart_data_obj
-        else:
             try:
-                chart_data = chart_data_obj.__dict__
-            except:
-                return False, "Cannot extract chart data"
-        
-        categories = chart_data.get('categories', [])
-        series = chart_data.get('series', [])
-        
-        if not categories or len(categories) == 0:
-            return False, "Categories array is empty"
-        
-        if not series or len(series) == 0:
-            return False, "Series array is empty"
-        
-        # Check first series has values
-        first_series = series[0]
-        if isinstance(first_series, dict):
-            values = first_series.get('values', [])
-        else:
-            values = getattr(first_series, 'values', [])
-        
-        if not values or len(values) == 0:
-            return False, "Series values are empty"
-        
-        if len(values) != len(categories):
-            return False, f"Data mismatch: {len(categories)} categories but {len(values)} values"
-        
-        return True, "Valid"
-
-    def _add_chart_master(self, slide, element: Dict, data) -> None:
-        """Add chart with RTL/LTR support"""
-        if not self.chart_service:
-            logger.warning("⚠️  ChartService not available")
-            return
-        
-        chart_data_obj = getattr(data, 'chart_data', None) or getattr(data, 'chart', None)
-        
-        if not chart_data_obj:
-            logger.warning(f"⚠️  No chart_data found")
-            return
-        
-        # ✅ NEW: Validate chart data before rendering
-        is_valid, error_msg = self._validate_chart_data(chart_data_obj)
-        if not is_valid:
-            logger.error(f"❌ Invalid chart data: {error_msg}")
-            logger.error(f"   Chart object: {chart_data_obj}")
-            
-            # Create error message textbox instead of crashing
-            pos = self.get_position(element, 'position')
-            textbox = slide.shapes.add_textbox(
-                Inches(pos.get('left', 2.0)),
-                Inches(pos.get('top', 3.0)),
-                Inches(9.0),
-                Inches(2.0)
-            )
-            tf = textbox.text_frame
-            tf.word_wrap = True
-            p = tf.paragraphs[0]
-            p.text = f"⚠️ Chart Generation Error\n\n{error_msg}\n\nPlease check source data and regenerate."
-            p.font.size = Pt(16)
-            p.font.color.rgb = RGBColor(220, 53, 69)  # Red
-            p.alignment = PP_ALIGN.CENTER
-            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
-            logger.warning(f"   Created error placeholder for chart")
-            return
-        
-        pos = self.get_position(element, 'position')
-        size = element.get('size', {})
-        style = element.get('style', {})
-        
-        try:
-            # Convert to dict
-            if hasattr(chart_data_obj, 'dict'):
-                chart_data = chart_data_obj.dict()
-            elif isinstance(chart_data_obj, dict):
-                chart_data = chart_data_obj
-            else:
-                chart_data = chart_data_obj.__dict__
-            
-            logger.info(f"   → Chart type: {chart_data.get('chart_type')}")
-            
-            # Get chart config from constraints
-            chart_config = self.constraints.get('chart', {})
-            
-            # Apply styling from constraints
-            chart_data['font_color'] = chart_config.get('font_color', '#FFFFFF')
-            chart_data['data_label_color'] = chart_config.get('data_label_color', '#FFFFFF')
-            chart_data['axis_color'] = chart_config.get('axis_color', '#FFFFFF')
-            chart_data['axis_label_color'] = chart_config.get('axis_label_color', '#FFFFFF')
-            chart_data['grid_color'] = chart_config.get('grid_color', '#5C6F7A')
-            chart_data['legend_font_color'] = chart_config.get('legend_font_color', '#FFFFFF')
-            chart_data['title_color'] = chart_config.get('title_color', '#FFFCEC')
-            
-            bg_color = chart_config.get('background_color', '#0D2026')
-            bg_rgb = self.hex_to_rgb(bg_color)
-            
-            self.chart_service.add_native_chart(
-                slide=slide,
-                chart_data=chart_data,
-                position={"left": pos.get('left', 1.5), "top": pos.get('top', 2.0)},
-                size={"width": size.get('width', 10.33), "height": size.get('height', 5.0)},
-                background_rgb=bg_rgb
-            )
-            
-            logger.info(f"✅ Chart rendered")
-        except Exception as e:
-            logger.error(f"❌ Chart error: {e}")
-            logger.exception(e)
-
-    # ========================================================================
-    # FOUR-BOX LAYOUT - RTL/LTR AWARE
-    # ========================================================================
-
-    def _add_content_box_with_icon_enhanced(self, slide, element: Dict, data) -> None:
-        """Enhanced four-box layout with RTL/LTR support"""
-        box_config = element
-        bullets = self._extract_bullet_items(data, 'content')
-        
-        if not bullets or len(bullets) == 0:
-            return
-        
-        # Get box configuration from constraints
-        box_constraints = self.constraints.get('boxes', {})
-        max_boxes = box_constraints.get('max_boxes', 4)
-        bullets = bullets[:max_boxes]
-        
-        layout_type = box_config.get('layout', '2x2')
-        position = box_config.get('position', {})
-        size = box_config.get('size', {})
-        box_style = box_config.get('box_style', {})
-        
-        # Box dimensions
-        box_width = box_constraints.get('width', 5.4)
-        box_height = box_constraints.get('height', 2.2)
-        gap_h = box_constraints.get('gap_horizontal', 0.53)
-        gap_v = box_constraints.get('gap_vertical', 0.4)
-        
-        # Colors
-        colors = self.constraints.get('colors', {}).get('box_colors', ['#B1D8BE', '#F9D462', '#C6C3BE', '#E09059'])
-        text_color = box_style.get('text_color', '#0D2026')
-        font_name = self.get_font('body')
-        font_size = box_constraints.get('font_size', 16)
-        icon_size = box_constraints.get('icon_size', 0.6)
-        
-        # Base position
-        base_left = position.get('left', 1.0)
-        base_top = position.get('top', 2.0)
-        
-        # Get alignment
-        is_rtl = self.lang_config.get('rtl', False)
-        text_alignment = PP_ALIGN.CENTER  # Boxes are always centered
-        
-        # Render each box
-        for idx, bullet in enumerate(bullets[:4]):
-            # Calculate grid position (2x2)
-            row = idx // 2
-            col = idx % 2
-            
-            # Calculate box position
-            box_left = Inches(base_left + col * (box_width + gap_h))
-            box_top = Inches(base_top + row * (box_height + gap_v))
-            box_w = Inches(box_width)
-            box_h = Inches(box_height)
-            
-            # 1. Create colored box
-            box_shape = slide.shapes.add_shape(
-                MSO_SHAPE.ROUNDED_RECTANGLE,
-                box_left, box_top, box_w, box_h
-            )
-            
-            box_color = colors[idx % len(colors)]
-            box_rgb = self.hex_to_rgb(box_color)
-            
-            box_shape.fill.solid()
-            box_shape.fill.fore_color.rgb = RGBColor(*box_rgb)
-            box_shape.line.fill.background()
-            
-            # 2. Add icon INSIDE box (top-center)
-            if self.icon_service:
-                icon_name_to_use = None
-                
-                if hasattr(bullet, 'icon_name') and bullet.icon_name:
-                    icon_name_from_bullet = bullet.icon_name
-                    logger.info(f"🎯 Box {idx+1} using icon_name: {icon_name_from_bullet}")
-                    
-                    matched_icon = self.icon_service.fuzzy_match_icon_name(icon_name_from_bullet)
-                    if matched_icon:
-                        icon_name_to_use = matched_icon
-                        logger.info(f"✅ Box {idx+1} matched icon: {icon_name_from_bullet} → {matched_icon}")
-                
-                # Fallback to auto-selection
-                if not icon_name_to_use:
-                    icon_name_to_use = self.icon_service.auto_select_icon(bullet.text or "", "")
-                
-                try:
-                    icon_data = self.icon_service.render_to_png(
-                        icon_name_to_use,
-                        size=int(icon_size * 96),
-                        color=text_color
-                    )
-                    
-                    if icon_data:
-                        # Center icon horizontally within box
-                        icon_left = box_left + (box_w - Inches(icon_size)) / 2
-                        icon_top = box_top + Inches(box_constraints.get('icon_top_padding', 0.25))
-                        
-                        slide.shapes.add_picture(
-                            icon_data,
-                            icon_left,
-                            icon_top,
-                            Inches(icon_size),
-                            Inches(icon_size)
-                        )
-                except Exception as e:
-                    logger.debug(f"Icon render skipped for box {idx + 1}: {e}")
-            
-            # 3. Add text BELOW icon (inside box) - WITH TRUNCATION
-            text_top = box_top + Inches(icon_size + box_constraints.get('text_top_offset', 0.35))
-            text_height = box_h - Inches(icon_size + 0.5)
-            
-            padding = box_constraints.get('padding', 0.3)
-            text_box = slide.shapes.add_textbox(
-                box_left + Inches(padding),
-                text_top,
-                box_w - Inches(padding * 2),
-                text_height
-            )
-            
-            tf = text_box.text_frame
-            tf.word_wrap = True
-            tf.clear()
-            tf.vertical_anchor = MSO_ANCHOR.TOP
-            tf.margin_left = tf.margin_right = Inches(0.1)
-            
-            # ✅ FIX: Truncate text to prevent overflow (max 100 chars for four-box)
-            box_text = (bullet.text or "").strip()
-            max_box_length = 100  # Strict limit for four-box layouts
-            if len(box_text) > max_box_length:
-                # Truncate at word boundary
-                truncated = box_text[:max_box_length]
-                last_space = truncated.rfind(' ')
-                if last_space > max_box_length * 0.75:
-                    box_text = truncated[:last_space].strip() + "..."
+                if content_type in ['section', 'section_header']:
+                    self._create_section_slide(slide_data, page_num=page_num)
+                elif content_type == 'agenda':
+                    self._create_agenda_slide(slide_data, page_num=page_num)
                 else:
-                    box_text = truncated.strip() + "..."
-                logger.warning(f"   Truncated four-box text: {len(bullet.text)} → {len(box_text)} chars")
-            
-            p = tf.paragraphs[0]
-            p.text = box_text
-            p.font.name = font_name
-            p.font.size = Pt(font_size)
-            p.font.bold = True
-            p.font.color.rgb = RGBColor(*self.hex_to_rgb(text_color))
-            p.alignment = text_alignment
-            p.line_spacing = box_constraints.get('line_spacing', 1.3)
-            
-            logger.debug(f"✅ Four-box item {idx + 1}")
-
-    # ========================================================================
-    # ICON MASTER - RTL/LTR AWARE
-    # ========================================================================
-    def _get_icon_name_from_data(self, data) -> Optional[str]:
-        """Extract icon_name from slide data with various fallbacks"""
-        # Try direct attribute
-        if hasattr(data, 'icon_name') and data.icon_name:
-            return data.icon_name
+                    self._create_content_slide(slide_data, page_num=page_num)
+                
+                page_num += 1
+                    
+            except Exception as e:
+                logger.error(f"Slide error: {e}")
+                import traceback
+                traceback.print_exc()
         
-        # Try dict access
-        if isinstance(data, dict) and 'icon_name' in data:
-            return data['icon_name']
+        # Save presentation
+        output_path = self._get_output_path(presentation_data.title)
+        self.prs.save(output_path)
         
-        return None
-
-    def _add_icon_master(self, slide, element: Dict, data) -> None:
-        """Add standalone icon with RTL/LTR positioning"""
-        if not self.icon_service:
-            return
-
-        element_id = element.get("id", "")
-        pos = self.get_position(element, 'position')
-        size = element.get('size', {})
-        style = element.get('style', {})
-
-        # Determine content for icon selection
-        content = ""
+        logger.info(f"Generated: {output_path}")
+        logger.info(f"  Total slides: {len(self.prs.slides)}")
+        logger.info("=" * 60)
         
-        if element_id == "icon":
-            if hasattr(data, "title") and data.title:
-                content = data.title
-        elif element_id.endswith("_icon"):
-            box_id = element_id.replace("_icon", "")
-            if hasattr(data, "bullets") and data.bullets:
-                try:
-                    idx = int(box_id.replace("box", "")) - 1
-                    if 0 <= idx < len(data.bullets):
-                        content = data.bullets[idx].text
-                except:
-                    content = getattr(data, "title", "")
-
-        if not content:
-            content = getattr(data, "title", "") or ""
-
-        if not content.strip():
-            return
-
-        # Select icon
-        icon_name = self.icon_service.auto_select_icon(content, "")
-        
-        # Get icon config
-        icon_config = self.constraints.get('icons', {})
-        icon_color = self.get_style_value(style, 'color', '#0D2026')
-
-        try:
-            icon_data = self.icon_service.render_to_png(
-                icon_name,
-                size=int(size.get("width", 0.6) * 96),
-                color=icon_color
-            )
-
-            if not icon_data:
-                return
-
-            slide.shapes.add_picture(
-                icon_data,
-                Inches(pos.get("left", 0)),
-                Inches(pos.get("top", 0)),
-                width=Inches(size.get("width", 0.6)),
-                height=Inches(size.get("height", 0.6))
-            )
-
-            logger.debug(f"✅ Icon added: {icon_name}")
-
-        except Exception as e:
-            logger.warning(f"⚠️ Icon render failed: {e}")
-
-    # ========================================================================
-    # CONTENT BOX MASTER
-    # ========================================================================
-
-    def _add_content_box_master(self, slide, element: Dict, data) -> None:
-        """Add colored content box with RTL/LTR support"""
-        box_id = element.get('id', '')
-        pos = self.get_position(element, 'position')
-        size = element.get('size', {})
-        style = element.get('style', {})
-        
-        content = ""
-        if isinstance(data, dict):
-            content = data.get(box_id, '')
-        elif hasattr(data, 'bullets') and data.bullets:
-            box_num = int(box_id.replace('box', '')) - 1
-            if box_num < len(data.bullets):
-                content = data.bullets[box_num].text
-        
-        if not content:
-            return
-        
-        box = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE,
-            Inches(pos.get('left', 0)),
-            Inches(pos.get('top', 0)),
-            Inches(size.get('width', 3)),
-            Inches(size.get('height', 2))
-        )
-        
-        bg_color = self.get_style_value(style, 'background_color', '#FFFFFF')
-        box.fill.solid()
-        box.fill.fore_color.rgb = RGBColor(*self.hex_to_rgb(bg_color))
-        box.line.fill.background()
-        
-        padding = self.get_style_value(style, 'padding', 0.3)
-        textbox = slide.shapes.add_textbox(
-            Inches(pos.get('left') + padding),
-            Inches(pos.get('top') + padding),
-            Inches(size.get('width') - 2*padding),
-            Inches(size.get('height') - 2*padding)
-        )
-        
-        tf = textbox.text_frame
-        tf.word_wrap = True
-        tf.clear()
-        tf.vertical_anchor = MSO_ANCHOR.TOP
-        tf.margin_left = tf.margin_right = Inches(0.05)
-        
-        p = tf.paragraphs[0]
-        p.text = content
-        p.font.size = Pt(self.get_style_value(style, 'font_size', 16))
-        p.font.name = self.get_font('body')
-        p.alignment = self.get_text_alignment(style)
-        p.line_spacing = self.get_style_value(style, 'line_spacing', 1.45)
-        p.space_after = Pt(self.get_style_value(style, 'space_after', 4))
-        
-        text_color = self.get_style_value(style, 'text_color', '#0D2026')
-        p.font.color.rgb = RGBColor(*self.hex_to_rgb(text_color))
-
-    # ========================================================================
-    # OUTPUT PATH
-    # ========================================================================
-
+        return output_path
+    
     def _get_output_path(self, title: str) -> str:
         """Generate output file path"""
         output_dir = Path(settings.OUTPUT_DIR)
